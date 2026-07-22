@@ -3442,21 +3442,41 @@ function addNominaSemana(fecha,monto){
   wrap.appendChild(row);
 }
 
+function saveBalanceDraft(){
+  try{
+    const v=getBalanceFormValues();
+    localStorage.setItem('ep_balance_draft',JSON.stringify(v));
+  }catch(e){}
+}
+function clearBalanceDraft(){
+  try{localStorage.removeItem('ep_balance_draft');}catch(e){}
+}
+
 function openBalanceModal(){
-  document.getElementById('bf-fecha').value=new Date().toISOString().slice(0,10);
-  document.getElementById('bf-fac-tarjeta').value='';
-  document.getElementById('bf-fac-transf').value='';
-  document.getElementById('bf-fac-efectivo').value='';
-  document.getElementById('bf-notas-pendientes').value='';
-  document.getElementById('bf-ventas-totales').value='';
-  document.getElementById('bf-ing-nextel').value=BAL_NEXTEL_TOTAL_DEFAULT.toFixed(2);
-  document.getElementById('bf-ing-nextel-iva').value=BAL_NEXTEL_IVA_DEFAULT.toFixed(2);
-  document.getElementById('bf-egr-gastos').value='';
-  document.getElementById('bf-egr-camioneta').value='';
-  document.getElementById('bf-egr-imss').value='';
-  document.getElementById('bf-iva-retenido').value=BAL_RETENIDO_DEFAULT.toFixed(2);
+  let draft=null;
+  try{const raw=localStorage.getItem('ep_balance_draft');if(raw)draft=JSON.parse(raw);}catch(e){draft=null;}
+  const hasDraftData=draft&&(draft.facturacion_tarjeta||draft.facturacion_transferencia||draft.facturacion_efectivo||draft.egresos_gastos_total||draft.egresos_camioneta_total||draft.egresos_imss_total||(draft.nomina_semanas&&draft.nomina_semanas.some(s=>s.monto)));
+  const useDraft=hasDraftData&&confirm('Se encontró un balance sin guardar (fecha de corte: '+(draft.fecha_corte||'sin fecha')+'). ¿Quieres recuperar esos datos?');
+  if(!useDraft)clearBalanceDraft();
+
+  document.getElementById('bf-fecha').value=useDraft?(draft.fecha_corte||new Date().toISOString().slice(0,10)):new Date().toISOString().slice(0,10);
+  document.getElementById('bf-fac-tarjeta').value=useDraft?(draft.facturacion_tarjeta||''):'';
+  document.getElementById('bf-fac-transf').value=useDraft?(draft.facturacion_transferencia||''):'';
+  document.getElementById('bf-fac-efectivo').value=useDraft?(draft.facturacion_efectivo||''):'';
+  document.getElementById('bf-notas-pendientes').value=useDraft?(draft.facturacion_notas_pendientes||''):'';
+  document.getElementById('bf-ventas-totales').value=useDraft?(draft.ventas_totales||''):'';
+  document.getElementById('bf-ing-nextel').value=useDraft&&draft.ingresos_nextel_total?draft.ingresos_nextel_total:BAL_NEXTEL_TOTAL_DEFAULT.toFixed(2);
+  document.getElementById('bf-ing-nextel-iva').value=useDraft&&draft.ingresos_nextel_iva?draft.ingresos_nextel_iva:BAL_NEXTEL_IVA_DEFAULT.toFixed(2);
+  document.getElementById('bf-egr-gastos').value=useDraft?(draft.egresos_gastos_total||''):'';
+  document.getElementById('bf-egr-camioneta').value=useDraft?(draft.egresos_camioneta_total||''):'';
+  document.getElementById('bf-egr-imss').value=useDraft?(draft.egresos_imss_total||''):'';
+  document.getElementById('bf-iva-retenido').value=useDraft&&draft.iva_retenido_nextel!=null?draft.iva_retenido_nextel:BAL_RETENIDO_DEFAULT.toFixed(2);
   document.getElementById('bf-nomina-semanas').innerHTML='';
-  for(let i=0;i<4;i++)addNominaSemana();
+  if(useDraft&&draft.nomina_semanas&&draft.nomina_semanas.length){
+    draft.nomina_semanas.forEach(s=>addNominaSemana(s.fecha,s.monto));
+  }else{
+    for(let i=0;i<4;i++)addNominaSemana();
+  }
   updateBalancePreview();
   openModal('m-balance');
 }
@@ -3515,6 +3535,7 @@ function updateBalancePreview(){
     <div style="display:flex;justify-content:space-between;margin-bottom:6px;color:var(--green)"><span>ISR (ingresos − egresos)</span><strong>${fmxnSigned(c.isrTotal)}</strong></div>
     <div style="display:flex;justify-content:space-between;color:var(--copper)"><span>IVA a pagar</span><strong>${fmxnSigned(c.ivaAPagar)}</strong></div>
   </div>`;
+  saveBalanceDraft();
 }
 
 async function saveBalance(){
@@ -3524,6 +3545,7 @@ async function saveBalance(){
   const{error}=await sb.from('balances_mensuales').insert({...v,creado_por:currentUser.id});
   btn.disabled=false;btn.textContent='Guardar balance';
   if(error){toast('Error al guardar: '+error.message,true);return;}
+  clearBalanceDraft();
   closeModal('m-balance');
   toast('Balance guardado ✓');
   await loadBalances();renderBalanceList();
