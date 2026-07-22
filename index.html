@@ -1500,7 +1500,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
     <div class="bal-panel" data-step="1">
       <div class="bal-help">📅 ¿De qué día es este corte? Pueden generar varios balances en el mismo mes para ver cómo van avanzando.</div>
       <div class="f-row"><label>Fecha de corte <span class="req">*</span></label>
-        <input type="date" id="bf-fecha" oninput="updateBalancePreview()"/>
+        <input type="date" id="bal-fecha-corte" oninput="updateBalancePreview()"/>
       </div>
     </div>
 
@@ -3973,7 +3973,7 @@ async function openBalanceModal(){
   const useDraft=hasDraftData&&confirm('Se encontró un balance sin guardar (fecha de corte: '+(draft.fecha_corte||'sin fecha')+'). ¿Quieres recuperar esos datos?');
   if(!useDraft)clearBalanceDraft();
 
-  document.getElementById('bf-fecha').value=useDraft?(draft.fecha_corte||todayLocalISO()):todayLocalISO();
+  document.getElementById('bal-fecha-corte').value=useDraft?(draft.fecha_corte||todayLocalISO()):todayLocalISO();
   document.getElementById('bf-fac-tarjeta').value=useDraft?(draft.facturacion_tarjeta||''):'';
   document.getElementById('bf-fac-transf').value=useDraft?(draft.facturacion_transferencia||''):'';
   document.getElementById('bf-fac-efectivo').value=useDraft?(draft.facturacion_efectivo||''):'';
@@ -4000,7 +4000,7 @@ async function editBalance(id){
   editingBalanceId=id;
   document.getElementById('balance-modal-title').textContent='Editar balance — '+fmtFechaCorta(b.fecha_corte);
 
-  document.getElementById('bf-fecha').value=b.fecha_corte||todayLocalISO();
+  document.getElementById('bal-fecha-corte').value=b.fecha_corte||todayLocalISO();
   document.getElementById('bf-fac-tarjeta').value=b.facturacion_tarjeta||'';
   document.getElementById('bf-fac-transf').value=b.facturacion_transferencia||'';
   document.getElementById('bf-fac-efectivo').value=b.facturacion_efectivo||'';
@@ -4030,7 +4030,7 @@ function getBalanceFormValues(){
   const semanas=nomEntries.map(n=>({fecha:n.fecha,monto:Number(n.monto),ledger_id:n.id}));
   const nominaTotal=semanas.reduce((s,w)=>s+w.monto,0);
   return{
-    fecha_corte:document.getElementById('bf-fecha').value,
+    fecha_corte:document.getElementById('bal-fecha-corte').value,
     facturacion_tarjeta:tarjeta,
     facturacion_transferencia:transferencia,
     facturacion_efectivo:efectivo,
