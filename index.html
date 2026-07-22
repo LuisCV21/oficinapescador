@@ -1409,7 +1409,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 <!-- MODAL BALANCE MENSUAL -->
 <div class="modal-overlay" id="m-balance">
 <div class="modal">
-  <div class="modal-hdr"><div class="modal-title">Nuevo balance mensual — Florida</div><button class="btn-icon" onclick="closeModal('m-balance')">✕</button></div>
+  <div class="modal-hdr"><div class="modal-title" id="balance-modal-title">Nuevo balance mensual — Florida</div><button class="btn-icon" onclick="closeModal('m-balance')">✕</button></div>
   <div class="modal-body">
     <div class="f-row"><label>Fecha de corte <span class="req">*</span></label>
       <input type="date" id="bf-fecha"/>
@@ -3421,6 +3421,7 @@ const BAL_NEXTEL_TOTAL_DEFAULT=18324.57;
 const BAL_NEXTEL_IVA_DEFAULT=3075.45;
 const BAL_RETENIDO_DEFAULT=-1885.55;
 const BAL_CAMIONETA_DEFAULT=22404.28;
+let editingBalanceId=null;
 
 function calcIva16(total){
   const t=Number(total)||0;
@@ -3444,6 +3445,7 @@ function addNominaSemana(fecha,monto){
 }
 
 function saveBalanceDraft(){
+  if(editingBalanceId)return; // no guardar borrador mientras se edita un balance ya existente
   try{
     const v=getBalanceFormValues();
     localStorage.setItem('ep_balance_draft',JSON.stringify(v));
@@ -3454,6 +3456,9 @@ function clearBalanceDraft(){
 }
 
 function openBalanceModal(){
+  editingBalanceId=null;
+  document.getElementById('balance-modal-title').textContent='Nuevo balance mensual — Florida';
+  document.getElementById('balance-save-btn').textContent='Guardar balance';
   let draft=null;
   try{const raw=localStorage.getItem('ep_balance_draft');if(raw)draft=JSON.parse(raw);}catch(e){draft=null;}
   const hasDraftData=draft&&(draft.facturacion_tarjeta||draft.facturacion_transferencia||draft.facturacion_efectivo||draft.egresos_gastos_total||draft.egresos_camioneta_total||draft.egresos_imss_total||(draft.nomina_semanas&&draft.nomina_semanas.some(s=>s.monto)));
@@ -3475,6 +3480,34 @@ function openBalanceModal(){
   document.getElementById('bf-nomina-semanas').innerHTML='';
   if(useDraft&&draft.nomina_semanas&&draft.nomina_semanas.length){
     draft.nomina_semanas.forEach(s=>addNominaSemana(s.fecha,s.monto));
+  }else{
+    for(let i=0;i<4;i++)addNominaSemana();
+  }
+  updateBalancePreview();
+  openModal('m-balance');
+}
+
+function editBalance(id){
+  const b=balancesData.find(x=>x.id===id);if(!b)return;
+  editingBalanceId=id;
+  document.getElementById('balance-modal-title').textContent='Editar balance — '+fmtFechaCorta(b.fecha_corte);
+  document.getElementById('balance-save-btn').textContent='Guardar cambios';
+
+  document.getElementById('bf-fecha').value=b.fecha_corte||new Date().toISOString().slice(0,10);
+  document.getElementById('bf-fac-tarjeta').value=b.facturacion_tarjeta||'';
+  document.getElementById('bf-fac-transf').value=b.facturacion_transferencia||'';
+  document.getElementById('bf-fac-efectivo').value=b.facturacion_efectivo||'';
+  document.getElementById('bf-notas-pendientes').value=b.facturacion_notas_pendientes||'';
+  document.getElementById('bf-ventas-totales').value=b.ventas_totales||'';
+  document.getElementById('bf-ing-nextel').value=b.ingresos_nextel_total!=null?b.ingresos_nextel_total:BAL_NEXTEL_TOTAL_DEFAULT.toFixed(2);
+  document.getElementById('bf-ing-nextel-iva').value=b.ingresos_nextel_iva!=null?b.ingresos_nextel_iva:BAL_NEXTEL_IVA_DEFAULT.toFixed(2);
+  document.getElementById('bf-egr-gastos').value=b.egresos_gastos_total||'';
+  document.getElementById('bf-egr-camioneta').value=b.egresos_camioneta_total!=null?b.egresos_camioneta_total:BAL_CAMIONETA_DEFAULT.toFixed(2);
+  document.getElementById('bf-egr-imss').value=b.egresos_imss_total||'';
+  document.getElementById('bf-iva-retenido').value=b.iva_retenido_nextel!=null?b.iva_retenido_nextel:BAL_RETENIDO_DEFAULT.toFixed(2);
+  document.getElementById('bf-nomina-semanas').innerHTML='';
+  if(b.nomina_semanas&&b.nomina_semanas.length){
+    b.nomina_semanas.forEach(s=>addNominaSemana(s.fecha,s.monto));
   }else{
     for(let i=0;i<4;i++)addNominaSemana();
   }
@@ -3542,13 +3575,20 @@ function updateBalancePreview(){
 async function saveBalance(){
   const v=getBalanceFormValues();
   if(!v.fecha_corte||!v.ingresos_florida_total||!v.egresos_gastos_total){toast('Fecha, ingresos de Florida y gastos son obligatorios',true);return;}
-  const btn=document.getElementById('balance-save-btn');btn.disabled=true;btn.textContent='Guardando...';
-  const{error}=await sb.from('balances_mensuales').insert({...v,creado_por:currentUser.id});
-  btn.disabled=false;btn.textContent='Guardar balance';
+  const btn=document.getElementById('balance-save-btn');btn.disabled=true;btn.textContent=editingBalanceId?'Guardando cambios...':'Guardando...';
+  let error;
+  if(editingBalanceId){
+    ({error}=await sb.from('balances_mensuales').update(v).eq('id',editingBalanceId));
+  }else{
+    ({error}=await sb.from('balances_mensuales').insert({...v,creado_por:currentUser.id}));
+  }
+  btn.disabled=false;btn.textContent=editingBalanceId?'Guardar cambios':'Guardar balance';
   if(error){toast('Error al guardar: '+error.message,true);return;}
   clearBalanceDraft();
+  const wasEditing=!!editingBalanceId;
+  editingBalanceId=null;
   closeModal('m-balance');
-  toast('Balance guardado ✓');
+  toast(wasEditing?'Balance actualizado ✓':'Balance guardado ✓');
   await loadBalances();renderBalanceList();
 }
 
@@ -3586,6 +3626,7 @@ function renderBalanceList(){
             <div style="font-size:10px;color:var(--text2);text-transform:uppercase">IVA a pagar</div>
             <div style="font-weight:700;color:var(--copper)">${fmxnSigned(c.ivaAPagar)}</div>
           </div>
+          <button class="btn-icon" onclick="event.stopPropagation();editBalance('${b.id}')" title="Editar / actualizar">✏️</button>
           <button class="btn-icon" onclick="event.stopPropagation();deleteBalance('${b.id}')" title="Eliminar">🗑️</button>
         </div>
       </div>
