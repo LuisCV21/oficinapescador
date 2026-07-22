@@ -1387,7 +1387,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 </div>
 
 <!-- FAB GASOLINA -->
-<button class="fab" onclick="openCargaModal()" title="Registrar carga de gasolina">⛽</button>
+<button class="fab" id="gas-fab" style="display:none" onclick="openCargaModal()" title="Registrar carga de gasolina">⛽</button>
 
 <!-- VIEWER -->
 <div class="viewer-ov" id="viewer-ov">
@@ -1492,6 +1492,7 @@ async function doLogout(){
   await sb.auth.signOut();
   document.getElementById('app').style.display='none';
   document.getElementById('login-wrap').style.display='flex';
+  document.getElementById('gas-fab').style.display='none';
   currentUser=null;currentPerfil=null;
 }
 document.getElementById('l-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
@@ -1500,6 +1501,7 @@ async function initApp(user){
   currentUser=user;
   document.getElementById('login-wrap').style.display='none';
   document.getElementById('app').style.display='block';
+  document.getElementById('gas-fab').style.display='flex';
   document.getElementById('tb-date').textContent=TODAY.toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   // Load perfil
   const {data:p}=await sb.from('perfiles').select('*').eq('id',user.id).single();
