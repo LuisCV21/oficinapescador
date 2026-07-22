@@ -3522,6 +3522,16 @@ function balPrevStep(){
   if(balCurrentStep>1)goToBalStep(balCurrentStep-1);
 }
 
+function todayLocalISO(){
+  // Evita el bug de toISOString() (usa UTC): en Mexico, por las tardes/noches
+  // eso puede mostrar el dia siguiente. Aqui se arma con la fecha LOCAL.
+  const d=new Date();
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,'0');
+  const day=String(d.getDate()).padStart(2,'0');
+  return`${y}-${m}-${day}`;
+}
+
 function calcIva16(total){
   const t=Number(total)||0;
   const subtotal=t/1.16;
@@ -3563,7 +3573,7 @@ function openBalanceModal(){
   const useDraft=hasDraftData&&confirm('Se encontró un balance sin guardar (fecha de corte: '+(draft.fecha_corte||'sin fecha')+'). ¿Quieres recuperar esos datos?');
   if(!useDraft)clearBalanceDraft();
 
-  document.getElementById('bf-fecha').value=useDraft?(draft.fecha_corte||new Date().toISOString().slice(0,10)):new Date().toISOString().slice(0,10);
+  document.getElementById('bf-fecha').value=useDraft?(draft.fecha_corte||todayLocalISO()):todayLocalISO();
   document.getElementById('bf-fac-tarjeta').value=useDraft?(draft.facturacion_tarjeta||''):'';
   document.getElementById('bf-fac-transf').value=useDraft?(draft.facturacion_transferencia||''):'';
   document.getElementById('bf-fac-efectivo').value=useDraft?(draft.facturacion_efectivo||''):'';
@@ -3593,7 +3603,7 @@ function editBalance(id){
   editingBalanceId=id;
   document.getElementById('balance-modal-title').textContent='Editar balance — '+fmtFechaCorta(b.fecha_corte);
 
-  document.getElementById('bf-fecha').value=b.fecha_corte||new Date().toISOString().slice(0,10);
+  document.getElementById('bf-fecha').value=b.fecha_corte||todayLocalISO();
   document.getElementById('bf-fac-tarjeta').value=b.facturacion_tarjeta||'';
   document.getElementById('bf-fac-transf').value=b.facturacion_transferencia||'';
   document.getElementById('bf-fac-efectivo').value=b.facturacion_efectivo||'';
