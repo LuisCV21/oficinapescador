@@ -355,6 +355,32 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .f-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .req{color:var(--red)}
 
+/* ── BALANCE WIZARD ── */
+#m-balance .modal{max-width:640px}
+.bal-steps{display:flex;gap:4px;margin-bottom:18px}
+.bal-step-pill{flex:1;text-align:center;padding:8px 2px;border-radius:var(--r);
+  background:var(--surface2);border:1px solid var(--border);cursor:pointer;transition:all .2s}
+.bal-step-pill:hover{border-color:var(--copper-mid)}
+.bal-step-pill.active{background:var(--copper);border-color:var(--copper);box-shadow:0 2px 8px rgba(181,84,26,.3)}
+.bal-step-pill.active .bal-step-num,.bal-step-pill.active .bal-step-label{color:#fff}
+.bal-step-pill.done{background:var(--green-light);border-color:var(--green-mid)}
+.bal-step-pill.done .bal-step-num,.bal-step-pill.done .bal-step-label{color:var(--green)}
+.bal-step-num{display:block;font-size:13px;font-weight:700;color:var(--text)}
+.bal-step-label{display:block;font-size:8.5px;text-transform:uppercase;letter-spacing:.04em;
+  margin-top:2px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bal-panel{display:none}
+.bal-panel.active{display:block;animation:balFade .25s ease}
+@keyframes balFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.bal-help{font-size:12px;color:var(--text2);margin-bottom:16px;line-height:1.5;
+  background:var(--surface2);border-left:3px solid var(--copper-mid);padding:8px 12px;border-radius:var(--r)}
+.bal-live{background:var(--copper-light);border:1px solid var(--border2);border-radius:var(--rl);
+  padding:12px 14px;margin-top:8px;font-size:13px}
+.bal-live-row{display:flex;justify-content:space-between;padding:3px 0}
+.bal-live-row strong{color:var(--copper-dark)}
+.bal-summary-box{border-radius:var(--rl);padding:14px 16px;font-size:13px;margin-bottom:12px}
+.bal-proy-box{background:var(--surface2);border:1.5px dashed var(--border2);border-radius:var(--rl);
+  padding:14px;margin-top:10px}
+
 /* ── ICON PICKER ── */
 .icon-grid{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}
 .icon-opt{width:34px;height:34px;border-radius:8px;border:1.5px solid var(--border2);
@@ -1411,83 +1437,119 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 <div class="modal">
   <div class="modal-hdr"><div class="modal-title" id="balance-modal-title">Nuevo balance mensual — Florida</div><button class="btn-icon" onclick="closeModal('m-balance')">✕</button></div>
   <div class="modal-body">
-    <div class="f-row"><label>Fecha de corte <span class="req">*</span></label>
-      <input type="date" id="bf-fecha"/>
+
+    <div class="bal-steps" id="bal-steps"></div>
+
+    <!-- PASO 1 — FECHA -->
+    <div class="bal-panel" data-step="1">
+      <div class="bal-help">📅 ¿De qué día es este corte? Pueden generar varios balances en el mismo mes para ver cómo van avanzando.</div>
+      <div class="f-row"><label>Fecha de corte <span class="req">*</span></label>
+        <input type="date" id="bf-fecha" oninput="updateBalancePreview()"/>
+      </div>
     </div>
 
-    <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin:18px 0 8px">Ingresos</div>
-    <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">Facturación Florida — por forma de pago</div>
-    <div class="f-grid">
-      <div class="f-row"><label>Tarjeta</label>
-        <input type="number" step="0.01" id="bf-fac-tarjeta" placeholder="0.00" oninput="updateBalancePreview()"/>
+    <!-- PASO 2 — INGRESOS -->
+    <div class="bal-panel" data-step="2">
+      <div class="bal-help">💰 Capturen lo facturado de Florida separado por forma de pago — el total y su IVA se calculan solos.</div>
+      <div class="f-grid">
+        <div class="f-row"><label>💳 Tarjeta</label>
+          <input type="number" step="0.01" id="bf-fac-tarjeta" placeholder="0.00" oninput="updateBalancePreview()"/>
+        </div>
+        <div class="f-row"><label>🏦 Transferencia</label>
+          <input type="number" step="0.01" id="bf-fac-transf" placeholder="0.00" oninput="updateBalancePreview()"/>
+        </div>
       </div>
-      <div class="f-row"><label>Transferencia</label>
-        <input type="number" step="0.01" id="bf-fac-transf" placeholder="0.00" oninput="updateBalancePreview()"/>
-      </div>
-    </div>
-    <div class="f-grid">
-      <div class="f-row"><label>Efectivo</label>
+      <div class="f-row"><label>💵 Efectivo</label>
         <input type="number" step="0.01" id="bf-fac-efectivo" placeholder="0.00" oninput="updateBalancePreview()"/>
       </div>
-      <div class="f-row"><label>Florida — Total facturado (calculado)</label>
-        <input type="text" id="bf-ing-florida" disabled style="font-weight:700"/>
+      <div class="bal-live" id="bal-live-florida"></div>
+      <input type="hidden" id="bf-ing-florida"/>
+      <input type="hidden" id="bf-ing-florida-iva"/>
+
+      <!-- PAUSADO (Luis pidió quitarlo de la vista por el momento) — quita este style para reactivar -->
+      <div class="f-grid" style="display:none">
+        <div class="f-row"><label>Notas pendientes de venta <span style="font-weight:400;color:var(--text3);text-transform:none">(referencia, no suma al total)</span></label>
+          <input type="number" step="0.01" id="bf-notas-pendientes" placeholder="0.00" oninput="updateBalancePreview()"/>
+        </div>
+        <div class="f-row"><label>Ventas totales <span style="font-weight:400;color:var(--text3);text-transform:none">(referencia, incluye lo no facturado)</span></label>
+          <input type="number" step="0.01" id="bf-ventas-totales" placeholder="0.00" oninput="updateBalancePreview()"/>
+        </div>
       </div>
-    </div>
-    <!-- PAUSADO (Luis pidió quitarlo de la vista por el momento) — quita este style para reactivar -->
-    <div class="f-grid" style="display:none">
-      <div class="f-row"><label>Notas pendientes de venta <span style="font-weight:400;color:var(--text3);text-transform:none">(referencia, no suma al total)</span></label>
-        <input type="number" step="0.01" id="bf-notas-pendientes" placeholder="0.00" oninput="updateBalancePreview()"/>
-      </div>
-      <div class="f-row"><label>Ventas totales <span style="font-weight:400;color:var(--text3);text-transform:none">(referencia, incluye lo no facturado)</span></label>
-        <input type="number" step="0.01" id="bf-ventas-totales" placeholder="0.00" oninput="updateBalancePreview()"/>
-      </div>
-    </div>
-    <div class="f-row"><label>Florida — IVA (calculado)</label>
-      <input type="text" id="bf-ing-florida-iva" disabled/>
-    </div>
-    <div class="f-grid">
-      <div class="f-row"><label>Fact. Nextel — Total</label>
-        <input type="number" step="0.01" id="bf-ing-nextel" oninput="updateBalancePreview()"/>
-      </div>
-      <div class="f-row"><label>Fact. Nextel — IVA</label>
-        <input type="number" step="0.01" id="bf-ing-nextel-iva" oninput="updateBalancePreview()"/>
+
+      <div class="modal-sec">Fact. Nextel</div>
+      <div class="f-grid">
+        <div class="f-row"><label>Total</label>
+          <input type="number" step="0.01" id="bf-ing-nextel" oninput="updateBalancePreview()"/>
+        </div>
+        <div class="f-row"><label>IVA</label>
+          <input type="number" step="0.01" id="bf-ing-nextel-iva" oninput="updateBalancePreview()"/>
+        </div>
       </div>
     </div>
 
-    <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin:18px 0 8px">Egresos</div>
-    <div class="f-grid">
+    <!-- PASO 3 — EGRESOS -->
+    <div class="bal-panel" data-step="3">
+      <div class="bal-help">🧾 El IVA de Gastos se calcula solo. Camioneta e IMSS no llevan IVA.</div>
       <div class="f-row"><label>Gastos — Total <span class="req">*</span></label>
         <input type="number" step="0.01" id="bf-egr-gastos" placeholder="0.00" oninput="updateBalancePreview()"/>
       </div>
-      <div class="f-row"><label>Gastos — IVA (calculado)</label>
-        <input type="text" id="bf-egr-gastos-iva" disabled/>
-      </div>
-    </div>
-    <div class="f-grid">
-      <div class="f-row"><label>Camioneta Colorado — Total <span class="req">*</span></label>
-        <input type="number" step="0.01" id="bf-egr-camioneta" placeholder="0.00" oninput="updateBalancePreview()"/>
-      </div>
-      <div class="f-row"><label>IMSS KM — Total <span class="req">*</span></label>
-        <input type="number" step="0.01" id="bf-egr-imss" placeholder="0.00" oninput="updateBalancePreview()"/>
-      </div>
-    </div>
-    <div style="font-size:11px;font-weight:600;color:var(--text2);margin:14px 0 6px;display:flex;justify-content:space-between;align-items:center">
-      <span>Nómina Florida — por semana</span>
-      <button type="button" class="btn btn-sm" onclick="addNominaSemana()">+ Agregar semana</button>
-    </div>
-    <div id="bf-nomina-semanas"></div>
-    <div class="f-grid">
-      <div class="f-row"><label>Nómina Florida — Total (calculado)</label>
-        <input type="text" id="bf-egr-nomina" disabled style="font-weight:700"/>
-      </div>
-      <div class="f-row"><label>IVA Retenido Nextel</label>
-        <input type="number" step="0.01" id="bf-iva-retenido" oninput="updateBalancePreview()"/>
+      <div class="bal-live" id="bal-live-gastos"></div>
+      <input type="hidden" id="bf-egr-gastos-iva"/>
+      <div class="f-grid" style="margin-top:14px">
+        <div class="f-row"><label>🚚 Camioneta Colorado — Total <span class="req">*</span></label>
+          <input type="number" step="0.01" id="bf-egr-camioneta" placeholder="0.00" oninput="updateBalancePreview()"/>
+        </div>
+        <div class="f-row"><label>🏥 IMSS KM — Total <span class="req">*</span></label>
+          <input type="number" step="0.01" id="bf-egr-imss" placeholder="0.00" oninput="updateBalancePreview()"/>
+        </div>
       </div>
     </div>
 
-    <div id="balance-preview" style="margin-top:16px"></div>
+    <!-- PASO 4 — NÓMINA -->
+    <div class="bal-panel" data-step="4">
+      <div class="bal-help">👥 Una fila por semana pagada. Empieza con 4 — agrega la 5ª si el mes la tiene.</div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+        <button type="button" class="btn btn-sm" onclick="addNominaSemana()">+ Agregar semana</button>
+      </div>
+      <div id="bf-nomina-semanas"></div>
+      <div class="bal-live" id="bal-live-nomina"></div>
+      <input type="hidden" id="bf-egr-nomina"/>
+    </div>
+
+    <!-- PASO 5 — AJUSTES Y PROYECCIÓN -->
+    <div class="bal-panel" data-step="5">
+      <div class="bal-help">🔁 El retenido de Nextel ya viene precargado. La proyección es opcional — no afecta el IVA/ISR oficial.</div>
+      <div class="f-row"><label>IVA Retenido Nextel</label>
+        <input type="number" step="0.01" id="bf-iva-retenido" oninput="updateBalancePreview()"/>
+      </div>
+      <div class="bal-proy-box">
+        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px">🔮 Proyección — gastos pagados sin factura aún</div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.5">Para cuando quieran ver "cómo iríamos" si se facturara algo que ya se pagó. Esto NO se suma al IVA ni al ISR oficial — solo se muestra aparte, como estimado.</div>
+        <div class="f-grid">
+          <div class="f-row"><label>Monto estimado</label>
+            <input type="number" step="0.01" id="bf-gastos-proy" placeholder="0.00" oninput="updateBalancePreview()"/>
+          </div>
+          <div class="f-row"><label>Concepto (opcional)</label>
+            <input type="text" id="bf-gastos-proy-nota" placeholder="Ej: insumos pagados por adelantado" oninput="updateBalancePreview()"/>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 6 — RESUMEN -->
+    <div class="bal-panel" data-step="6">
+      <div class="bal-help">✅ Revisen que todo cuadre antes de guardar.</div>
+      <div id="balance-preview"></div>
+    </div>
+
   </div>
-  <div class="modal-ftr"><button class="btn" onclick="closeModal('m-balance')">Cancelar</button><button class="btn btn-filled" id="balance-save-btn" onclick="saveBalance()">Guardar balance</button></div>
+  <div class="modal-ftr" style="justify-content:space-between">
+    <button class="btn" onclick="closeModal('m-balance')">Cancelar</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn" id="bal-prev-btn" onclick="balPrevStep()">← Atrás</button>
+      <button class="btn btn-filled" id="bal-next-btn" onclick="balNextStep()">Siguiente →</button>
+    </div>
+  </div>
 </div>
 </div>
 
@@ -3422,6 +3484,43 @@ const BAL_NEXTEL_IVA_DEFAULT=3075.45;
 const BAL_RETENIDO_DEFAULT=-1885.55;
 const BAL_CAMIONETA_DEFAULT=22404.28;
 let editingBalanceId=null;
+const BAL_STEPS=[
+  {n:1,ico:'📅',label:'Fecha'},
+  {n:2,ico:'💰',label:'Ingresos'},
+  {n:3,ico:'🧾',label:'Egresos'},
+  {n:4,ico:'👥',label:'Nómina'},
+  {n:5,ico:'🔮',label:'Ajustes'},
+  {n:6,ico:'✅',label:'Resumen'},
+];
+let balCurrentStep=1;
+
+function renderBalSteps(){
+  const el=document.getElementById('bal-steps');
+  el.innerHTML=BAL_STEPS.map(s=>{
+    const cls=s.n===balCurrentStep?'active':(s.n<balCurrentStep?'done':'');
+    return`<div class="bal-step-pill ${cls}" onclick="goToBalStep(${s.n})">
+      <span class="bal-step-num">${s.n<balCurrentStep?'✓':s.ico}</span>
+      <span class="bal-step-label">${s.label}</span>
+    </div>`;
+  }).join('');
+}
+
+function goToBalStep(n){
+  balCurrentStep=n;
+  document.querySelectorAll('.bal-panel').forEach(p=>p.classList.toggle('active',Number(p.getAttribute('data-step'))===n));
+  renderBalSteps();
+  document.getElementById('bal-prev-btn').style.visibility=n===1?'hidden':'visible';
+  const nextBtn=document.getElementById('bal-next-btn');
+  nextBtn.textContent=n===6?(editingBalanceId?'Guardar cambios':'Guardar balance'):'Siguiente →';
+  if(n===6)updateBalancePreview();
+}
+function balNextStep(){
+  if(balCurrentStep<6){goToBalStep(balCurrentStep+1);}
+  else{saveBalance();}
+}
+function balPrevStep(){
+  if(balCurrentStep>1)goToBalStep(balCurrentStep-1);
+}
 
 function calcIva16(total){
   const t=Number(total)||0;
@@ -3458,7 +3557,6 @@ function clearBalanceDraft(){
 function openBalanceModal(){
   editingBalanceId=null;
   document.getElementById('balance-modal-title').textContent='Nuevo balance mensual — Florida';
-  document.getElementById('balance-save-btn').textContent='Guardar balance';
   let draft=null;
   try{const raw=localStorage.getItem('ep_balance_draft');if(raw)draft=JSON.parse(raw);}catch(e){draft=null;}
   const hasDraftData=draft&&(draft.facturacion_tarjeta||draft.facturacion_transferencia||draft.facturacion_efectivo||draft.egresos_gastos_total||draft.egresos_camioneta_total||draft.egresos_imss_total||(draft.nomina_semanas&&draft.nomina_semanas.some(s=>s.monto)));
@@ -3477,12 +3575,15 @@ function openBalanceModal(){
   document.getElementById('bf-egr-camioneta').value=useDraft&&draft.egresos_camioneta_total?draft.egresos_camioneta_total:BAL_CAMIONETA_DEFAULT.toFixed(2);
   document.getElementById('bf-egr-imss').value=useDraft?(draft.egresos_imss_total||''):'';
   document.getElementById('bf-iva-retenido').value=useDraft&&draft.iva_retenido_nextel!=null?draft.iva_retenido_nextel:BAL_RETENIDO_DEFAULT.toFixed(2);
+  document.getElementById('bf-gastos-proy').value=useDraft?(draft.gastos_proyectados||''):'';
+  document.getElementById('bf-gastos-proy-nota').value=useDraft?(draft.gastos_proyectados_nota||''):'';
   document.getElementById('bf-nomina-semanas').innerHTML='';
   if(useDraft&&draft.nomina_semanas&&draft.nomina_semanas.length){
     draft.nomina_semanas.forEach(s=>addNominaSemana(s.fecha,s.monto));
   }else{
     for(let i=0;i<4;i++)addNominaSemana();
   }
+  goToBalStep(1);
   updateBalancePreview();
   openModal('m-balance');
 }
@@ -3491,7 +3592,6 @@ function editBalance(id){
   const b=balancesData.find(x=>x.id===id);if(!b)return;
   editingBalanceId=id;
   document.getElementById('balance-modal-title').textContent='Editar balance — '+fmtFechaCorta(b.fecha_corte);
-  document.getElementById('balance-save-btn').textContent='Guardar cambios';
 
   document.getElementById('bf-fecha').value=b.fecha_corte||new Date().toISOString().slice(0,10);
   document.getElementById('bf-fac-tarjeta').value=b.facturacion_tarjeta||'';
@@ -3505,12 +3605,15 @@ function editBalance(id){
   document.getElementById('bf-egr-camioneta').value=b.egresos_camioneta_total!=null?b.egresos_camioneta_total:BAL_CAMIONETA_DEFAULT.toFixed(2);
   document.getElementById('bf-egr-imss').value=b.egresos_imss_total||'';
   document.getElementById('bf-iva-retenido').value=b.iva_retenido_nextel!=null?b.iva_retenido_nextel:BAL_RETENIDO_DEFAULT.toFixed(2);
+  document.getElementById('bf-gastos-proy').value=b.gastos_proyectados||'';
+  document.getElementById('bf-gastos-proy-nota').value=b.gastos_proyectados_nota||'';
   document.getElementById('bf-nomina-semanas').innerHTML='';
   if(b.nomina_semanas&&b.nomina_semanas.length){
     b.nomina_semanas.forEach(s=>addNominaSemana(s.fecha,s.monto));
   }else{
     for(let i=0;i<4;i++)addNominaSemana();
   }
+  goToBalStep(1);
   updateBalancePreview();
   openModal('m-balance');
 }
@@ -3540,6 +3643,8 @@ function getBalanceFormValues(){
     nomina_semanas:semanas,
     egresos_nomina_total:nominaTotal,
     iva_retenido_nextel:Number(document.getElementById('bf-iva-retenido').value)||0,
+    gastos_proyectados:Number(document.getElementById('bf-gastos-proy').value)||0,
+    gastos_proyectados_nota:document.getElementById('bf-gastos-proy-nota').value||null,
   };
 }
 
@@ -3552,30 +3657,62 @@ function calcBalance(v){
   const egrTotalTotal=Number(v.egresos_gastos_total||0)+Number(v.egresos_camioneta_total||0)+Number(v.egresos_imss_total||0)+Number(v.egresos_nomina_total||0);
   const ivaAPagar=ingTotalIva-egrTotalIva+Number(v.iva_retenido_nextel||0);
   const isrTotal=ingTotalTotal-egrTotalTotal;
-  return{ingFloridaIva,ingTotalIva,ingTotalTotal,egrGastosIva,egrTotalIva,egrTotalTotal,ivaAPagar,isrTotal};
+  // Base de ISR sin IVA: el IVA no es ingreso ni gasto para efectos de ISR, así que se resta antes de sacar la diferencia.
+  const ingresosSinIva=ingTotalTotal-ingTotalIva;
+  const egresosSinIva=egrTotalTotal-egrTotalIva;
+  const isrBaseSinIva=ingresosSinIva-egresosSinIva;
+  const gastosProy=Number(v.gastos_proyectados||0);
+  const egrTotalConProy=egrTotalTotal+gastosProy;
+  const isrProyectado=ingTotalTotal-egrTotalConProy;
+  return{ingFloridaIva,ingTotalIva,ingTotalTotal,egrGastosIva,egrTotalIva,egrTotalTotal,ivaAPagar,isrTotal,ingresosSinIva,egresosSinIva,isrBaseSinIva,gastosProy,egrTotalConProy,isrProyectado};
 }
 
 function updateBalancePreview(){
   const v=getBalanceFormValues();
   const c=calcBalance(v);
-  document.getElementById('bf-ing-florida').value=fmxn(v.ingresos_florida_total);
-  document.getElementById('bf-ing-florida-iva').value=fmxn(c.ingFloridaIva);
-  document.getElementById('bf-egr-nomina').value=fmxn(v.egresos_nomina_total);
-  document.getElementById('bf-egr-gastos-iva').value=fmxn(c.egrGastosIva);
+  document.getElementById('bf-ing-florida').value=v.ingresos_florida_total;
+  document.getElementById('bf-ing-florida-iva').value=c.ingFloridaIva;
+  document.getElementById('bf-egr-nomina').value=v.egresos_nomina_total;
+  document.getElementById('bf-egr-gastos-iva').value=c.egrGastosIva;
+
+  const liveFlorida=document.getElementById('bal-live-florida');
+  if(liveFlorida)liveFlorida.innerHTML=`
+    <div class="bal-live-row"><span>Total facturado (Tarjeta+Transf.+Efectivo)</span><strong>${fmxn(v.ingresos_florida_total)}</strong></div>
+    <div class="bal-live-row"><span>IVA (calculado)</span><strong>${fmxn(c.ingFloridaIva)}</strong></div>`;
+
+  const liveGastos=document.getElementById('bal-live-gastos');
+  if(liveGastos)liveGastos.innerHTML=`<div class="bal-live-row"><span>IVA (calculado)</span><strong>${fmxn(c.egrGastosIva)}</strong></div>`;
+
+  const liveNomina=document.getElementById('bal-live-nomina');
+  if(liveNomina)liveNomina.innerHTML=`<div class="bal-live-row"><span>Total nómina (suma de semanas)</span><strong>${fmxn(v.egresos_nomina_total)}</strong></div>`;
+
   const el=document.getElementById('balance-preview');
-  el.innerHTML=`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rl);padding:14px 16px;font-size:13px">
-    <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>Total ingresos</span><strong>${fmxn(c.ingTotalTotal)}</strong></div>
-    <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>Total egresos</span><strong>${fmxn(c.egrTotalTotal)}</strong></div>
-    <div style="display:flex;justify-content:space-between;margin-bottom:6px;color:var(--green)"><span>ISR (ingresos − egresos)</span><strong>${fmxnSigned(c.isrTotal)}</strong></div>
-    <div style="display:flex;justify-content:space-between;color:var(--copper)"><span>IVA a pagar</span><strong>${fmxnSigned(c.ivaAPagar)}</strong></div>
-  </div>`;
+  if(el){
+    let proyHtml='';
+    if(c.gastosProy>0){
+      proyHtml=`<div class="bal-proy-box" style="margin-top:12px">
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px">🔮 Proyección${v.gastos_proyectados_nota?' — '+v.gastos_proyectados_nota:''}</div>
+        <div class="bal-live-row"><span>Egresos + proyección</span><strong>${fmxn(c.egrTotalConProy)}</strong></div>
+        <div class="bal-live-row"><span>ISR proyectado (estimado, no oficial)</span><strong>${fmxnSigned(c.isrProyectado)}</strong></div>
+      </div>`;
+    }
+    el.innerHTML=`<div class="bal-summary-box" style="background:var(--surface2);border:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>Total ingresos</span><strong>${fmxn(c.ingTotalTotal)}</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>Total egresos</span><strong>${fmxn(c.egrTotalTotal)}</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;color:var(--green)"><span>ISR (ingresos − egresos, con IVA incluido)</span><strong>${fmxnSigned(c.isrTotal)}</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;color:var(--green);padding-top:6px;border-top:1px dashed var(--border2)"><span>ISR base sin IVA (ingresos−IVA − egresos−IVA)</span><strong>${fmxnSigned(c.isrBaseSinIva)}</strong></div>
+      <div style="display:flex;justify-content:space-between;color:var(--copper)"><span>IVA a pagar</span><strong>${fmxnSigned(c.ivaAPagar)}</strong></div>
+    </div>${proyHtml}`;
+  }
   saveBalanceDraft();
 }
 
 async function saveBalance(){
   const v=getBalanceFormValues();
-  if(!v.fecha_corte||!v.ingresos_florida_total||!v.egresos_gastos_total){toast('Fecha, ingresos de Florida y gastos son obligatorios',true);return;}
-  const btn=document.getElementById('balance-save-btn');btn.disabled=true;btn.textContent=editingBalanceId?'Guardando cambios...':'Guardando...';
+  if(!v.fecha_corte){toast('Falta la fecha de corte',true);goToBalStep(1);return;}
+  if(!v.ingresos_florida_total){toast('Falta capturar los ingresos de Florida (Tarjeta/Transf./Efectivo)',true);goToBalStep(2);return;}
+  if(!v.egresos_gastos_total){toast('Falta capturar el total de Gastos',true);goToBalStep(3);return;}
+  const btn=document.getElementById('bal-next-btn');btn.disabled=true;btn.textContent=editingBalanceId?'Guardando cambios...':'Guardando...';
   let error;
   if(editingBalanceId){
     ({error}=await sb.from('balances_mensuales').update(v).eq('id',editingBalanceId));
@@ -3653,12 +3790,14 @@ function viewBalance(id){
     .num{text-align:right}
     .tot-row td{background:#a9c6e8;font-weight:700}
     .green-row td{background:#c9e6b0;font-weight:700}
+    .proy-box{border:1.5px dashed #b08a4a;background:#fff8e8;border-radius:6px;padding:10px 14px;margin-top:6px;font-size:12px}
     .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a73e8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px}
     @media print{.print-btn{display:none}}
   </style></head><body>
   <button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
   <div class="hdr"><h1>LUIS ANTONIO CLEMENTE VAQUIER</h1><h2>${fechaLabel}</h2></div>
   <div class="subtitle">INGRESOS Y EGRESOS</div>
+  ${c.gastosProy>0?`<div class="proy-box">🔮 <strong>Proyección (no oficial)</strong>${b.gastos_proyectados_nota?' — '+b.gastos_proyectados_nota:''}: si se facturara este gasto de ${fmxn(c.gastosProy)}, el ISR estimado sería <strong>${fmxnSigned(c.isrProyectado)}</strong>.</div>`:''}
   <div class="cols">
     <div class="col">
       <table>
@@ -3672,6 +3811,12 @@ function viewBalance(id){
         <tr><td>INGRESOS</td><td class="num">${fmxn(c.ingTotalTotal)}</td></tr>
         <tr><td>EGRESOS</td><td class="num">${fmxn(c.egrTotalTotal)}</td></tr>
         <tr class="green-row"><td>TOTAL</td><td class="num">${fmxnSigned(c.isrTotal)}</td></tr>
+      </table>
+      <table>
+        <tr><th>ISR — BASE SIN IVA</th><th class="num">&nbsp;</th></tr>
+        <tr><td>INGRESOS SIN IVA</td><td class="num">${fmxn(c.ingresosSinIva)}</td></tr>
+        <tr><td>EGRESOS SIN IVA</td><td class="num">${fmxn(c.egresosSinIva)}</td></tr>
+        <tr class="green-row"><td>TOTAL</td><td class="num">${fmxnSigned(c.isrBaseSinIva)}</td></tr>
       </table>
     </div>
     <div class="col">
