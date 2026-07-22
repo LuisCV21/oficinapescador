@@ -3420,6 +3420,7 @@ async function deleteDir(id){
 const BAL_NEXTEL_TOTAL_DEFAULT=18324.57;
 const BAL_NEXTEL_IVA_DEFAULT=3075.45;
 const BAL_RETENIDO_DEFAULT=-1885.55;
+const BAL_CAMIONETA_DEFAULT=22404.28;
 
 function calcIva16(total){
   const t=Number(total)||0;
@@ -3468,7 +3469,7 @@ function openBalanceModal(){
   document.getElementById('bf-ing-nextel').value=useDraft&&draft.ingresos_nextel_total?draft.ingresos_nextel_total:BAL_NEXTEL_TOTAL_DEFAULT.toFixed(2);
   document.getElementById('bf-ing-nextel-iva').value=useDraft&&draft.ingresos_nextel_iva?draft.ingresos_nextel_iva:BAL_NEXTEL_IVA_DEFAULT.toFixed(2);
   document.getElementById('bf-egr-gastos').value=useDraft?(draft.egresos_gastos_total||''):'';
-  document.getElementById('bf-egr-camioneta').value=useDraft?(draft.egresos_camioneta_total||''):'';
+  document.getElementById('bf-egr-camioneta').value=useDraft&&draft.egresos_camioneta_total?draft.egresos_camioneta_total:BAL_CAMIONETA_DEFAULT.toFixed(2);
   document.getElementById('bf-egr-imss').value=useDraft?(draft.egresos_imss_total||''):'';
   document.getElementById('bf-iva-retenido').value=useDraft&&draft.iva_retenido_nextel!=null?draft.iva_retenido_nextel:BAL_RETENIDO_DEFAULT.toFixed(2);
   document.getElementById('bf-nomina-semanas').innerHTML='';
