@@ -1433,7 +1433,8 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <input type="text" id="bf-ing-florida" disabled style="font-weight:700"/>
       </div>
     </div>
-    <div class="f-grid">
+    <!-- PAUSADO (Luis pidió quitarlo de la vista por el momento) — quita este style para reactivar -->
+    <div class="f-grid" style="display:none">
       <div class="f-row"><label>Notas pendientes de venta <span style="font-weight:400;color:var(--text3);text-transform:none">(referencia, no suma al total)</span></label>
         <input type="number" step="0.01" id="bf-notas-pendientes" placeholder="0.00" oninput="updateBalancePreview()"/>
       </div>
