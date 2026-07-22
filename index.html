@@ -357,6 +357,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 
 /* ── BALANCE WIZARD ── */
 #m-balance .modal{max-width:640px}
+#m-balance-kat .modal{max-width:640px}
 .bal-steps{display:flex;gap:4px;margin-bottom:18px}
 .bal-step-pill{flex:1;text-align:center;padding:8px 2px;border-radius:var(--r);
   background:var(--surface2);border:1px solid var(--border);cursor:pointer;transition:all .2s}
@@ -380,6 +381,25 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .bal-summary-box{border-radius:var(--rl);padding:14px 16px;font-size:13px;margin-bottom:12px}
 .bal-proy-box{background:var(--surface2);border:1.5px dashed var(--border2);border-radius:var(--rl);
   padding:14px;margin-top:10px}
+.bal-tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.bal-tab{padding:8px 16px;border-radius:var(--r);background:var(--surface2);border:1px solid var(--border);
+  cursor:pointer;font-size:13px;font-weight:600;color:var(--text2);transition:all .2s}
+.bal-tab.active{background:var(--copper);color:#fff;border-color:var(--copper)}
+.ledger-subtabs{display:flex;gap:6px;margin-bottom:14px}
+.ledger-subtab{padding:6px 14px;border-radius:16px;background:var(--surface2);border:1px solid var(--border);
+  cursor:pointer;font-size:12px;font-weight:600;color:var(--text2)}
+.ledger-subtab.active{background:var(--slate);color:#fff;border-color:var(--slate)}
+.ledger-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;margin-bottom:6px}
+.ledger-row.used{opacity:.55}
+.ledger-row-info{font-size:12px;color:var(--text2)}
+.ledger-row-monto{font-weight:700;font-size:14px;color:var(--text)}
+.ledger-badge{font-size:9px;padding:2px 8px;border-radius:8px;font-weight:700;text-transform:uppercase}
+.ledger-badge.pend{background:var(--copper-light);color:var(--copper-dark)}
+.ledger-badge.used{background:var(--green-light);color:var(--green)}
+.ledger-add-form{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;background:var(--surface2);
+  border:1px solid var(--border);border-radius:var(--rl);padding:14px;margin-bottom:16px}
+.ledger-add-form .f-row{margin-bottom:0;flex:1;min-width:110px}
 
 /* ── ICON PICKER ── */
 .icon-grid{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}
@@ -752,11 +772,47 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
           <div>
             <div class="page-title">Balance mensual</div>
-            <div class="page-sub">Ingresos, egresos, ISR e IVA — Luis Antonio Clemente Vaquier (Florida)</div>
+            <div class="page-sub" id="balance-page-sub">Ingresos, egresos, ISR e IVA — Luis Antonio Clemente Vaquier (Florida)</div>
           </div>
-          <button class="btn btn-filled" onclick="openBalanceModal()">+ Nuevo balance</button>
+          <button class="btn btn-filled" id="balance-new-btn" onclick="openBalanceModal()">+ Nuevo balance</button>
+        </div>
+        <div class="bal-tabs">
+          <div class="bal-tab active" id="bal-tab-luis" onclick="switchBalTab('luis')">👤 Balance Luis</div>
+          <div class="bal-tab" id="bal-tab-kat" onclick="switchBalTab('kat')">👤 Balance Kateryn</div>
+          <div class="bal-tab" id="bal-tab-nomina" onclick="switchBalTab('nomina')">📋 Bitácora Nómina</div>
+          <div class="bal-tab" id="bal-tab-ado" onclick="switchBalTab('ado')">🚌 Bitácora ADO</div>
         </div>
         <div id="balance-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+        <div id="balance-kat-list" style="display:none"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+
+        <div id="nomina-ledger-view" style="display:none">
+          <div class="ledger-subtabs" id="nom-subtabs">
+            <div class="ledger-subtab active" onclick="switchNominaEnt('FLO')">Florida</div>
+            <div class="ledger-subtab" onclick="switchNominaEnt('PUE')">Puebla</div>
+            <div class="ledger-subtab" onclick="switchNominaEnt('HOT')">Hotel</div>
+          </div>
+          <div class="ledger-add-form">
+            <div class="f-row"><label>Fecha</label><input type="date" id="nom-add-fecha"/></div>
+            <div class="f-row"><label>Monto</label><input type="number" step="0.01" id="nom-add-monto" placeholder="0.00"/></div>
+            <button class="btn btn-filled" onclick="addNominaLedgerEntry()">+ Agregar</button>
+          </div>
+          <div id="nomina-ledger-list"></div>
+        </div>
+
+        <div id="ado-ledger-view" style="display:none">
+          <div class="ledger-subtabs" id="ado-subtabs">
+            <div class="ledger-subtab active" onclick="switchAdoTipo('pagada')">Pagadas</div>
+            <div class="ledger-subtab" onclick="switchAdoTipo('credito')">De crédito</div>
+          </div>
+          <div class="ledger-add-form">
+            <div class="f-row" style="min-width:160px"><label>Línea</label><input type="text" id="ado-add-linea" placeholder="Ej: ADO Norte"/></div>
+            <div class="f-row"><label>Cantidad</label><input type="number" step="0.01" id="ado-add-cantidad" placeholder="0.00"/></div>
+            <div class="f-row"><label>Factura</label><input type="text" id="ado-add-factura" placeholder="Ej: A-7305"/></div>
+            <div class="f-row"><label>Fecha</label><input type="date" id="ado-add-fecha"/></div>
+            <button class="btn btn-filled" onclick="addAdoLedgerEntry()">+ Agregar</button>
+          </div>
+          <div id="ado-ledger-list"></div>
+        </div>
       </div>
 
       <!-- ARCHIVOS -->
@@ -1507,11 +1563,13 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 
     <!-- PASO 4 — NÓMINA -->
     <div class="bal-panel" data-step="4">
-      <div class="bal-help">👥 Una fila por semana pagada. Empieza con 4 — agrega la 5ª si el mes la tiene.</div>
-      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
-        <button type="button" class="btn btn-sm" onclick="addNominaSemana()">+ Agregar semana</button>
+      <div class="bal-help">👥 Esto se jala de la Bitácora de Nómina (Florida). Marca las semanas que quieres incluir en este balance — las que ya se usaron en otro balance no aparecen aquí.</div>
+      <div class="ledger-add-form" style="margin-bottom:14px">
+        <div class="f-row"><label>Fecha</label><input type="date" id="nom-quick-fecha-FLO"/></div>
+        <div class="f-row"><label>Monto</label><input type="number" step="0.01" id="nom-quick-monto-FLO" placeholder="0.00"/></div>
+        <button type="button" class="btn btn-sm" onclick="quickAddNominaFromBalance('FLO','bf-nomina-pendientes')">+ Agregar semana</button>
       </div>
-      <div id="bf-nomina-semanas"></div>
+      <div id="bf-nomina-pendientes"></div>
       <div class="bal-live" id="bal-live-nomina"></div>
       <input type="hidden" id="bf-egr-nomina"/>
     </div>
@@ -1548,6 +1606,132 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
     <div style="display:flex;gap:8px">
       <button class="btn" id="bal-prev-btn" onclick="balPrevStep()">← Atrás</button>
       <button class="btn btn-filled" id="bal-next-btn" onclick="balNextStep()">Siguiente →</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- MODAL BALANCE MENSUAL — KATERYN -->
+<div class="modal-overlay" id="m-balance-kat">
+<div class="modal">
+  <div class="modal-hdr"><div class="modal-title" id="balance-kat-modal-title">Nuevo balance mensual — Kateryn</div><button class="btn-icon" onclick="closeModal('m-balance-kat')">✕</button></div>
+  <div class="modal-body">
+
+    <div class="bal-steps" id="bal-kat-steps"></div>
+
+    <!-- PASO 1 — FECHA -->
+    <div class="bal-panel" data-step="1">
+      <div class="bal-help">📅 ¿De qué día es este corte?</div>
+      <div class="f-row"><label>Fecha de corte <span class="req">*</span></label>
+        <input type="date" id="bk-fecha" oninput="updateBalanceKatPreview()"/>
+      </div>
+    </div>
+
+    <!-- PASO 2 — INGRESOS -->
+    <div class="bal-panel" data-step="2">
+      <div class="bal-help">💰 Facturación de Puebla y de Hotel, separada por forma de pago — el total y el IVA se calculan solos.</div>
+      <div class="modal-sec">Av. Puebla</div>
+      <div class="f-grid">
+        <div class="f-row"><label>💳 Tarjeta</label><input type="number" step="0.01" id="bk-pue-tarjeta" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
+        <div class="f-row"><label>🏦 Transferencia</label><input type="number" step="0.01" id="bk-pue-transf" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
+      </div>
+      <div class="f-row"><label>💵 Efectivo</label><input type="number" step="0.01" id="bk-pue-efectivo" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
+      <div class="bal-live" id="bal-live-puebla"></div>
+      <input type="hidden" id="bk-ing-puebla"/>
+
+      <div class="modal-sec" style="margin-top:18px">Hotel</div>
+      <div class="f-grid">
+        <div class="f-row"><label>💳 Tarjeta</label><input type="number" step="0.01" id="bk-hot-tarjeta" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
+        <div class="f-row"><label>🏦 Transferencia</label><input type="number" step="0.01" id="bk-hot-transf" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
+      </div>
+      <div class="f-row"><label>💵 Efectivo</label><input type="number" step="0.01" id="bk-hot-efectivo" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
+      <div class="bal-live" id="bal-live-hotel"></div>
+      <input type="hidden" id="bk-ing-hotel"/>
+    </div>
+
+    <!-- PASO 3 — ADO -->
+    <div class="bal-panel" data-step="3">
+      <div class="bal-help">🚌 Esto se jala de la Bitácora ADO. Marca los vales que quieres incluir en este balance.</div>
+      <div class="modal-sec">Facturas ADO pagadas</div>
+      <div class="ledger-add-form">
+        <div class="f-row" style="min-width:140px"><label>Línea</label><input type="text" id="ado-quick-linea-pagada" placeholder="Ej: ADO Norte"/></div>
+        <div class="f-row"><label>Cantidad</label><input type="number" step="0.01" id="ado-quick-cantidad-pagada" placeholder="0.00"/></div>
+        <div class="f-row"><label>Factura</label><input type="text" id="ado-quick-factura-pagada" placeholder="A-####"/></div>
+        <div class="f-row"><label>Fecha</label><input type="date" id="ado-quick-fecha-pagada"/></div>
+        <button type="button" class="btn btn-sm" onclick="quickAddAdoFromBalance('pagada','bk-ado-pagadas-pendientes')">+ Agregar</button>
+      </div>
+      <div id="bk-ado-pagadas-pendientes"></div>
+      <div class="bal-live" id="bal-live-ado-pagadas"></div>
+      <input type="hidden" id="bk-ado-pagadas"/>
+
+      <div class="modal-sec" style="margin-top:18px">Facturas ADO de crédito</div>
+      <div class="ledger-add-form">
+        <div class="f-row" style="min-width:140px"><label>Línea</label><input type="text" id="ado-quick-linea-credito" placeholder="Ej: ADO Norte"/></div>
+        <div class="f-row"><label>Cantidad</label><input type="number" step="0.01" id="ado-quick-cantidad-credito" placeholder="0.00"/></div>
+        <div class="f-row"><label>Factura</label><input type="text" id="ado-quick-factura-credito" placeholder="A-####"/></div>
+        <div class="f-row"><label>Fecha</label><input type="date" id="ado-quick-fecha-credito"/></div>
+        <button type="button" class="btn btn-sm" onclick="quickAddAdoFromBalance('credito','bk-ado-credito-pendientes')">+ Agregar</button>
+      </div>
+      <div id="bk-ado-credito-pendientes"></div>
+      <div class="bal-live" id="bal-live-ado-credito"></div>
+      <input type="hidden" id="bk-ado-credito"/>
+    </div>
+
+    <!-- PASO 4 — EGRESOS -->
+    <div class="bal-panel" data-step="4">
+      <div class="bal-help">🧾 El IVA de Gastos se calcula solo. La camioneta, IMSS y nómina no llevan IVA.</div>
+      <div class="f-row"><label>Gastos — Total <span class="req">*</span></label>
+        <input type="number" step="0.01" id="bk-egr-gastos" placeholder="0.00" oninput="updateBalanceKatPreview()"/>
+      </div>
+      <div class="bal-live" id="bal-live-gastos-kat"></div>
+      <input type="hidden" id="bk-egr-gastos-iva"/>
+      <div class="f-row" style="margin-top:14px"><label>🚚 Camioneta Nissan NP300 — Total <span class="req">*</span></label>
+        <input type="number" step="0.01" id="bk-egr-camioneta" placeholder="0.00" oninput="updateBalanceKatPreview()"/>
+      </div>
+
+      <div class="modal-sec" style="margin-top:14px">Puebla</div>
+      <div class="f-row"><label>🏥 IMSS Puebla — Total <span class="req">*</span></label>
+        <input type="number" step="0.01" id="bk-egr-imss-pue" placeholder="0.00" oninput="updateBalanceKatPreview()"/>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin:8px 0">
+        <div class="ledger-add-form" style="flex:1">
+          <div class="f-row"><label>Fecha</label><input type="date" id="nom-quick-fecha-PUE"/></div>
+          <div class="f-row"><label>Monto</label><input type="number" step="0.01" id="nom-quick-monto-PUE" placeholder="0.00"/></div>
+          <button type="button" class="btn btn-sm" onclick="quickAddNominaFromBalance('PUE','bk-nomina-pue-pendientes')">+ Agregar semana (Nómina Puebla)</button>
+        </div>
+      </div>
+      <div id="bk-nomina-pue-pendientes"></div>
+      <div class="bal-live" id="bal-live-nomina-pue"></div>
+      <input type="hidden" id="bk-egr-nomina-pue"/>
+
+      <div class="modal-sec" style="margin-top:18px">Hotel</div>
+      <div class="f-row"><label>🏥 IMSS Hotel — Total <span class="req">*</span></label>
+        <input type="number" step="0.01" id="bk-egr-imss-hot" placeholder="0.00" oninput="updateBalanceKatPreview()"/>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin:8px 0">
+        <div class="ledger-add-form" style="flex:1">
+          <div class="f-row"><label>Fecha</label><input type="date" id="nom-quick-fecha-HOT"/></div>
+          <div class="f-row"><label>Monto</label><input type="number" step="0.01" id="nom-quick-monto-HOT" placeholder="0.00"/></div>
+          <button type="button" class="btn btn-sm" onclick="quickAddNominaFromBalance('HOT','bk-nomina-hot-pendientes')">+ Agregar semana (Nómina Hotel)</button>
+        </div>
+      </div>
+      <div id="bk-nomina-hot-pendientes"></div>
+      <div class="bal-live" id="bal-live-nomina-hot"></div>
+      <input type="hidden" id="bk-egr-nomina-hot"/>
+    </div>
+
+    <!-- PASO 5 — RESUMEN -->
+    <div class="bal-panel" data-step="5">
+      <div class="bal-help">✅ Revisen que todo cuadre antes de guardar.</div>
+      <div id="balance-kat-preview"></div>
+    </div>
+
+  </div>
+  <div class="modal-ftr" style="justify-content:space-between">
+    <button class="btn" onclick="closeModal('m-balance-kat')">Cancelar</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn" id="bal-kat-prev-btn" onclick="balKatPrevStep()">← Atrás</button>
+      <button class="btn btn-filled" id="bal-kat-next-btn" onclick="balKatNextStep()">Siguiente →</button>
     </div>
   </div>
 </div>
@@ -1682,12 +1866,24 @@ async function initApp(user){
 
 // ─── LOAD DATA ────────────────────────────────────────────────
 async function loadAll(){
-  await Promise.all([loadObligaciones(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances()]);
+  await Promise.all([loadObligaciones(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger()]);
   renderAll();
 }
 async function loadBalances(){
   const {data}=await sb.from('balances_mensuales').select('*').order('fecha_corte',{ascending:false}).order('created_at',{ascending:false});
   balancesData=data||[];
+}
+async function loadBalancesKat(){
+  const {data}=await sb.from('balances_kateryn').select('*').order('fecha_corte',{ascending:false}).order('created_at',{ascending:false});
+  balancesKatData=data||[];
+}
+async function loadNominaLedger(){
+  const {data}=await sb.from('nomina_ledger').select('*').order('fecha',{ascending:false});
+  nominaLedgerData=data||[];
+}
+async function loadAdoLedger(){
+  const {data}=await sb.from('ado_ledger').select('*').order('fecha',{ascending:false});
+  adoLedgerData=data||[];
 }
 async function loadObligaciones(){
   const {data}=await sb.from('obligaciones').select('*').eq('activa',true).order('fecha_limite');
@@ -1731,7 +1927,7 @@ function showPage(id){
   else if(id==='bitacora')renderBitacora();
   else if(id==='directorio')renderDirectorio();
   else if(id==='flotilla')renderFlotilla();
-  else if(id==='balance')renderBalanceList();
+  else if(id==='balance')switchBalTab(balActiveTab);
 }
 
 function renderAll(){
@@ -3484,6 +3680,13 @@ const BAL_NEXTEL_IVA_DEFAULT=3075.45;
 const BAL_RETENIDO_DEFAULT=-1885.55;
 const BAL_CAMIONETA_DEFAULT=22404.28;
 let editingBalanceId=null;
+let balancesKatData=[],nominaLedgerData=[],adoLedgerData=[];
+let editingBalanceKatId=null;
+let balActiveTab='luis';
+let nomActiveEnt='FLO';
+let adoActiveTipo='pagada';
+const ENT_LABELS={FLO:'Florida',PUE:'Puebla',HOT:'Hotel'};
+const BAL_NISSAN_DEFAULT=7265.00;
 const BAL_STEPS=[
   {n:1,ico:'📅',label:'Fecha'},
   {n:2,ico:'💰',label:'Ingresos'},
@@ -3534,6 +3737,190 @@ function balPrevStep(){
   if(balCurrentStep>1)goToBalStep(balCurrentStep-1);
 }
 
+// ─── TABS DE LA PÁGINA BALANCE ──────────────────────────────────
+function switchBalTab(tab){
+  balActiveTab=tab;
+  document.querySelectorAll('.bal-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('bal-tab-'+tab).classList.add('active');
+  document.getElementById('balance-list').style.display=tab==='luis'?'block':'none';
+  document.getElementById('balance-kat-list').style.display=tab==='kat'?'block':'none';
+  document.getElementById('nomina-ledger-view').style.display=tab==='nomina'?'block':'none';
+  document.getElementById('ado-ledger-view').style.display=tab==='ado'?'block':'none';
+  const newBtn=document.getElementById('balance-new-btn');
+  const sub=document.getElementById('balance-page-sub');
+  if(tab==='luis'){newBtn.style.display='inline-flex';newBtn.textContent='+ Nuevo balance';newBtn.onclick=openBalanceModal;sub.textContent='Ingresos, egresos, ISR e IVA — Luis Antonio Clemente Vaquier (Florida)';renderBalanceList();}
+  else if(tab==='kat'){newBtn.style.display='inline-flex';newBtn.textContent='+ Nuevo balance';newBtn.onclick=openBalanceKatModal;sub.textContent='Ingresos, egresos, ISR e IVA — Ana Kateryn Clemente Vaquier (Puebla + Hotel)';renderBalanceKatList();}
+  else if(tab==='nomina'){newBtn.style.display='none';sub.textContent='Registra cada semana pagada — el balance la jala sola y la marca como usada';renderNominaLedgerList();}
+  else if(tab==='ado'){newBtn.style.display='none';sub.textContent='Registra cada vale de ADO (pagado o de crédito) — el balance de Kateryn los jala solo';renderAdoLedgerList();}
+}
+
+// ─── BITÁCORA DE NÓMINA (continua) ──────────────────────────────
+function switchNominaEnt(ent){
+  nomActiveEnt=ent;
+  document.querySelectorAll('#nom-subtabs .ledger-subtab').forEach(t=>t.classList.remove('active'));
+  const idx={FLO:0,PUE:1,HOT:2}[ent];
+  document.querySelectorAll('#nom-subtabs .ledger-subtab')[idx].classList.add('active');
+  renderNominaLedgerList();
+}
+async function addNominaLedgerEntry(){
+  const fecha=document.getElementById('nom-add-fecha').value;
+  const monto=Number(document.getElementById('nom-add-monto').value)||0;
+  if(!fecha||!monto){toast('Falta fecha o monto',true);return;}
+  const{error}=await sb.from('nomina_ledger').insert({entidad:nomActiveEnt,fecha,monto,creado_por:currentUser.id});
+  if(error){toast('Error: '+error.message,true);return;}
+  document.getElementById('nom-add-fecha').value='';
+  document.getElementById('nom-add-monto').value='';
+  toast('Semana agregada ✓');
+  await loadNominaLedger();renderNominaLedgerList();
+}
+async function deleteNominaLedgerEntry(id){
+  if(!confirm('¿Eliminar esta semana de la bitácora?'))return;
+  await sb.from('nomina_ledger').delete().eq('id',id);
+  toast('Eliminada');await loadNominaLedger();renderNominaLedgerList();
+}
+function nominaLedgerPendientes(ent){
+  return nominaLedgerData.filter(n=>n.entidad===ent&&!n.usado_en_balance);
+}
+function renderNominaLedgerList(){
+  const el=document.getElementById('nomina-ledger-list');
+  if(!el)return;
+  const items=nominaLedgerData.filter(n=>n.entidad===nomActiveEnt).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  if(!items.length){el.innerHTML='<div class="empty"><div class="empty-ico">📋</div>Sin semanas registradas para '+ENT_LABELS[nomActiveEnt]+'</div>';return;}
+  el.innerHTML=items.map(n=>`<div class="ledger-row ${n.usado_en_balance?'used':''}">
+    <div>
+      <span class="ledger-row-monto">${fmxn(n.monto)}</span>
+      <div class="ledger-row-info">${fmtFechaCorta(n.fecha)}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="ledger-badge ${n.usado_en_balance?'used':'pend'}">${n.usado_en_balance?'Ya usada':'Pendiente'}</span>
+      ${!n.usado_en_balance?`<button class="btn-icon" onclick="deleteNominaLedgerEntry('${n.id}')" title="Eliminar">🗑️</button>`:''}
+    </div>
+  </div>`).join('');
+}
+
+// ─── BITÁCORA DE ADO (continua) ─────────────────────────────────
+function switchAdoTipo(tipo){
+  adoActiveTipo=tipo;
+  document.querySelectorAll('#ado-subtabs .ledger-subtab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('#ado-subtabs .ledger-subtab')[tipo==='pagada'?0:1].classList.add('active');
+  renderAdoLedgerList();
+}
+async function addAdoLedgerEntry(){
+  const linea=document.getElementById('ado-add-linea').value.trim();
+  const cantidad=Number(document.getElementById('ado-add-cantidad').value)||0;
+  const factura=document.getElementById('ado-add-factura').value.trim();
+  const fecha=document.getElementById('ado-add-fecha').value;
+  if(!fecha||!cantidad){toast('Falta fecha o cantidad',true);return;}
+  const{error}=await sb.from('ado_ledger').insert({tipo:adoActiveTipo,linea:linea||null,cantidad,factura:factura||null,fecha,creado_por:currentUser.id});
+  if(error){toast('Error: '+error.message,true);return;}
+  document.getElementById('ado-add-linea').value='';
+  document.getElementById('ado-add-cantidad').value='';
+  document.getElementById('ado-add-factura').value='';
+  document.getElementById('ado-add-fecha').value='';
+  toast('Vale agregado ✓');
+  await loadAdoLedger();renderAdoLedgerList();
+}
+async function deleteAdoLedgerEntry(id){
+  if(!confirm('¿Eliminar este vale de la bitácora?'))return;
+  await sb.from('ado_ledger').delete().eq('id',id);
+  toast('Eliminado');await loadAdoLedger();renderAdoLedgerList();
+}
+function adoLedgerPendientes(tipo){
+  return adoLedgerData.filter(a=>a.tipo===tipo&&!a.usado_en_balance);
+}
+function renderAdoLedgerList(){
+  const el=document.getElementById('ado-ledger-list');
+  if(!el)return;
+  const items=adoLedgerData.filter(a=>a.tipo===adoActiveTipo).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  if(!items.length){el.innerHTML='<div class="empty"><div class="empty-ico">🚌</div>Sin vales registrados</div>';return;}
+  el.innerHTML=items.map(a=>`<div class="ledger-row ${a.usado_en_balance?'used':''}">
+    <div>
+      <span class="ledger-row-monto">${fmxn(a.cantidad)}</span>
+      <div class="ledger-row-info">${a.linea||'Sin línea'}${a.factura?' · Factura '+a.factura:''} · ${fmtFechaCorta(a.fecha)}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="ledger-badge ${a.usado_en_balance?'used':'pend'}">${a.usado_en_balance?'Ya usado':'Pendiente'}</span>
+      ${!a.usado_en_balance?`<button class="btn-icon" onclick="deleteAdoLedgerEntry('${a.id}')" title="Eliminar">🗑️</button>`:''}
+    </div>
+  </div>`).join('');
+}
+
+// ─── SELECCIÓN DE NÓMINA/ADO PENDIENTES DENTRO DEL BALANCE ──────
+let balNomSel={FLO:new Set(),PUE:new Set(),HOT:new Set()};
+let balAdoSel={pagada:new Set(),credito:new Set()};
+
+function renderNominaPendientesFor(ent,containerId){
+  const el=document.getElementById(containerId);
+  if(!el)return;
+  const pend=nominaLedgerPendientes(ent);
+  if(!pend.length){el.innerHTML='<div class="empty" style="padding:20px 10px"><div class="empty-ico">📋</div>Sin semanas pendientes en la bitácora de '+ENT_LABELS[ent]+'. Agrégala arriba.</div>';return;}
+  el.innerHTML=pend.map(n=>{
+    const checked=balNomSel[ent].has(n.id);
+    return`<label class="ledger-row" style="cursor:pointer">
+      <span style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" ${checked?'checked':''} onchange="toggleNomSel('${ent}','${n.id}',this.checked)"/>
+        <span class="ledger-row-monto">${fmxn(n.monto)}</span>
+        <span class="ledger-row-info">${fmtFechaCorta(n.fecha)}</span>
+      </span>
+    </label>`;
+  }).join('');
+}
+function toggleNomSel(ent,id,checked){
+  if(checked)balNomSel[ent].add(id);else balNomSel[ent].delete(id);
+  if(ent==='FLO')updateBalancePreview();else updateBalanceKatPreview();
+}
+async function quickAddNominaFromBalance(ent,containerId){
+  const fecha=document.getElementById('nom-quick-fecha-'+ent).value;
+  const monto=Number(document.getElementById('nom-quick-monto-'+ent).value)||0;
+  if(!fecha||!monto){toast('Falta fecha o monto',true);return;}
+  const{data,error}=await sb.from('nomina_ledger').insert({entidad:ent,fecha,monto,creado_por:currentUser.id}).select().single();
+  if(error){toast('Error: '+error.message,true);return;}
+  document.getElementById('nom-quick-fecha-'+ent).value='';
+  document.getElementById('nom-quick-monto-'+ent).value='';
+  await loadNominaLedger();
+  balNomSel[ent].add(data.id);
+  renderNominaPendientesFor(ent,containerId);
+  if(ent==='FLO')updateBalancePreview();else updateBalanceKatPreview();
+}
+
+function renderAdoPendientesFor(tipo,containerId){
+  const el=document.getElementById(containerId);
+  if(!el)return;
+  const pend=adoLedgerPendientes(tipo);
+  if(!pend.length){el.innerHTML='<div class="empty" style="padding:20px 10px"><div class="empty-ico">🚌</div>Sin vales pendientes de '+(tipo==='pagada'?'pagadas':'crédito')+'. Agrega uno arriba.</div>';return;}
+  el.innerHTML=pend.map(a=>{
+    const checked=balAdoSel[tipo].has(a.id);
+    return`<label class="ledger-row" style="cursor:pointer">
+      <span style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" ${checked?'checked':''} onchange="toggleAdoSel('${tipo}','${a.id}',this.checked)"/>
+        <span class="ledger-row-monto">${fmxn(a.cantidad)}</span>
+        <span class="ledger-row-info">${a.linea||'Sin línea'}${a.factura?' · '+a.factura:''} · ${fmtFechaCorta(a.fecha)}</span>
+      </span>
+    </label>`;
+  }).join('');
+}
+function toggleAdoSel(tipo,id,checked){
+  if(checked)balAdoSel[tipo].add(id);else balAdoSel[tipo].delete(id);
+  updateBalanceKatPreview();
+}
+async function quickAddAdoFromBalance(tipo,containerId){
+  const linea=document.getElementById('ado-quick-linea-'+tipo).value.trim();
+  const cantidad=Number(document.getElementById('ado-quick-cantidad-'+tipo).value)||0;
+  const factura=document.getElementById('ado-quick-factura-'+tipo).value.trim();
+  const fecha=document.getElementById('ado-quick-fecha-'+tipo).value;
+  if(!fecha||!cantidad){toast('Falta fecha o cantidad',true);return;}
+  const{data,error}=await sb.from('ado_ledger').insert({tipo,linea:linea||null,cantidad,factura:factura||null,fecha,creado_por:currentUser.id}).select().single();
+  if(error){toast('Error: '+error.message,true);return;}
+  document.getElementById('ado-quick-linea-'+tipo).value='';
+  document.getElementById('ado-quick-cantidad-'+tipo).value='';
+  document.getElementById('ado-quick-factura-'+tipo).value='';
+  document.getElementById('ado-quick-fecha-'+tipo).value='';
+  await loadAdoLedger();
+  balAdoSel[tipo].add(data.id);
+  renderAdoPendientesFor(tipo,containerId);
+  updateBalanceKatPreview();
+}
+
 function todayLocalISO(){
   // Evita el bug de toISOString() (usa UTC): en Mexico, por las tardes/noches
   // eso puede mostrar el dia siguiente. Aqui se arma con la fecha LOCAL.
@@ -3576,8 +3963,9 @@ function clearBalanceDraft(){
   try{localStorage.removeItem('ep_balance_draft');}catch(e){}
 }
 
-function openBalanceModal(){
+async function openBalanceModal(){
   editingBalanceId=null;
+  await loadNominaLedger();
   document.getElementById('balance-modal-title').textContent='Nuevo balance mensual — Florida';
   let draft=null;
   try{const raw=localStorage.getItem('ep_balance_draft');if(raw)draft=JSON.parse(raw);}catch(e){draft=null;}
@@ -3599,19 +3987,16 @@ function openBalanceModal(){
   document.getElementById('bf-iva-retenido').value=useDraft&&draft.iva_retenido_nextel!=null?draft.iva_retenido_nextel:BAL_RETENIDO_DEFAULT.toFixed(2);
   document.getElementById('bf-gastos-proy').value=useDraft?(draft.gastos_proyectados||''):'';
   document.getElementById('bf-gastos-proy-nota').value=useDraft?(draft.gastos_proyectados_nota||''):'';
-  document.getElementById('bf-nomina-semanas').innerHTML='';
-  if(useDraft&&draft.nomina_semanas&&draft.nomina_semanas.length){
-    draft.nomina_semanas.forEach(s=>addNominaSemana(s.fecha,s.monto));
-  }else{
-    for(let i=0;i<4;i++)addNominaSemana();
-  }
+  balNomSel.FLO=new Set(nominaLedgerPendientes('FLO').map(n=>n.id));
+  renderNominaPendientesFor('FLO','bf-nomina-pendientes');
   goToBalStep(1);
   updateBalancePreview();
   openModal('m-balance');
 }
 
-function editBalance(id){
+async function editBalance(id){
   const b=balancesData.find(x=>x.id===id);if(!b)return;
+  await loadNominaLedger();
   editingBalanceId=id;
   document.getElementById('balance-modal-title').textContent='Editar balance — '+fmtFechaCorta(b.fecha_corte);
 
@@ -3629,12 +4014,9 @@ function editBalance(id){
   document.getElementById('bf-iva-retenido').value=b.iva_retenido_nextel!=null?b.iva_retenido_nextel:BAL_RETENIDO_DEFAULT.toFixed(2);
   document.getElementById('bf-gastos-proy').value=b.gastos_proyectados||'';
   document.getElementById('bf-gastos-proy-nota').value=b.gastos_proyectados_nota||'';
-  document.getElementById('bf-nomina-semanas').innerHTML='';
-  if(b.nomina_semanas&&b.nomina_semanas.length){
-    b.nomina_semanas.forEach(s=>addNominaSemana(s.fecha,s.monto));
-  }else{
-    for(let i=0;i<4;i++)addNominaSemana();
-  }
+  const usadasPorEsteBalance=nominaLedgerData.filter(n=>n.balance_luis_id===b.id).map(n=>n.id);
+  balNomSel.FLO=new Set([...usadasPorEsteBalance,...nominaLedgerPendientes('FLO').map(n=>n.id)]);
+  renderNominaPendientesFor('FLO','bf-nomina-pendientes');
   goToBalStep(1);
   updateBalancePreview();
   openModal('m-balance');
@@ -3644,10 +4026,8 @@ function getBalanceFormValues(){
   const tarjeta=Number(document.getElementById('bf-fac-tarjeta').value)||0;
   const transferencia=Number(document.getElementById('bf-fac-transf').value)||0;
   const efectivo=Number(document.getElementById('bf-fac-efectivo').value)||0;
-  const semanas=[...document.querySelectorAll('#bf-nomina-semanas [data-week-row]')].map(row=>({
-    fecha:row.querySelector('.nomina-fecha').value||null,
-    monto:Number(row.querySelector('.nomina-monto').value)||0
-  }));
+  const nomEntries=nominaLedgerData.filter(n=>balNomSel.FLO.has(n.id));
+  const semanas=nomEntries.map(n=>({fecha:n.fecha,monto:Number(n.monto),ledger_id:n.id}));
   const nominaTotal=semanas.reduce((s,w)=>s+w.monto,0);
   return{
     fecha_corte:document.getElementById('bf-fecha').value,
@@ -3736,27 +4116,34 @@ async function saveBalance(){
   if(!v.ingresos_florida_total){toast('Falta capturar los ingresos de Florida (Tarjeta/Transf./Efectivo)',true);goToBalStep(2);return;}
   if(!v.egresos_gastos_total){toast('Falta capturar el total de Gastos',true);goToBalStep(3);return;}
   const btn=document.getElementById('bal-next-btn');btn.disabled=true;btn.textContent=editingBalanceId?'Guardando cambios...':'Guardando...';
-  let error;
+  const previouslyUsedIds=editingBalanceId?nominaLedgerData.filter(n=>n.balance_luis_id===editingBalanceId).map(n=>n.id):[];
+  let error,savedId=editingBalanceId;
   if(editingBalanceId){
     ({error}=await sb.from('balances_mensuales').update(v).eq('id',editingBalanceId));
   }else{
-    ({error}=await sb.from('balances_mensuales').insert({...v,creado_por:currentUser.id}));
+    const res=await sb.from('balances_mensuales').insert({...v,creado_por:currentUser.id}).select().single();
+    error=res.error;savedId=res.data?res.data.id:null;
   }
   btn.disabled=false;btn.textContent=editingBalanceId?'Guardar cambios':'Guardar balance';
   if(error){toast('Error al guardar: '+error.message,true);return;}
+  const selectedIds=[...balNomSel.FLO];
+  const toRelease=previouslyUsedIds.filter(id=>!selectedIds.includes(id));
+  if(toRelease.length)await sb.from('nomina_ledger').update({usado_en_balance:false,balance_luis_id:null}).in('id',toRelease);
+  if(selectedIds.length)await sb.from('nomina_ledger').update({usado_en_balance:true,balance_luis_id:savedId}).in('id',selectedIds);
   clearBalanceDraft();
   const wasEditing=!!editingBalanceId;
   editingBalanceId=null;
   closeModal('m-balance');
   toast(wasEditing?'Balance actualizado ✓':'Balance guardado ✓');
-  await loadBalances();renderBalanceList();
+  await loadBalances();await loadNominaLedger();renderBalanceList();
 }
 
 async function deleteBalance(id){
-  if(!confirm('¿Eliminar este balance? Esta acción no se puede deshacer.'))return;
+  if(!confirm('¿Eliminar este balance? Esta acción no se puede deshacer. Las semanas de nómina que usaba regresarán a "pendientes" en la bitácora.'))return;
+  await sb.from('nomina_ledger').update({usado_en_balance:false,balance_luis_id:null}).eq('balance_luis_id',id);
   await sb.from('balances_mensuales').delete().eq('id',id);
   toast('Balance eliminado');
-  await loadBalances();renderBalanceList();
+  await loadBalances();await loadNominaLedger();renderBalanceList();
 }
 
 function fmtFechaCorta(dateStr){
@@ -3856,6 +4243,363 @@ function viewBalance(id){
         <tr><td>INGRESOS</td><td class="num">${fmxn(c.ingTotalIva)}</td></tr>
         <tr><td>EGRESOS</td><td class="num">${fmxn(c.egrTotalIva)}</td></tr>
         <tr><td>IVA RETENIDO NEXTEL</td><td class="num" style="color:#b00">${fmxnSigned(b.iva_retenido_nextel)}</td></tr>
+        <tr class="green-row"><td>TOTAL</td><td class="num">${fmxnSigned(c.ivaAPagar)}</td></tr>
+      </table>
+    </div>
+  </div>
+  </body></html>`;
+  const w=window.open('','_blank');w.document.write(html);w.document.close();
+}
+
+// ─── BALANCE MENSUAL — KATERYN (Puebla + Hotel) ─────────────────
+const BAL_KAT_STEPS=[
+  {n:1,ico:'📅',label:'Fecha'},
+  {n:2,ico:'💰',label:'Ingresos'},
+  {n:3,ico:'🚌',label:'ADO'},
+  {n:4,ico:'🧾',label:'Egresos'},
+  {n:5,ico:'✅',label:'Resumen'},
+];
+let balKatCurrentStep=1;
+
+function balKatStepComplete(n,v){
+  if(n===1)return!!v.fecha_corte;
+  if(n===2)return v.ingresos_puebla_total>0||v.ingresos_hotel_total>0;
+  if(n===3)return true; // ADO es opcional
+  if(n===4)return v.egresos_gastos_total>0&&v.egresos_camioneta_total>0&&v.egresos_imss_puebla_total>0&&v.egresos_imss_hotel_total>0;
+  return false;
+}
+function renderBalKatSteps(){
+  const el=document.getElementById('bal-kat-steps');
+  if(!el)return;
+  const v=getBalanceKatFormValues();
+  el.innerHTML=BAL_KAT_STEPS.map(s=>{
+    const complete=balKatStepComplete(s.n,v);
+    const cls=s.n===balKatCurrentStep?'active':(complete?'done':'');
+    return`<div class="bal-step-pill ${cls}" onclick="goToBalKatStep(${s.n})">
+      <span class="bal-step-num">${complete&&s.n!==balKatCurrentStep?'✓':s.ico}</span>
+      <span class="bal-step-label">${s.label}</span>
+    </div>`;
+  }).join('');
+}
+function goToBalKatStep(n){
+  balKatCurrentStep=n;
+  document.querySelectorAll('#m-balance-kat .bal-panel').forEach(p=>p.classList.toggle('active',Number(p.getAttribute('data-step'))===n));
+  renderBalKatSteps();
+  document.getElementById('bal-kat-prev-btn').style.visibility=n===1?'hidden':'visible';
+  const nextBtn=document.getElementById('bal-kat-next-btn');
+  nextBtn.textContent=n===5?(editingBalanceKatId?'Guardar cambios':'Guardar balance'):'Siguiente →';
+  if(n===5)updateBalanceKatPreview();
+}
+function balKatNextStep(){
+  if(balKatCurrentStep<5){goToBalKatStep(balKatCurrentStep+1);}
+  else{saveBalanceKat();}
+}
+function balKatPrevStep(){
+  if(balKatCurrentStep>1)goToBalKatStep(balKatCurrentStep-1);
+}
+
+function saveBalanceKatDraft(){
+  if(editingBalanceKatId)return;
+  try{localStorage.setItem('ep_balance_kat_draft',JSON.stringify(getBalanceKatFormValues()));}catch(e){}
+}
+function clearBalanceKatDraft(){
+  try{localStorage.removeItem('ep_balance_kat_draft');}catch(e){}
+}
+
+async function openBalanceKatModal(){
+  editingBalanceKatId=null;
+  document.getElementById('balance-kat-modal-title').textContent='Nuevo balance mensual — Kateryn';
+  await Promise.all([loadNominaLedger(),loadAdoLedger()]);
+  let draft=null;
+  try{const raw=localStorage.getItem('ep_balance_kat_draft');if(raw)draft=JSON.parse(raw);}catch(e){draft=null;}
+  const hasDraftData=draft&&(draft.facturacion_puebla_tarjeta||draft.facturacion_puebla_transferencia||draft.facturacion_puebla_efectivo||draft.facturacion_hotel_tarjeta||draft.facturacion_hotel_transferencia||draft.facturacion_hotel_efectivo||draft.egresos_gastos_total);
+  const useDraft=hasDraftData&&confirm('Se encontró un balance de Kateryn sin guardar (fecha: '+(draft.fecha_corte||'sin fecha')+'). ¿Recuperar esos datos?');
+  if(!useDraft)clearBalanceKatDraft();
+
+  document.getElementById('bk-fecha').value=useDraft?(draft.fecha_corte||todayLocalISO()):todayLocalISO();
+  document.getElementById('bk-pue-tarjeta').value=useDraft?(draft.facturacion_puebla_tarjeta||''):'';
+  document.getElementById('bk-pue-transf').value=useDraft?(draft.facturacion_puebla_transferencia||''):'';
+  document.getElementById('bk-pue-efectivo').value=useDraft?(draft.facturacion_puebla_efectivo||''):'';
+  document.getElementById('bk-hot-tarjeta').value=useDraft?(draft.facturacion_hotel_tarjeta||''):'';
+  document.getElementById('bk-hot-transf').value=useDraft?(draft.facturacion_hotel_transferencia||''):'';
+  document.getElementById('bk-hot-efectivo').value=useDraft?(draft.facturacion_hotel_efectivo||''):'';
+  document.getElementById('bk-egr-gastos').value=useDraft?(draft.egresos_gastos_total||''):'';
+  document.getElementById('bk-egr-camioneta').value=useDraft&&draft.egresos_camioneta_total?draft.egresos_camioneta_total:BAL_NISSAN_DEFAULT.toFixed(2);
+  document.getElementById('bk-egr-imss-pue').value=useDraft?(draft.egresos_imss_puebla_total||''):'';
+  document.getElementById('bk-egr-imss-hot').value=useDraft?(draft.egresos_imss_hotel_total||''):'';
+
+  balAdoSel.pagada=new Set(adoLedgerPendientes('pagada').map(a=>a.id));
+  balAdoSel.credito=new Set(adoLedgerPendientes('credito').map(a=>a.id));
+  balNomSel.PUE=new Set(nominaLedgerPendientes('PUE').map(n=>n.id));
+  balNomSel.HOT=new Set(nominaLedgerPendientes('HOT').map(n=>n.id));
+  renderAdoPendientesFor('pagada','bk-ado-pagadas-pendientes');
+  renderAdoPendientesFor('credito','bk-ado-credito-pendientes');
+  renderNominaPendientesFor('PUE','bk-nomina-pue-pendientes');
+  renderNominaPendientesFor('HOT','bk-nomina-hot-pendientes');
+
+  goToBalKatStep(1);
+  updateBalanceKatPreview();
+  openModal('m-balance-kat');
+}
+
+async function editBalanceKat(id){
+  const b=balancesKatData.find(x=>x.id===id);if(!b)return;
+  editingBalanceKatId=id;
+  document.getElementById('balance-kat-modal-title').textContent='Editar balance Kateryn — '+fmtFechaCorta(b.fecha_corte);
+  await Promise.all([loadNominaLedger(),loadAdoLedger()]);
+
+  document.getElementById('bk-fecha').value=b.fecha_corte||todayLocalISO();
+  document.getElementById('bk-pue-tarjeta').value=b.facturacion_puebla_tarjeta||'';
+  document.getElementById('bk-pue-transf').value=b.facturacion_puebla_transferencia||'';
+  document.getElementById('bk-pue-efectivo').value=b.facturacion_puebla_efectivo||'';
+  document.getElementById('bk-hot-tarjeta').value=b.facturacion_hotel_tarjeta||'';
+  document.getElementById('bk-hot-transf').value=b.facturacion_hotel_transferencia||'';
+  document.getElementById('bk-hot-efectivo').value=b.facturacion_hotel_efectivo||'';
+  document.getElementById('bk-egr-gastos').value=b.egresos_gastos_total||'';
+  document.getElementById('bk-egr-camioneta').value=b.egresos_camioneta_total!=null?b.egresos_camioneta_total:BAL_NISSAN_DEFAULT.toFixed(2);
+  document.getElementById('bk-egr-imss-pue').value=b.egresos_imss_puebla_total||'';
+  document.getElementById('bk-egr-imss-hot').value=b.egresos_imss_hotel_total||'';
+
+  balAdoSel.pagada=new Set([...adoLedgerData.filter(a=>a.balance_kateryn_id===b.id&&a.tipo==='pagada').map(a=>a.id),...adoLedgerPendientes('pagada').map(a=>a.id)]);
+  balAdoSel.credito=new Set([...adoLedgerData.filter(a=>a.balance_kateryn_id===b.id&&a.tipo==='credito').map(a=>a.id),...adoLedgerPendientes('credito').map(a=>a.id)]);
+  balNomSel.PUE=new Set([...nominaLedgerData.filter(n=>n.balance_kateryn_id===b.id&&n.entidad==='PUE').map(n=>n.id),...nominaLedgerPendientes('PUE').map(n=>n.id)]);
+  balNomSel.HOT=new Set([...nominaLedgerData.filter(n=>n.balance_kateryn_id===b.id&&n.entidad==='HOT').map(n=>n.id),...nominaLedgerPendientes('HOT').map(n=>n.id)]);
+  renderAdoPendientesFor('pagada','bk-ado-pagadas-pendientes');
+  renderAdoPendientesFor('credito','bk-ado-credito-pendientes');
+  renderNominaPendientesFor('PUE','bk-nomina-pue-pendientes');
+  renderNominaPendientesFor('HOT','bk-nomina-hot-pendientes');
+
+  goToBalKatStep(1);
+  updateBalanceKatPreview();
+  openModal('m-balance-kat');
+}
+
+function getBalanceKatFormValues(){
+  const puebla={tarjeta:Number(document.getElementById('bk-pue-tarjeta').value)||0,transf:Number(document.getElementById('bk-pue-transf').value)||0,efectivo:Number(document.getElementById('bk-pue-efectivo').value)||0};
+  const hotel={tarjeta:Number(document.getElementById('bk-hot-tarjeta').value)||0,transf:Number(document.getElementById('bk-hot-transf').value)||0,efectivo:Number(document.getElementById('bk-hot-efectivo').value)||0};
+  const adoPagadasEntries=adoLedgerData.filter(a=>balAdoSel.pagada.has(a.id));
+  const adoCreditoEntries=adoLedgerData.filter(a=>balAdoSel.credito.has(a.id));
+  const nomPueEntries=nominaLedgerData.filter(n=>balNomSel.PUE.has(n.id));
+  const nomHotEntries=nominaLedgerData.filter(n=>balNomSel.HOT.has(n.id));
+  return{
+    fecha_corte:document.getElementById('bk-fecha').value,
+    facturacion_puebla_tarjeta:puebla.tarjeta,
+    facturacion_puebla_transferencia:puebla.transf,
+    facturacion_puebla_efectivo:puebla.efectivo,
+    ingresos_puebla_total:puebla.tarjeta+puebla.transf+puebla.efectivo,
+    facturacion_hotel_tarjeta:hotel.tarjeta,
+    facturacion_hotel_transferencia:hotel.transf,
+    facturacion_hotel_efectivo:hotel.efectivo,
+    ingresos_hotel_total:hotel.tarjeta+hotel.transf+hotel.efectivo,
+    ado_pagadas_total:adoPagadasEntries.reduce((s,a)=>s+Number(a.cantidad),0),
+    ado_credito_total:adoCreditoEntries.reduce((s,a)=>s+Number(a.cantidad),0),
+    egresos_gastos_total:Number(document.getElementById('bk-egr-gastos').value)||0,
+    egresos_camioneta_total:Number(document.getElementById('bk-egr-camioneta').value)||0,
+    egresos_imss_puebla_total:Number(document.getElementById('bk-egr-imss-pue').value)||0,
+    egresos_nomina_puebla_total:nomPueEntries.reduce((s,n)=>s+Number(n.monto),0),
+    egresos_imss_hotel_total:Number(document.getElementById('bk-egr-imss-hot').value)||0,
+    egresos_nomina_hotel_total:nomHotEntries.reduce((s,n)=>s+Number(n.monto),0),
+  };
+}
+
+function calcBalanceKat(v){
+  const ivaPuebla=calcIva16(v.ingresos_puebla_total);
+  const ivaHotel=calcIva16(v.ingresos_hotel_total);
+  const ivaAdoPagadas=calcIva16(v.ado_pagadas_total);
+  const ivaAdoCredito=calcIva16(v.ado_credito_total);
+  const ingTotalIva=ivaPuebla+ivaHotel+ivaAdoPagadas+ivaAdoCredito;
+  const ingTotalTotal=Number(v.ingresos_puebla_total||0)+Number(v.ingresos_hotel_total||0)+Number(v.ado_pagadas_total||0)+Number(v.ado_credito_total||0);
+  const egrGastosIva=calcIva16(v.egresos_gastos_total);
+  const egrTotalIva=egrGastosIva;
+  const egrTotalTotal=Number(v.egresos_gastos_total||0)+Number(v.egresos_camioneta_total||0)+Number(v.egresos_imss_puebla_total||0)+Number(v.egresos_nomina_puebla_total||0)+Number(v.egresos_imss_hotel_total||0)+Number(v.egresos_nomina_hotel_total||0);
+  const ivaAPagar=ingTotalIva-egrTotalIva;
+  const isrTotal=ingTotalTotal-egrTotalTotal;
+  const ingresosSinIva=ingTotalTotal-ingTotalIva;
+  const egresosSinIva=egrTotalTotal-egrTotalIva;
+  const isrBaseSinIva=ingresosSinIva-egresosSinIva;
+  return{ivaPuebla,ivaHotel,ivaAdoPagadas,ivaAdoCredito,ingTotalIva,ingTotalTotal,egrGastosIva,egrTotalIva,egrTotalTotal,ivaAPagar,isrTotal,ingresosSinIva,egresosSinIva,isrBaseSinIva};
+}
+
+function updateBalanceKatPreview(){
+  const v=getBalanceKatFormValues();
+  const c=calcBalanceKat(v);
+  document.getElementById('bk-ing-puebla').value=v.ingresos_puebla_total;
+  document.getElementById('bk-ing-hotel').value=v.ingresos_hotel_total;
+  document.getElementById('bk-egr-gastos-iva').value=c.egrGastosIva;
+  document.getElementById('bk-ado-pagadas').value=v.ado_pagadas_total;
+  document.getElementById('bk-ado-credito').value=v.ado_credito_total;
+  document.getElementById('bk-egr-nomina-pue').value=v.egresos_nomina_puebla_total;
+  document.getElementById('bk-egr-nomina-hot').value=v.egresos_nomina_hotel_total;
+
+  const lp=document.getElementById('bal-live-puebla');
+  if(lp)lp.innerHTML=`<div class="bal-live-row"><span>Total facturado Puebla</span><strong>${fmxn(v.ingresos_puebla_total)}</strong></div><div class="bal-live-row"><span>IVA</span><strong>${fmxn(c.ivaPuebla)}</strong></div>`;
+  const lh=document.getElementById('bal-live-hotel');
+  if(lh)lh.innerHTML=`<div class="bal-live-row"><span>Total facturado Hotel</span><strong>${fmxn(v.ingresos_hotel_total)}</strong></div><div class="bal-live-row"><span>IVA</span><strong>${fmxn(c.ivaHotel)}</strong></div>`;
+  const lap=document.getElementById('bal-live-ado-pagadas');
+  if(lap)lap.innerHTML=`<div class="bal-live-row"><span>Total ADO pagadas</span><strong>${fmxn(v.ado_pagadas_total)}</strong></div><div class="bal-live-row"><span>IVA</span><strong>${fmxn(c.ivaAdoPagadas)}</strong></div>`;
+  const lac=document.getElementById('bal-live-ado-credito');
+  if(lac)lac.innerHTML=`<div class="bal-live-row"><span>Total ADO de crédito</span><strong>${fmxn(v.ado_credito_total)}</strong></div><div class="bal-live-row"><span>IVA</span><strong>${fmxn(c.ivaAdoCredito)}</strong></div>`;
+  const lg=document.getElementById('bal-live-gastos-kat');
+  if(lg)lg.innerHTML=`<div class="bal-live-row"><span>IVA (calculado)</span><strong>${fmxn(c.egrGastosIva)}</strong></div>`;
+  const lnp=document.getElementById('bal-live-nomina-pue');
+  if(lnp)lnp.innerHTML=`<div class="bal-live-row"><span>Total nómina Puebla</span><strong>${fmxn(v.egresos_nomina_puebla_total)}</strong></div>`;
+  const lnh=document.getElementById('bal-live-nomina-hot');
+  if(lnh)lnh.innerHTML=`<div class="bal-live-row"><span>Total nómina Hotel</span><strong>${fmxn(v.egresos_nomina_hotel_total)}</strong></div>`;
+
+  const el=document.getElementById('balance-kat-preview');
+  if(el){
+    el.innerHTML=`<div class="bal-summary-box" style="background:var(--surface2);border:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>Total ingresos</span><strong>${fmxn(c.ingTotalTotal)}</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>Total egresos</span><strong>${fmxn(c.egrTotalTotal)}</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;color:var(--green)"><span>ISR (ingresos − egresos, con IVA incluido)</span><strong>${fmxnSigned(c.isrTotal)}</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;color:var(--green);padding-top:6px;border-top:1px dashed var(--border2)"><span>ISR base sin IVA</span><strong>${fmxnSigned(c.isrBaseSinIva)}</strong></div>
+      <div style="display:flex;justify-content:space-between;color:var(--copper)"><span>IVA a pagar</span><strong>${fmxnSigned(c.ivaAPagar)}</strong></div>
+    </div>`;
+  }
+  renderBalKatSteps();
+  saveBalanceKatDraft();
+}
+
+async function saveBalanceKat(){
+  const v=getBalanceKatFormValues();
+  if(!v.fecha_corte){toast('Falta la fecha de corte',true);goToBalKatStep(1);return;}
+  if(!v.ingresos_puebla_total&&!v.ingresos_hotel_total){toast('Falta capturar ingresos de Puebla u Hotel',true);goToBalKatStep(2);return;}
+  if(!v.egresos_gastos_total){toast('Falta capturar el total de Gastos',true);goToBalKatStep(4);return;}
+  const btn=document.getElementById('bal-kat-next-btn');btn.disabled=true;btn.textContent=editingBalanceKatId?'Guardando cambios...':'Guardando...';
+  const prevAdoPagadas=editingBalanceKatId?adoLedgerData.filter(a=>a.balance_kateryn_id===editingBalanceKatId&&a.tipo==='pagada').map(a=>a.id):[];
+  const prevAdoCredito=editingBalanceKatId?adoLedgerData.filter(a=>a.balance_kateryn_id===editingBalanceKatId&&a.tipo==='credito').map(a=>a.id):[];
+  const prevNomPue=editingBalanceKatId?nominaLedgerData.filter(n=>n.balance_kateryn_id===editingBalanceKatId&&n.entidad==='PUE').map(n=>n.id):[];
+  const prevNomHot=editingBalanceKatId?nominaLedgerData.filter(n=>n.balance_kateryn_id===editingBalanceKatId&&n.entidad==='HOT').map(n=>n.id):[];
+  let error,savedId=editingBalanceKatId;
+  if(editingBalanceKatId){
+    ({error}=await sb.from('balances_kateryn').update(v).eq('id',editingBalanceKatId));
+  }else{
+    const res=await sb.from('balances_kateryn').insert({...v,creado_por:currentUser.id}).select().single();
+    error=res.error;savedId=res.data?res.data.id:null;
+  }
+  btn.disabled=false;btn.textContent=editingBalanceKatId?'Guardar cambios':'Guardar balance';
+  if(error){toast('Error al guardar: '+error.message,true);return;}
+
+  const selAdoPagadas=[...balAdoSel.pagada],selAdoCredito=[...balAdoSel.credito];
+  const selNomPue=[...balNomSel.PUE],selNomHot=[...balNomSel.HOT];
+  const releaseAdo=[...prevAdoPagadas.filter(id=>!selAdoPagadas.includes(id)),...prevAdoCredito.filter(id=>!selAdoCredito.includes(id))];
+  if(releaseAdo.length)await sb.from('ado_ledger').update({usado_en_balance:false,balance_kateryn_id:null}).in('id',releaseAdo);
+  const markAdo=[...selAdoPagadas,...selAdoCredito];
+  if(markAdo.length)await sb.from('ado_ledger').update({usado_en_balance:true,balance_kateryn_id:savedId}).in('id',markAdo);
+  const releaseNom=[...prevNomPue.filter(id=>!selNomPue.includes(id)),...prevNomHot.filter(id=>!selNomHot.includes(id))];
+  if(releaseNom.length)await sb.from('nomina_ledger').update({usado_en_balance:false,balance_kateryn_id:null}).in('id',releaseNom);
+  const markNom=[...selNomPue,...selNomHot];
+  if(markNom.length)await sb.from('nomina_ledger').update({usado_en_balance:true,balance_kateryn_id:savedId}).in('id',markNom);
+
+  clearBalanceKatDraft();
+  const wasEditing=!!editingBalanceKatId;
+  editingBalanceKatId=null;
+  closeModal('m-balance-kat');
+  toast(wasEditing?'Balance actualizado ✓':'Balance guardado ✓');
+  await loadBalancesKat();await loadAdoLedger();await loadNominaLedger();renderBalanceKatList();
+}
+
+async function deleteBalanceKat(id){
+  if(!confirm('¿Eliminar este balance? Las semanas de nómina y vales de ADO que usaba regresarán a "pendientes".'))return;
+  await sb.from('nomina_ledger').update({usado_en_balance:false,balance_kateryn_id:null}).eq('balance_kateryn_id',id);
+  await sb.from('ado_ledger').update({usado_en_balance:false,balance_kateryn_id:null}).eq('balance_kateryn_id',id);
+  await sb.from('balances_kateryn').delete().eq('id',id);
+  toast('Balance eliminado');
+  await loadBalancesKat();await loadNominaLedger();await loadAdoLedger();renderBalanceKatList();
+}
+
+function renderBalanceKatList(){
+  const el=document.getElementById('balance-kat-list');
+  if(!el)return;
+  if(!balancesKatData.length){el.innerHTML='<div class="empty"><div class="empty-ico">📊</div>Sin balances registrados aún</div>';return;}
+  el.innerHTML=balancesKatData.map(b=>{
+    const c=calcBalanceKat(b);
+    return`<div class="acc-card" style="cursor:pointer" onclick="viewBalanceKat('${b.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-weight:600;font-size:14px">Corte al ${fmtFechaCorta(b.fecha_corte)}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">Ingresos ${fmxn(c.ingTotalTotal)} · Egresos ${fmxn(c.egrTotalTotal)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:18px">
+          <div style="text-align:right">
+            <div style="font-size:10px;color:var(--text2);text-transform:uppercase">ISR</div>
+            <div style="font-weight:700;color:var(--green)">${fmxnSigned(c.isrTotal)}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:10px;color:var(--text2);text-transform:uppercase">IVA a pagar</div>
+            <div style="font-weight:700;color:var(--copper)">${fmxnSigned(c.ivaAPagar)}</div>
+          </div>
+          <button class="btn-icon" onclick="event.stopPropagation();editBalanceKat('${b.id}')" title="Editar / actualizar">✏️</button>
+          <button class="btn-icon" onclick="event.stopPropagation();deleteBalanceKat('${b.id}')" title="Eliminar">🗑️</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function viewBalanceKat(id){
+  const b=balancesKatData.find(x=>x.id===id);if(!b)return;
+  const c=calcBalanceKat(b);
+  const fechaLabel='AL '+fmtFechaLarga(b.fecha_corte);
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Balance Kateryn — ${fechaLabel}</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:24px;color:#1a3a5c}
+    .hdr{background:#f6c99a;padding:16px;text-align:center;margin-bottom:18px;border-radius:6px}
+    .hdr h1{font-size:20px;margin:0 0 4px}
+    .hdr h2{font-size:16px;margin:0;font-weight:600}
+    .subtitle{text-align:center;font-size:15px;font-weight:700;margin-bottom:16px}
+    .cols{display:flex;gap:24px;flex-wrap:wrap}
+    .col{flex:1;min-width:320px}
+    table{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px}
+    th{background:#e8e8e8;text-align:left;padding:6px 8px;border:1px solid #ccc}
+    td{padding:6px 8px;border:1px solid #ccc}
+    .num{text-align:right}
+    .tot-row td{background:#a9c6e8;font-weight:700}
+    .green-row td{background:#c9e6b0;font-weight:700}
+    .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a73e8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px}
+    @media print{.print-btn{display:none}}
+  </style></head><body>
+  <button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
+  <div class="hdr"><h1>ANA KATERYN CLEMENTE VAQUIER</h1><h2>${fechaLabel}</h2></div>
+  <div class="subtitle">INGRESOS Y EGRESOS</div>
+  <div class="cols">
+    <div class="col">
+      <table>
+        <tr><th>INGRESOS</th><th class="num">IVA</th><th class="num">TOTAL</th></tr>
+        <tr><td>AV. PUEBLA</td><td class="num">${fmxn(c.ivaPuebla)}</td><td class="num">${fmxn(b.ingresos_puebla_total)}</td></tr>
+        <tr><td>HOTEL</td><td class="num">${fmxn(c.ivaHotel)}</td><td class="num">${fmxn(b.ingresos_hotel_total)}</td></tr>
+        <tr><td>FACT. ADO PAGADAS</td><td class="num">${fmxn(c.ivaAdoPagadas)}</td><td class="num">${fmxn(b.ado_pagadas_total)}</td></tr>
+        <tr><td>FACT. ADO DE CRÉDITO</td><td class="num">${fmxn(c.ivaAdoCredito)}</td><td class="num">${fmxn(b.ado_credito_total)}</td></tr>
+        <tr class="tot-row"><td>TOTAL</td><td class="num">${fmxn(c.ingTotalIva)}</td><td class="num">${fmxn(c.ingTotalTotal)}</td></tr>
+      </table>
+      <table>
+        <tr><th>ISR</th><th class="num">&nbsp;</th></tr>
+        <tr><td>INGRESOS</td><td class="num">${fmxn(c.ingTotalTotal)}</td></tr>
+        <tr><td>EGRESOS</td><td class="num">${fmxn(c.egrTotalTotal)}</td></tr>
+        <tr class="green-row"><td>TOTAL</td><td class="num">${fmxnSigned(c.isrTotal)}</td></tr>
+      </table>
+      <table>
+        <tr><th>ISR — BASE SIN IVA</th><th class="num">&nbsp;</th></tr>
+        <tr><td>INGRESOS SIN IVA</td><td class="num">${fmxn(c.ingresosSinIva)}</td></tr>
+        <tr><td>EGRESOS SIN IVA</td><td class="num">${fmxn(c.egresosSinIva)}</td></tr>
+        <tr class="green-row"><td>TOTAL</td><td class="num">${fmxnSigned(c.isrBaseSinIva)}</td></tr>
+      </table>
+    </div>
+    <div class="col">
+      <table>
+        <tr><th>EGRESOS</th><th class="num">IVA</th><th class="num">TOTAL</th></tr>
+        <tr><td>GASTOS</td><td class="num">${fmxn(c.egrGastosIva)}</td><td class="num">${fmxn(b.egresos_gastos_total)}</td></tr>
+        <tr><td>CAMTA NISSAN NP300</td><td class="num">-</td><td class="num">${fmxn(b.egresos_camioneta_total)}</td></tr>
+        <tr><td>IMSS PUEBLA</td><td class="num">&nbsp;</td><td class="num">${fmxn(b.egresos_imss_puebla_total)}</td></tr>
+        <tr><td>NÓMINA PUEBLA</td><td class="num">&nbsp;</td><td class="num">${fmxn(b.egresos_nomina_puebla_total)}</td></tr>
+        <tr><td>IMSS HOTEL</td><td class="num">&nbsp;</td><td class="num">${fmxn(b.egresos_imss_hotel_total)}</td></tr>
+        <tr><td>NÓMINA HOTEL</td><td class="num">&nbsp;</td><td class="num">${fmxn(b.egresos_nomina_hotel_total)}</td></tr>
+        <tr class="tot-row"><td>TOTAL</td><td class="num">${fmxn(c.egrTotalIva)}</td><td class="num">${fmxn(c.egrTotalTotal)}</td></tr>
+      </table>
+      <table>
+        <tr><th>IVA</th><th class="num">&nbsp;</th></tr>
+        <tr><td>INGRESOS</td><td class="num">${fmxn(c.ingTotalIva)}</td></tr>
+        <tr><td>EGRESOS</td><td class="num">${fmxn(c.egrTotalIva)}</td></tr>
         <tr class="green-row"><td>TOTAL</td><td class="num">${fmxnSigned(c.ivaAPagar)}</td></tr>
       </table>
     </div>
@@ -3973,7 +4717,10 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'cargas_gasolina'},async()=>{await loadCargas();if(document.getElementById('page-flotilla').classList.contains('active'))renderFlotilla();})
     .on('postgres_changes',{event:'*',schema:'public',table:'uniformes'},async()=>{await loadEmpleados();})
     .on('postgres_changes',{event:'*',schema:'public',table:'directorio'},async()=>{await loadDirectorio();if(document.getElementById('page-directorio').classList.contains('active'))renderDirectorio();})
-    .on('postgres_changes',{event:'*',schema:'public',table:'balances_mensuales'},async()=>{await loadBalances();if(document.getElementById('page-balance').classList.contains('active'))renderBalanceList();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'balances_mensuales'},async()=>{await loadBalances();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='luis')renderBalanceList();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'balances_kateryn'},async()=>{await loadBalancesKat();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='kat')renderBalanceKatList();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'nomina_ledger'},async()=>{await loadNominaLedger();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='nomina')renderNominaLedgerList();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'ado_ledger'},async()=>{await loadAdoLedger();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='ado')renderAdoLedgerList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'bitacora_tareas'},async()=>{await loadBitacora();if(document.getElementById('page-bitacora').classList.contains('active'))renderBitacora();})
     .on('postgres_changes',{event:'*',schema:'public',table:'bitacora_registros'},async()=>{const hoy=new Date().toISOString().slice(0,10);const{data:regs}=await sb.from('bitacora_registros').select('*').eq('fecha',hoy);bitRegistros=regs||[];if(document.getElementById('page-bitacora').classList.contains('active'))renderBitacora();})
     .subscribe((status)=>{
