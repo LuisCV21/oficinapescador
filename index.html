@@ -548,7 +548,8 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <span class="sb-item-label">Obligaciones</span>
         <span class="sb-badge" id="badge-obls" style="display:none">0</span>
       </div>
-      <div class="sb-item" onclick="showPage('bitacora')" id="si-bitacora">
+      <!-- MÓDULO PAUSADO (Luis pidió pausarlo) — quita este style para reactivar -->
+      <div class="sb-item" onclick="showPage('bitacora')" id="si-bitacora" style="display:none">
         <span class="sb-item-icon">📋</span>
         <span class="sb-item-label">Bitácora diaria</span>
       </div>
@@ -1568,7 +1569,7 @@ function showPage(id){
 function renderAll(){
   renderGoodMorning();
   renderNota();
-  renderSupervisionWidget();
+  // renderSupervisionWidget(); // PAUSADO (Luis pidió pausar el módulo de tareas) — descomenta para reactivar
   renderMissingDocs();
   renderWidgets();
   renderTimeline();
