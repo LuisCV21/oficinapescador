@@ -3494,12 +3494,24 @@ const BAL_STEPS=[
 ];
 let balCurrentStep=1;
 
+function balStepComplete(n,v){
+  if(n===1)return!!v.fecha_corte;
+  if(n===2)return v.ingresos_florida_total>0;
+  if(n===3)return v.egresos_gastos_total>0&&v.egresos_camioneta_total>0&&v.egresos_imss_total>0;
+  if(n===4)return v.egresos_nomina_total>0;
+  if(n===5)return true; // sin campos obligatorios en este paso
+  return false;
+}
+
 function renderBalSteps(){
   const el=document.getElementById('bal-steps');
+  if(!el)return;
+  const v=getBalanceFormValues();
   el.innerHTML=BAL_STEPS.map(s=>{
-    const cls=s.n===balCurrentStep?'active':(s.n<balCurrentStep?'done':'');
+    const complete=balStepComplete(s.n,v);
+    const cls=s.n===balCurrentStep?'active':(complete?'done':'');
     return`<div class="bal-step-pill ${cls}" onclick="goToBalStep(${s.n})">
-      <span class="bal-step-num">${s.n<balCurrentStep?'✓':s.ico}</span>
+      <span class="bal-step-num">${complete&&s.n!==balCurrentStep?'✓':s.ico}</span>
       <span class="bal-step-label">${s.label}</span>
     </div>`;
   }).join('');
@@ -3714,6 +3726,7 @@ function updateBalancePreview(){
       <div style="display:flex;justify-content:space-between;color:var(--copper)"><span>IVA a pagar</span><strong>${fmxnSigned(c.ivaAPagar)}</strong></div>
     </div>${proyHtml}`;
   }
+  renderBalSteps();
   saveBalanceDraft();
 }
 
