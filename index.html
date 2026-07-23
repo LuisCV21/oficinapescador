@@ -536,6 +536,23 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .missing-item{display:flex;align-items:center;justify-content:space-between;
   padding:6px 0;border-bottom:1px solid var(--border);font-size:12px}
 .missing-item:last-child{border-bottom:none}
+
+/* ── ASISTENCIA ── */
+.asist-table{width:100%;border-collapse:collapse;font-size:12px}
+.asist-table th{background:var(--surface2);color:var(--text2);text-transform:uppercase;
+  font-size:10px;letter-spacing:.04em;padding:8px 6px;border-bottom:1px solid var(--border);white-space:nowrap}
+.asist-table td{padding:4px;border-bottom:1px solid var(--border);text-align:center;vertical-align:middle}
+.asist-table td.asist-name{text-align:left;font-weight:600;color:var(--text);white-space:nowrap;padding:6px 10px}
+.asist-cell{width:38px;height:34px;border-radius:8px;border:1.5px solid var(--border2);
+  background:var(--surface2);display:flex;align-items:center;justify-content:center;
+  font-size:15px;cursor:pointer;margin:0 auto;transition:all .15s}
+.asist-cell:hover{border-color:var(--copper);transform:translateY(-1px)}
+.asist-cell.sin-registro{opacity:.35}
+.asist-total{font-weight:700;color:var(--slate)}
+.asist-estatus-opt{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--r);
+  border:1.5px solid var(--border2);cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
+.asist-estatus-opt:hover{border-color:var(--copper)}
+.asist-estatus-opt.sel{background:var(--copper-light)}
 </style>
 </head>
 <body>
@@ -603,6 +620,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       <div class="sb-item" onclick="showPage('rh')" id="si-rh">
         <span class="sb-item-icon">👥</span>
         <span class="sb-item-label">Recursos Humanos</span>
+      </div>
+      <div class="sb-item" onclick="showPage('asistencia')" id="si-asistencia">
+        <span class="sb-item-icon">🗓️</span>
+        <span class="sb-item-label">Asistencia</span>
       </div>
       <div class="sb-item" onclick="showPage('flotilla')" id="si-flotilla">
         <span class="sb-item-icon">🚗</span>
@@ -720,6 +741,29 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
           </div>
           <div style="padding:10px 14px 14px" id="rh-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
+      </div>
+
+      <!-- ASISTENCIA -->
+      <div class="page" id="page-asistencia">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">Asistencia semanal</div>
+            <div class="page-sub" id="asist-week-label"></div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn-icon" onclick="goAsistWeek(-1)" title="Semana anterior">◀</button>
+            <button class="btn btn-sm" onclick="goAsistToday()">Esta semana</button>
+            <button class="btn-icon" onclick="goAsistWeek(1)" title="Semana siguiente">▶</button>
+          </div>
+        </div>
+        <div class="tabs-bar" id="asist-tabs-bar">
+          <div class="tab active" data-ent="PUE" onclick="switchAsistEnt('PUE')">Puebla</div>
+          <div class="tab" data-ent="HOT" onclick="switchAsistEnt('HOT')">Hotel</div>
+          <div class="tab" data-ent="FLO" onclick="switchAsistEnt('FLO')">Florida</div>
+        </div>
+        <div style="overflow-x:auto;margin:14px 0" id="asist-grid-wrap"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+        <div style="font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin:22px 0 10px">Incidencias de la semana</div>
+        <div id="asist-incidencias" style="display:flex;flex-direction:column;gap:8px"></div>
       </div>
 
       <!-- ACCESOS -->
@@ -991,6 +1035,28 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
     </div>
   </div>
   <div class="modal-ftr"><button class="btn" onclick="closeModal('m-emp')">Cancelar</button><button class="btn btn-filled" id="emp-save-btn" onclick="saveEmp()">Guardar empleado</button></div>
+</div>
+</div>
+
+<!-- MODAL ASISTENCIA — DÍA -->
+<div class="modal-overlay" id="m-asist-dia">
+<div class="modal" style="max-width:440px">
+  <div class="modal-hdr"><div class="modal-title">Registrar asistencia</div><button class="btn-icon" onclick="closeModal('m-asist-dia')">✕</button></div>
+  <div class="modal-body">
+    <div id="asist-dia-ref" style="font-size:12px;color:var(--text2);margin-bottom:14px;padding:9px 12px;background:var(--surface2);border-radius:var(--r)"></div>
+    <div class="f-row"><label>Estatus</label>
+      <div id="asist-estatus-grid" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+    <div class="f-row" id="asist-destino-row" style="display:none"><label>Sucursal a la que fue</label>
+      <select class="fsel" id="asist-destino" style="width:100%"></select>
+    </div>
+    <div class="f-row"><label>Nota (opcional)</label><input type="text" id="asist-nota" placeholder="Ej: descanso por castigo, permiso, etc."/></div>
+  </div>
+  <div class="modal-ftr">
+    <button class="btn" id="asist-clear-btn" onclick="clearAsistDia()" style="display:none">🗑 Quitar registro</button>
+    <button class="btn" onclick="closeModal('m-asist-dia')">Cancelar</button>
+    <button class="btn btn-filled" onclick="saveAsistDia()">Guardar</button>
+  </div>
 </div>
 </div>
 
@@ -1520,7 +1586,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       </div>
       <div class="bal-live" id="bal-live-florida"></div>
       <input type="hidden" id="bf-ing-florida"/>
-      <input type="hidden" id="bf-ing-florida-iva"/>
+      <div class="f-row"><label>IVA Florida <span style="font-weight:400;color:var(--text3);text-transform:none">(se precarga solo, puedes ajustarlo)</span></label>
+        <input type="number" step="0.01" id="bf-ing-florida-iva" oninput="balFloridaIvaManual=true;updateBalancePreview()"/>
+        <span class="btn-text" style="font-size:11px;cursor:pointer" onclick="balFloridaIvaManual=false;updateBalancePreview()">↺ recalcular automático</span>
+      </div>
 
       <!-- PAUSADO (Luis pidió quitarlo de la vista por el momento) — quita este style para reactivar -->
       <div class="f-grid" style="display:none">
@@ -1550,7 +1619,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <input type="number" step="0.01" id="bf-egr-gastos" placeholder="0.00" oninput="updateBalancePreview()"/>
       </div>
       <div class="bal-live" id="bal-live-gastos"></div>
-      <input type="hidden" id="bf-egr-gastos-iva"/>
+      <div class="f-row"><label>IVA Gastos <span style="font-weight:400;color:var(--text3);text-transform:none">(se precarga solo, puedes ajustarlo)</span></label>
+        <input type="number" step="0.01" id="bf-egr-gastos-iva" oninput="balGastosIvaManual=true;updateBalancePreview()"/>
+        <span class="btn-text" style="font-size:11px;cursor:pointer" onclick="balGastosIvaManual=false;updateBalancePreview()">↺ recalcular automático</span>
+      </div>
       <div class="f-grid" style="margin-top:14px">
         <div class="f-row"><label>🚚 Camioneta Colorado — Total <span class="req">*</span></label>
           <input type="number" step="0.01" id="bf-egr-camioneta" placeholder="0.00" oninput="updateBalancePreview()"/>
@@ -1928,6 +2000,7 @@ function showPage(id){
   else if(id==='directorio')renderDirectorio();
   else if(id==='flotilla')renderFlotilla();
   else if(id==='balance')switchBalTab(balActiveTab);
+  else if(id==='asistencia')loadAsistencia().then(renderAsistGrid);
 }
 
 function renderAll(){
@@ -2515,6 +2588,159 @@ async function saveBaja(){
   setLoading('baja-save-btn',false);
   toast('Baja registrada correctamente');
   closeModal('m-baja');await loadEmpleados();renderEmps();
+}
+
+// ─── ASISTENCIA ──────────────────────────────────────────────
+const ASIST_ESTATUS={
+  asistio:{label:'Asistió',ico:'✅',color:'var(--green)',bg:'var(--green-light)'},
+  descanso:{label:'Descanso',ico:'💤',color:'var(--text2)',bg:'var(--surface2)'},
+  falta:{label:'Falta',ico:'❌',color:'var(--red)',bg:'var(--red-light)'},
+  vacaciones:{label:'Vacaciones',ico:'🏖️',color:'var(--slate)',bg:'var(--slate-light)'},
+  incapacidad:{label:'Incapacidad',ico:'🏥',color:'var(--amber)',bg:'var(--amber-light)'},
+  baja:{label:'Baja / Retiro',ico:'🚪',color:'var(--purple)',bg:'var(--purple-light)'},
+  cambio_sucursal:{label:'Cambió de sucursal',ico:'🔁',color:'var(--copper)',bg:'var(--copper-light)'},
+};
+let asistActiveEnt='PUE',asistWeekStart=null,asistData=[];
+let asistPickerEmpId=null,asistPickerFecha=null,asistPickerEstatusSel=null;
+
+function dateToISO(d){
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,'0');
+  const day=String(d.getDate()).padStart(2,'0');
+  return`${y}-${m}-${day}`;
+}
+function asistDefaultSunday(){
+  const d=new Date();
+  d.setDate(d.getDate()-d.getDay());
+  return dateToISO(d);
+}
+function asistWeekDays(sunday){
+  const d=new Date(sunday+'T12:00:00');
+  const arr=[];
+  for(let i=0;i<7;i++){const x=new Date(d);x.setDate(d.getDate()+i);arr.push(dateToISO(x));}
+  return arr;
+}
+
+async function loadAsistencia(){
+  if(!asistWeekStart)asistWeekStart=asistDefaultSunday();
+  const days=asistWeekDays(asistWeekStart);
+  const{data}=await sb.from('asistencia').select('*').eq('entidad',asistActiveEnt).gte('fecha',days[0]).lte('fecha',days[6]);
+  asistData=data||[];
+}
+
+function switchAsistEnt(ent){
+  asistActiveEnt=ent;
+  document.querySelectorAll('#asist-tabs-bar .tab').forEach(t=>t.classList.toggle('active',t.dataset.ent===ent));
+  loadAsistencia().then(renderAsistGrid);
+}
+function goAsistWeek(delta){
+  const d=new Date(asistWeekStart+'T12:00:00');
+  d.setDate(d.getDate()+delta*7);
+  asistWeekStart=dateToISO(d);
+  loadAsistencia().then(renderAsistGrid);
+}
+function goAsistToday(){
+  asistWeekStart=asistDefaultSunday();
+  loadAsistencia().then(renderAsistGrid);
+}
+
+function renderAsistGrid(){
+  const days=asistWeekDays(asistWeekStart);
+  const diaLabels=['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
+  const activeIds=new Set(empData.filter(e=>e.entidad===asistActiveEnt&&e.activo).map(e=>e.id));
+  const weekEmpIds=new Set(asistData.map(a=>a.empleado_id));
+  const emps=empData.filter(e=>activeIds.has(e.id)||weekEmpIds.has(e.id)).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  const byEmpFecha={};
+  asistData.forEach(a=>{byEmpFecha[a.empleado_id+'_'+a.fecha]=a;});
+
+  const thead=`<tr><th style="text-align:left">Empleado</th>${days.map((d,i)=>`<th>${diaLabels[i]}<br><span style="font-weight:400;text-transform:none;font-size:9px">${Number(d.slice(8,10))}</span></th>`).join('')}<th>Total</th></tr>`;
+
+  let rows='';
+  if(!emps.length){
+    rows=`<tr><td colspan="9" style="padding:24px;text-align:center;color:var(--text3)">Sin empleados activos en esta sucursal</td></tr>`;
+  }else{
+    rows=emps.map(e=>{
+      let total=0;
+      const cells=days.map(fecha=>{
+        const a=byEmpFecha[e.id+'_'+fecha];
+        if(a&&a.estatus==='asistio')total++;
+        const est=a?ASIST_ESTATUS[a.estatus]:null;
+        const style=est?`border-color:${est.color};background:${est.bg}`:'';
+        const title=est?est.label+(a.notas?': '+a.notas:''):'Sin registrar';
+        return`<td><div class="asist-cell ${!est?'sin-registro':''}" style="${style}" title="${title}" onclick="openAsistPicker('${e.id}','${fecha}')">${est?est.ico:'—'}</div></td>`;
+      }).join('');
+      return`<tr><td class="asist-name">${e.nombre}<div style="font-size:10px;font-weight:400;color:var(--text3)">${e.puesto||''}</div></td>${cells}<td class="asist-total">${total}</td></tr>`;
+    }).join('');
+  }
+
+  document.getElementById('asist-grid-wrap').innerHTML=`<table class="asist-table"><thead>${thead}</thead><tbody>${rows}</tbody></table>`;
+  document.getElementById('asist-week-label').textContent='Semana del '+fmtFechaCorta(days[0])+' al '+fmtFechaCorta(days[6]);
+  renderAsistIncidencias(emps);
+}
+
+function renderAsistIncidencias(emps){
+  const el=document.getElementById('asist-incidencias');
+  if(!el)return;
+  const empById={};emps.forEach(e=>{empById[e.id]=e;});
+  const items=asistData.filter(a=>a.estatus!=='asistio').sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  if(!items.length){el.innerHTML='<div class="empty"><div class="empty-ico">📋</div>Sin incidencias esta semana</div>';return;}
+  el.innerHTML=items.map(a=>{
+    const emp=empById[a.empleado_id];
+    const est=ASIST_ESTATUS[a.estatus];
+    const destino=a.sucursal_destino?' → '+(ENTS[a.sucursal_destino]||{label:a.sucursal_destino}).label:'';
+    return`<div class="acc-card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:600;font-size:13px">${emp?emp.nombre:'(empleado eliminado)'}</div>
+        <div style="font-size:11px;color:var(--text2)">${fmtFechaCorta(a.fecha)}${a.notas?' — '+a.notas:''}</div>
+      </div>
+      <span class="pill" style="background:${est.bg};color:${est.color}">${est.ico} ${est.label}${destino}</span>
+    </div>`;
+  }).join('');
+}
+
+function openAsistPicker(empId,fecha){
+  asistPickerEmpId=empId;asistPickerFecha=fecha;
+  const emp=empData.find(x=>x.id===empId);
+  const existing=asistData.find(a=>a.empleado_id===empId&&a.fecha===fecha);
+  asistPickerEstatusSel=existing?existing.estatus:null;
+  document.getElementById('asist-dia-ref').innerHTML=`<strong>${emp?emp.nombre:''}</strong><br>${fmtFechaLarga(fecha)}`;
+  const destSel=document.getElementById('asist-destino');
+  destSel.innerHTML=['HOT','PUE','FLO'].filter(k=>k!==asistActiveEnt).map(k=>`<option value="${k}">${ENTS[k].label}</option>`).join('');
+  if(existing&&existing.sucursal_destino)destSel.value=existing.sucursal_destino;
+  document.getElementById('asist-nota').value=existing?(existing.notas||''):'';
+  renderAsistEstatusOpts();
+  document.getElementById('asist-clear-btn').style.display=existing?'inline-flex':'none';
+  openModal('m-asist-dia');
+}
+
+function renderAsistEstatusOpts(){
+  const el=document.getElementById('asist-estatus-grid');
+  el.innerHTML=Object.entries(ASIST_ESTATUS).map(([k,v])=>
+    `<div class="asist-estatus-opt ${asistPickerEstatusSel===k?'sel':''}" style="border-color:${asistPickerEstatusSel===k?v.color:''}" onclick="pickAsistEstatus('${k}')">${v.ico} ${v.label}</div>`
+  ).join('');
+  document.getElementById('asist-destino-row').style.display=asistPickerEstatusSel==='cambio_sucursal'?'block':'none';
+}
+function pickAsistEstatus(k){asistPickerEstatusSel=k;renderAsistEstatusOpts();}
+
+async function saveAsistDia(){
+  if(!asistPickerEstatusSel){toast('Elige un estatus',true);return;}
+  const payload={
+    empleado_id:asistPickerEmpId,fecha:asistPickerFecha,entidad:asistActiveEnt,estatus:asistPickerEstatusSel,
+    sucursal_destino:asistPickerEstatusSel==='cambio_sucursal'?(document.getElementById('asist-destino').value||null):null,
+    notas:document.getElementById('asist-nota').value||null,creado_por:currentUser.id,updated_at:new Date().toISOString(),
+  };
+  const{error}=await sb.from('asistencia').upsert(payload,{onConflict:'empleado_id,fecha'});
+  if(error){toast('Error al guardar: '+error.message,true);return;}
+  closeModal('m-asist-dia');
+  await loadAsistencia();renderAsistGrid();
+  toast('Asistencia guardada ✓');
+}
+
+async function clearAsistDia(){
+  await sb.from('asistencia').delete().eq('empleado_id',asistPickerEmpId).eq('fecha',asistPickerFecha);
+  closeModal('m-asist-dia');
+  await loadAsistencia();renderAsistGrid();
+  toast('Registro eliminado');
 }
 
 // ─── ACCESOS ─────────────────────────────────────────────────
@@ -3680,6 +3906,7 @@ const BAL_NEXTEL_IVA_DEFAULT=3075.45;
 const BAL_RETENIDO_DEFAULT=-1885.55;
 const BAL_CAMIONETA_DEFAULT=22404.28;
 let editingBalanceId=null;
+let balFloridaIvaManual=false,balGastosIvaManual=false;
 let balancesKatData=[],nominaLedgerData=[],adoLedgerData=[];
 let editingBalanceKatId=null;
 let balActiveTab='luis';
@@ -3973,6 +4200,10 @@ async function openBalanceModal(){
   const useDraft=hasDraftData&&confirm('Se encontró un balance sin guardar (fecha de corte: '+(draft.fecha_corte||'sin fecha')+'). ¿Quieres recuperar esos datos?');
   if(!useDraft)clearBalanceDraft();
 
+  balFloridaIvaManual=useDraft&&draft.ingresos_florida_iva!=null;
+  balGastosIvaManual=useDraft&&draft.egresos_gastos_iva!=null;
+  document.getElementById('bf-ing-florida-iva').value=balFloridaIvaManual?draft.ingresos_florida_iva:'';
+  document.getElementById('bf-egr-gastos-iva').value=balGastosIvaManual?draft.egresos_gastos_iva:'';
   document.getElementById('bal-fecha-corte').value=useDraft?(draft.fecha_corte||todayLocalISO()):todayLocalISO();
   document.getElementById('bf-fac-tarjeta').value=useDraft?(draft.facturacion_tarjeta||''):'';
   document.getElementById('bf-fac-transf').value=useDraft?(draft.facturacion_transferencia||''):'';
@@ -4000,6 +4231,10 @@ async function editBalance(id){
   editingBalanceId=id;
   document.getElementById('balance-modal-title').textContent='Editar balance — '+fmtFechaCorta(b.fecha_corte);
 
+  balFloridaIvaManual=b.ingresos_florida_iva!=null;
+  balGastosIvaManual=b.egresos_gastos_iva!=null;
+  document.getElementById('bf-ing-florida-iva').value=balFloridaIvaManual?b.ingresos_florida_iva:'';
+  document.getElementById('bf-egr-gastos-iva').value=balGastosIvaManual?b.egresos_gastos_iva:'';
   document.getElementById('bal-fecha-corte').value=b.fecha_corte||todayLocalISO();
   document.getElementById('bf-fac-tarjeta').value=b.facturacion_tarjeta||'';
   document.getElementById('bf-fac-transf').value=b.facturacion_transferencia||'';
@@ -4039,7 +4274,9 @@ function getBalanceFormValues(){
     ingresos_florida_total:tarjeta+transferencia+efectivo,
     ingresos_nextel_total:Number(document.getElementById('bf-ing-nextel').value)||0,
     ingresos_nextel_iva:Number(document.getElementById('bf-ing-nextel-iva').value)||0,
+    ingresos_florida_iva:balFloridaIvaManual?(Number(document.getElementById('bf-ing-florida-iva').value)||0):null,
     egresos_gastos_total:Number(document.getElementById('bf-egr-gastos').value)||0,
+    egresos_gastos_iva:balGastosIvaManual?(Number(document.getElementById('bf-egr-gastos-iva').value)||0):null,
     egresos_camioneta_total:Number(document.getElementById('bf-egr-camioneta').value)||0,
     egresos_imss_total:Number(document.getElementById('bf-egr-imss').value)||0,
     nomina_semanas:semanas,
@@ -4051,10 +4288,10 @@ function getBalanceFormValues(){
 }
 
 function calcBalance(v){
-  const ingFloridaIva=calcIva16(v.ingresos_florida_total);
+  const ingFloridaIva=v.ingresos_florida_iva!=null?Number(v.ingresos_florida_iva):calcIva16(v.ingresos_florida_total);
   const ingTotalIva=ingFloridaIva+Number(v.ingresos_nextel_iva||0);
   const ingTotalTotal=Number(v.ingresos_florida_total||0)+Number(v.ingresos_nextel_total||0);
-  const egrGastosIva=calcIva16(v.egresos_gastos_total);
+  const egrGastosIva=v.egresos_gastos_iva!=null?Number(v.egresos_gastos_iva):calcIva16(v.egresos_gastos_total);
   const egrTotalIva=egrGastosIva;
   const egrTotalTotal=Number(v.egresos_gastos_total||0)+Number(v.egresos_camioneta_total||0)+Number(v.egresos_imss_total||0)+Number(v.egresos_nomina_total||0);
   const ivaAPagar=ingTotalIva-egrTotalIva+Number(v.iva_retenido_nextel||0);
@@ -4073,9 +4310,9 @@ function updateBalancePreview(){
   const v=getBalanceFormValues();
   const c=calcBalance(v);
   document.getElementById('bf-ing-florida').value=v.ingresos_florida_total;
-  document.getElementById('bf-ing-florida-iva').value=c.ingFloridaIva;
+  if(!balFloridaIvaManual)document.getElementById('bf-ing-florida-iva').value=c.ingFloridaIva.toFixed(2);
   document.getElementById('bf-egr-nomina').value=v.egresos_nomina_total;
-  document.getElementById('bf-egr-gastos-iva').value=c.egrGastosIva;
+  if(!balGastosIvaManual)document.getElementById('bf-egr-gastos-iva').value=c.egrGastosIva.toFixed(2);
 
   const liveFlorida=document.getElementById('bal-live-florida');
   if(liveFlorida)liveFlorida.innerHTML=`
@@ -4723,6 +4960,7 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'ado_ledger'},async()=>{await loadAdoLedger();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='ado')renderAdoLedgerList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'bitacora_tareas'},async()=>{await loadBitacora();if(document.getElementById('page-bitacora').classList.contains('active'))renderBitacora();})
     .on('postgres_changes',{event:'*',schema:'public',table:'bitacora_registros'},async()=>{const hoy=new Date().toISOString().slice(0,10);const{data:regs}=await sb.from('bitacora_registros').select('*').eq('fecha',hoy);bitRegistros=regs||[];if(document.getElementById('page-bitacora').classList.contains('active'))renderBitacora();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'asistencia'},async()=>{if(document.getElementById('page-asistencia').classList.contains('active'))await loadAsistencia().then(renderAsistGrid);})
     .subscribe((status)=>{
       if(status==='SUBSCRIBED'){console.log('Realtime conectado ✓');showRealtimeIndicator(true);}
       else if(status==='CLOSED'||status==='CHANNEL_ERROR'){showRealtimeIndicator(false);setTimeout(setupRealtime,3000);}
