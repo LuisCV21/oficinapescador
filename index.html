@@ -4947,7 +4947,7 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'obligaciones'},async()=>{await loadObligaciones();renderAll();})
     .on('postgres_changes',{event:'*',schema:'public',table:'pagos'},async()=>{await loadPagos();renderAll();})
     .on('postgres_changes',{event:'*',schema:'public',table:'archivos_pago'},async()=>{await loadArchivos();renderAll();})
-    .on('postgres_changes',{event:'*',schema:'public',table:'empleados'},async()=>{await loadEmpleados();if(document.getElementById('page-rh').classList.contains('active'))renderEmps();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'empleados'},async()=>{await loadEmpleados();if(document.getElementById('page-rh').classList.contains('active'))renderEmps();if(document.getElementById('page-asistencia').classList.contains('active'))renderAsistGrid();})
     .on('postgres_changes',{event:'*',schema:'public',table:'documentos_empleado'},async()=>{await loadEmpleados();if(document.getElementById('page-rh').classList.contains('active'))renderEmps();})
     .on('postgres_changes',{event:'*',schema:'public',table:'accesos'},async()=>{await loadAccesos();if(document.getElementById('page-accesos').classList.contains('active'))renderAccesos();})
     .on('postgres_changes',{event:'*',schema:'public',table:'vehiculos'},async()=>{await loadVehiculos();if(document.getElementById('page-flotilla').classList.contains('active'))renderFlotilla();})
