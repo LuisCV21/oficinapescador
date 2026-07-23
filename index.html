@@ -549,6 +549,9 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .asist-cell:hover{border-color:var(--copper);transform:translateY(-1px)}
 .asist-cell.sin-registro{opacity:.35}
 .asist-total{font-weight:700;color:var(--slate)}
+.asist-tot-row td{background:var(--copper-light);border-top:2px solid var(--copper);border-bottom:none}
+.asist-tot-row td.asist-name{color:var(--copper-dark);text-transform:uppercase;font-size:11px;letter-spacing:.04em}
+.asist-tot-row td.asist-total{color:var(--copper-dark)}
 .asist-estatus-opt{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--r);
   border:1.5px solid var(--border2);cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
 .asist-estatus-opt:hover{border-color:var(--copper)}
@@ -2658,14 +2661,16 @@ function renderAsistGrid(){
   const thead=`<tr><th style="text-align:left">Empleado</th>${days.map((d,i)=>`<th>${diaLabels[i]}<br><span style="font-weight:400;text-transform:none;font-size:9px">${Number(d.slice(8,10))}</span></th>`).join('')}<th>Total</th></tr>`;
 
   let rows='';
+  let tfoot='';
   if(!emps.length){
     rows=`<tr><td colspan="9" style="padding:24px;text-align:center;color:var(--text3)">Sin empleados activos en esta sucursal</td></tr>`;
   }else{
+    const dayTotals=days.map(()=>0);
     rows=emps.map(e=>{
       let total=0;
-      const cells=days.map(fecha=>{
+      const cells=days.map((fecha,i)=>{
         const a=byEmpFecha[e.id+'_'+fecha];
-        if(a&&a.estatus==='asistio')total++;
+        if(a&&a.estatus==='asistio'){total++;dayTotals[i]++;}
         const est=a?ASIST_ESTATUS[a.estatus]:null;
         const style=est?`border-color:${est.color};background:${est.bg}`:'';
         const title=est?est.label+(a.notas?': '+a.notas:''):'Sin registrar';
@@ -2673,9 +2678,11 @@ function renderAsistGrid(){
       }).join('');
       return`<tr><td class="asist-name">${e.nombre}<div style="font-size:10px;font-weight:400;color:var(--text3)">${e.puesto||''}</div></td>${cells}<td class="asist-total">${total}</td></tr>`;
     }).join('');
+    const grandTotal=dayTotals.reduce((s,n)=>s+n,0);
+    tfoot=`<tr class="asist-tot-row"><td class="asist-name">Asistieron</td>${dayTotals.map(n=>`<td class="asist-total">${n}</td>`).join('')}<td class="asist-total">${grandTotal}</td></tr>`;
   }
 
-  document.getElementById('asist-grid-wrap').innerHTML=`<table class="asist-table"><thead>${thead}</thead><tbody>${rows}</tbody></table>`;
+  document.getElementById('asist-grid-wrap').innerHTML=`<table class="asist-table"><thead>${thead}</thead><tbody>${rows}</tbody><tfoot>${tfoot}</tfoot></table>`;
   document.getElementById('asist-week-label').textContent='Semana del '+fmtFechaCorta(days[0])+' al '+fmtFechaCorta(days[6]);
   renderAsistIncidencias(emps);
 }
