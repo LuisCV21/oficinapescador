@@ -2623,8 +2623,10 @@ function asistWeekDays(sunday){
 
 async function loadAsistencia(){
   if(!asistWeekStart)asistWeekStart=asistDefaultSunday();
-  const days=asistWeekDays(asistWeekStart);
-  const{data}=await sb.from('asistencia').select('*').eq('entidad',asistActiveEnt).gte('fecha',days[0]).lte('fecha',days[6]);
+  const ent=asistActiveEnt,week=asistWeekStart;
+  const days=asistWeekDays(week);
+  const{data}=await sb.from('asistencia').select('*').eq('entidad',ent).gte('fecha',days[0]).lte('fecha',days[6]);
+  if(ent!==asistActiveEnt||week!==asistWeekStart)return; // llegó tarde: ya se cambió de pestaña/semana, se descarta
   asistData=data||[];
 }
 
