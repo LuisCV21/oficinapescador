@@ -204,24 +204,29 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 #widgets .widget-val{font-size:17px;font-weight:600;line-height:1.1}
 #widgets .widget-label{font-size:9px;margin-bottom:0;white-space:nowrap}
 
-/* ── TIMELINE ── */
-.tl-widget{background:var(--surface);border-radius:var(--rxl);padding:20px;
+/* ── CALENDARIO DE VENCIMIENTOS ── */
+.cal-widget{background:var(--surface);border-radius:var(--rxl);padding:20px;
   box-shadow:var(--shadow);border:1px solid var(--border);margin-bottom:20px}
-.tl-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
-.tl-title{font-family:var(--display);font-size:14px;font-weight:600;color:var(--slate)}
-.tl-scroll{overflow-x:auto;padding-bottom:6px}
-.tl-track{display:flex;min-width:max-content}
-.tl-day{width:44px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:0 2px}
-.tl-day-lbl{font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase}
-.tl-day-num{width:28px;height:28px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text2);font-weight:500}
-.tl-day-num.today{background:var(--copper);color:#fff;font-weight:700}
-.tl-day-events{display:flex;flex-direction:column;gap:2px;width:38px;min-height:6px}
-.tl-ev{height:5px;border-radius:3px;width:100%;cursor:pointer;transition:opacity .15s}
-.tl-ev:hover{opacity:.7}
-.tl-ev .tip2{display:none;position:absolute;bottom:9px;left:50%;transform:translateX(-50%);
-  background:rgba(26,58,92,.95);color:#fff;font-size:10px;padding:4px 8px;
-  border-radius:6px;white-space:nowrap;z-index:60;pointer-events:none;line-height:1.4}
-.tl-ev:hover .tip2{display:block}
+.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.cal-title{font-family:var(--display);font-size:14px;font-weight:600;color:var(--slate)}
+.cal-nav{display:flex;align-items:center;gap:6px}
+.cal-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:5px}
+.cal-dow div{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);text-align:center}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.cal-day{min-height:78px;border-radius:9px;padding:5px 4px 4px;background:var(--surface2);
+  display:flex;flex-direction:column;gap:3px;cursor:pointer;border:1.5px solid transparent;transition:border-color .15s}
+.cal-day:hover{border-color:var(--border2)}
+.cal-day.other-month{opacity:.35;cursor:default}
+.cal-day.today{border-color:var(--copper)}
+.cal-day.today .cal-day-num{background:var(--copper);color:#fff}
+.cal-day.selected{background:var(--copper-light);border-color:var(--copper)}
+.cal-day-num{width:21px;height:21px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--text2)}
+.cal-day-evs{display:flex;flex-direction:column;gap:2px;overflow:hidden}
+.cal-ev-chip{font-size:9px;padding:1.5px 5px;border-radius:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.cal-ev-more{font-size:8.5px;color:var(--text3);padding-left:5px;font-weight:600}
+.cal-filter-bar{display:flex;align-items:center;gap:8px;background:var(--copper-light);color:var(--copper);
+  font-size:12px;font-weight:600;padding:8px 14px;border-radius:var(--r);margin-bottom:10px}
+.cal-filter-bar button{margin-left:auto}
 
 /* ── TABS ── */
 .tabs-wrap{background:var(--surface);border-radius:var(--rxl);box-shadow:var(--shadow);border:1px solid var(--border);overflow:hidden}
@@ -728,9 +733,17 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
           <button class="btn btn-filled" onclick="openOblModal()">+ Nueva obligación</button>
         </div>
         <div class="widgets" id="widgets"></div>
-        <div class="tl-widget">
-          <div class="tl-title">Vencimientos — próximos 45 días</div>
-          <div class="tl-scroll"><div class="tl-track" id="tl-track"></div></div>
+        <div class="cal-widget">
+          <div class="cal-header">
+            <div class="cal-title" id="cal-title"></div>
+            <div class="cal-nav">
+              <button class="btn-icon" onclick="calNav(-1)" title="Mes anterior">◀</button>
+              <button class="btn btn-sm" onclick="calToday()">Hoy</button>
+              <button class="btn-icon" onclick="calNav(1)" title="Mes siguiente">▶</button>
+            </div>
+          </div>
+          <div class="cal-dow"><div>Do</div><div>Lu</div><div>Ma</div><div>Mi</div><div>Ju</div><div>Vi</div><div>Sa</div></div>
+          <div class="cal-grid" id="cal-grid"></div>
         </div>
         <div class="tabs-wrap">
           <div class="tabs-bar" id="tabs-bar"></div>
@@ -2165,7 +2178,7 @@ function renderAll(){
   populateCatSelects();
   renderTabs();
   renderWidgets();
-  renderTimeline();
+  renderCalendar();
   renderList();
   updateSidebarBadge();
 }
@@ -2228,24 +2241,40 @@ function renderWidgets(){
   `;
 }
 
-// ─── TIMELINE ─────────────────────────────────────────────────
-function renderTimeline(){
-  let html='';
+// ─── CALENDARIO DE VENCIMIENTOS ────────────────────────────────
+let calMonth=new Date(TODAY.getFullYear(),TODAY.getMonth(),1);
+let calSelectedDate=null;
+function calNav(delta){calMonth.setMonth(calMonth.getMonth()+delta);renderCalendar();}
+function calToday(){calMonth=new Date(TODAY.getFullYear(),TODAY.getMonth(),1);calSelectedDate=null;renderCalendar();renderList();}
+function calDayClick(iso){if(!iso)return;calSelectedDate=(calSelectedDate===iso)?null:iso;renderCalendar();renderList();}
+function renderCalendar(){
   const data=entData();
-  for(let i=0;i<45;i++){
-    const d=new Date(TODAY);d.setDate(d.getDate()+i);
-    const iso=d.toISOString().slice(0,10);
-    const dn=['Do','Lu','Ma','Mi','Ju','Vi','Sa'][d.getDay()];
-    const evs=data.filter(o=>o.fecha_limite===iso);
-    let evH='';
-    evs.forEach(o=>{
+  const y=calMonth.getFullYear(),m=calMonth.getMonth();
+  const label=calMonth.toLocaleDateString('es-MX',{month:'long',year:'numeric'});
+  document.getElementById('cal-title').textContent=label.charAt(0).toUpperCase()+label.slice(1);
+  const firstDow=new Date(y,m,1).getDay();
+  const daysInMonth=new Date(y,m+1,0).getDate();
+  const daysInPrevMonth=new Date(y,m,0).getDate();
+  const todayIso=TODAY.toISOString().slice(0,10);
+  const cells=[];
+  for(let i=firstDow-1;i>=0;i--)cells.push({day:daysInPrevMonth-i,other:true,iso:null});
+  for(let d=1;d<=daysInMonth;d++)cells.push({day:d,other:false,iso:`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`});
+  while(cells.length%7!==0)cells.push({day:cells.length-(firstDow+daysInMonth),other:true,iso:null});
+  let html='';
+  cells.forEach(c=>{
+    if(c.other){html+=`<div class="cal-day other-month"><div class="cal-day-num">${c.day}</div></div>`;return;}
+    const evs=data.filter(o=>o.fecha_limite===c.iso);
+    const cls=[c.iso===todayIso?'today':'',c.iso===calSelectedDate?'selected':''].filter(Boolean).join(' ');
+    let evsHtml='';
+    evs.slice(0,3).forEach(o=>{
       const st=oblStatus(o);
-      const c=st==='overdue'?'#c5221f':st==='urgent'?'#e37400':st==='soon'?'#1a73e8':(ENTS[o.entidad]||{color:'#5f6368'}).color;
-      evH+=`<div class="tl-ev" style="background:${c}"><div class="tip2">${oblIcon(o)} ${o.nombre}<br>${(ENTS[o.entidad]||{label:o.entidad}).label}</div></div>`;
+      const chipCls=st==='overdue'?'dc-red':st==='urgent'?'dc-amber':st==='soon'?'dc-copper':'dc-gray';
+      evsHtml+=`<div class="cal-ev-chip ${chipCls}" onclick="event.stopPropagation();openOblDetail('${o.id}')" title="${o.nombre}">${oblIcon(o)} ${o.nombre}</div>`;
     });
-    html+=`<div class="tl-day"><div class="tl-day-lbl">${dn}</div><div class="tl-day-num${i===0?' today':''}">${d.getDate()}</div><div class="tl-day-events">${evH}</div></div>`;
-  }
-  document.getElementById('tl-track').innerHTML=html;
+    if(evs.length>3)evsHtml+=`<div class="cal-ev-more">+${evs.length-3} más</div>`;
+    html+=`<div class="cal-day ${cls}" onclick="calDayClick('${c.iso}')"><div class="cal-day-num">${c.day}</div><div class="cal-day-evs">${evsHtml}</div></div>`;
+  });
+  document.getElementById('cal-grid').innerHTML=html;
 }
 
 // ─── TABS ─────────────────────────────────────────────────────
@@ -2263,7 +2292,7 @@ function renderTabs(){
   });
   document.getElementById('tabs-bar').innerHTML=html;
 }
-function switchEnt(ek){currentEnt=ek;localStorage.setItem('ep_obl_ent',ek);renderTabs();renderWidgets();renderTimeline();renderList();}
+function switchEnt(ek){currentEnt=ek;localStorage.setItem('ep_obl_ent',ek);renderTabs();renderWidgets();renderCalendar();renderList();}
 
 // ─── LIST ─────────────────────────────────────────────────────
 function renderList(){
@@ -2275,13 +2304,15 @@ function renderList(){
   if(cat!=='ALL')data=data.filter(o=>o.categoria===cat);
   if(status!=='ALL')data=data.filter(o=>oblStatus(o)===status);
   if(search)data=data.filter(o=>o.nombre.toLowerCase().includes(search)||(o.notas||'').toLowerCase().includes(search));
+  if(calSelectedDate)data=data.filter(o=>o.fecha_limite===calSelectedDate);
   const ord={overdue:0,urgent:1,soon:2,ok:3};
   data.sort((a,b)=>{const sa=ord[oblStatus(a)]??4,sb=ord[oblStatus(b)]??4;return sa!==sb?sa-sb:a.fecha_limite.localeCompare(b.fecha_limite);});
   document.getElementById('list-count').textContent=`${data.length} obligación${data.length!==1?'es':''}`;
   const el=document.getElementById('obl-list');
-  if(!data.length){el.innerHTML=`<div class="empty"><div class="empty-ico">📋</div>Sin obligaciones para esta selección</div>`;return;}
+  const filterBar=calSelectedDate?`<div class="cal-filter-bar">📅 Filtrando por ${fmt(calSelectedDate)}<button class="btn-text" onclick="calDayClick('${calSelectedDate}')">Quitar filtro</button></div>`:'';
+  if(!data.length){el.innerHTML=filterBar+`<div class="empty"><div class="empty-ico">📋</div>Sin obligaciones para esta selección</div>`;return;}
   const statusSecs=[{key:'overdue',label:'Vencidas'},{key:'urgent',label:'Urgentes — ≤ 7 días'},{key:'soon',label:'Próximas — ≤ 15 días'},{key:'ok',label:'Al corriente'}];
-  let html='';
+  let html=filterBar;
   statusSecs.forEach(sec=>{
     const items=data.filter(o=>oblStatus(o)===sec.key);
     if(!items.length)return;
