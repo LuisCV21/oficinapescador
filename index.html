@@ -1974,6 +1974,8 @@ let catData=[];
 function catInfo(clave){
   return catData.find(c=>c.clave===clave)||{clave,label:clave||'Sin categoría',icono:'📋',color:'#5f6368',tipo:'recurrente',activa:true};
 }
+function cuentaNombre(id){const c=cuentasPagoData.find(x=>x.id===id);return c?c.nombre:'';}
+function puestoNombre(id){const p=puestosData.find(x=>x.id===id);return p?p.nombre:'';}
 
 // STATE
 let currentUser=null,currentPerfil=null;
@@ -2112,7 +2114,7 @@ async function loadPagos(){
   pagosData=data||[];
 }
 async function loadArchivos(){
-  const {data}=await sb.from('archivos_pago').select('*, pagos(fecha_pago,monto,banco,obligacion_id), obligaciones(nombre,icono,entidad,categoria)').order('created_at',{ascending:false});
+  const {data}=await sb.from('archivos_pago').select('*, pagos(fecha_pago,monto,banco_id,obligacion_id), obligaciones(nombre,icono,entidad,categoria)').order('created_at',{ascending:false});
   archivosData=data||[];
 }
 async function loadEmpleados(){
@@ -2189,7 +2191,7 @@ function populateCuentaSelect(){
   const sel=document.getElementById('pf-banco');
   if(!sel)return;
   const prev=sel.value;
-  sel.innerHTML='<option value="">Seleccionar...</option>'+active.map(c=>`<option value="${c.nombre}">${c.nombre}</option>`).join('');
+  sel.innerHTML='<option value="">Seleccionar...</option>'+active.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
   if([...sel.options].some(o=>o.value===prev))sel.value=prev;
 }
 function populatePuestoSelects(){
@@ -2197,13 +2199,13 @@ function populatePuestoSelects(){
   const ef=document.getElementById('ef-puesto');
   if(ef){
     const prev=ef.value;
-    ef.innerHTML='<option value="">Sin puesto</option>'+active.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
+    ef.innerHTML='<option value="">Sin puesto</option>'+active.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
     if([...ef.options].some(o=>o.value===prev))ef.value=prev;
   }
   const rh=document.getElementById('rh-puesto');
   if(rh){
     const prev=rh.value||'ALL';
-    rh.innerHTML='<option value="ALL">Todos los puestos</option>'+active.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
+    rh.innerHTML='<option value="ALL">Todos los puestos</option>'+active.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
     rh.value=[...rh.options].some(o=>o.value===prev)?prev:'ALL';
   }
 }
@@ -2507,7 +2509,7 @@ function renderConfigCuentas(){
   if(!cuentasPagoData.length){el.innerHTML=`<div class="empty"><div class="empty-ico">💳</div>Sin cuentas de pago aún</div>`;return;}
   const admin=isAdmin();
   el.innerHTML=cuentasPagoData.map(c=>{
-    const usedCount=pagosData.filter(p=>p.banco===c.nombre).length;
+    const usedCount=pagosData.filter(p=>p.banco_id===c.id).length;
     return `<div class="cfgcat-row ${c.activa===false?'inactive':''}">
       <div class="cfgcat-swatch" style="background:var(--slate-light)">💳</div>
       <div class="cfgcat-info">
@@ -2553,7 +2555,7 @@ function renderConfigPuestos(){
   if(!puestosData.length){el.innerHTML=`<div class="empty"><div class="empty-ico">🧑‍💼</div>Sin puestos aún</div>`;return;}
   const admin=isAdmin();
   el.innerHTML=puestosData.map(p=>{
-    const usedCount=empData.filter(e=>e.puesto===p.nombre).length;
+    const usedCount=empData.filter(e=>e.puesto_id===p.id).length;
     return `<div class="cfgcat-row ${p.activa===false?'inactive':''}">
       <div class="cfgcat-swatch" style="background:var(--slate-light)">🧑‍💼</div>
       <div class="cfgcat-info">
@@ -2665,12 +2667,12 @@ function openPayAccesos(){
 async function savePay(){
   const fecha_pago=document.getElementById('pf-fecha').value;
   const monto=document.getElementById('pf-monto').value;
-  const banco=document.getElementById('pf-banco').value;
-  if(!fecha_pago||!monto||!banco){toast('Fecha, monto y banco son obligatorios',true);return;}
+  const banco_id=document.getElementById('pf-banco').value;
+  if(!fecha_pago||!monto||!banco_id){toast('Fecha, monto y banco son obligatorios',true);return;}
   if(!pendingFiles.pago){toast('El comprobante de pago es obligatorio',true);return;}
   setLoading('pay-save-btn',true);
   // 1. Insert pago
-  const {data:pago,error:pe}=await sb.from('pagos').insert({obligacion_id:payOblId,fecha_pago,monto:Number(monto),banco,referencia:document.getElementById('pf-ref').value||null,observaciones:document.getElementById('pf-obs').value||null,registrado_por:currentUser.id}).select().single();
+  const {data:pago,error:pe}=await sb.from('pagos').insert({obligacion_id:payOblId,fecha_pago,monto:Number(monto),banco_id,referencia:document.getElementById('pf-ref').value||null,observaciones:document.getElementById('pf-obs').value||null,registrado_por:currentUser.id}).select().single();
   if(pe){toast('Error al registrar pago: '+pe.message,true);setLoading('pay-save-btn',false);return;}
   // 2. Upload files
   const fileTypes=['pago','cotizacion','factura_pdf','factura_xml'];
@@ -2721,7 +2723,7 @@ async function openHist(oblId){
       faltaFac='<div style="margin-top:7px"><div style="font-size:10px;color:var(--amber);font-weight:500;margin-bottom:4px">⚠ Factura pendiente</div><div class="fzone" style="padding:8px"><input type="file" accept="image/*,.pdf,.xml" onchange="'+onchg+'"><div class="fzone-lbl" style="font-size:10px">Adjuntar factura cuando llegue</div></div></div>';
     }
     html+='<div class="hist-item">';
-    html+='<div class="hist-title">'+fmt(p.fecha_pago)+' · '+fmxn(p.monto)+' · '+p.banco+'</div>';
+    html+='<div class="hist-title">'+fmt(p.fecha_pago)+' · '+fmxn(p.monto)+' · '+cuentaNombre(p.banco_id)+'</div>';
     html+='<div class="hist-meta">'+(p.referencia?'Ref: '+p.referencia:'')+(p.observaciones?' · '+p.observaciones:'')+'</div>';
     if(archs.length)html+='<div class="hist-files">'+archHtml+'</div>';
     html+=faltaFac;
@@ -2800,8 +2802,8 @@ function renderEmps(){
   if(status==='activo')data=data.filter(e=>e.activo&&e.tipo_contrato!=='prueba'||e.activo&&daysUntil(e.fecha_fin_prueba)>7);
   else if(status==='prueba')data=data.filter(e=>e.activo&&e.tipo_contrato==='prueba');
   else data=data.filter(e=>!e.activo);
-  if(puestoFiltro&&puestoFiltro!=='ALL')data=data.filter(e=>e.puesto===puestoFiltro);
-  if(search)data=data.filter(e=>e.nombre.toLowerCase().includes(search)||(e.puesto||'').toLowerCase().includes(search));
+  if(puestoFiltro&&puestoFiltro!=='ALL')data=data.filter(e=>e.puesto_id===puestoFiltro);
+  if(search)data=data.filter(e=>e.nombre.toLowerCase().includes(search)||puestoNombre(e.puesto_id).toLowerCase().includes(search));
   const el=document.getElementById('rh-list');
   if(!data.length){el.innerHTML=`<div class="empty"><div class="empty-ico">👥</div>Sin empleados para esta selección</div>`;return;}
   // Group by entity
@@ -2825,7 +2827,7 @@ function renderEmpCard(e){
   return`<div class="emp-card ${!e.activo?'emp-inactive':''}" onclick="openEmpDetail('${e.id}')">
     <div class="emp-avatar">${initials(e.nombre)}</div>
     <div class="emp-name">${e.nombre}</div>
-    <div class="emp-puesto">${e.puesto||'Sin puesto'}</div>
+    <div class="emp-puesto">${puestoNombre(e.puesto_id)||'Sin puesto'}</div>
     <div class="emp-tags">
       <span class="pill p-${e.entidad}">${(ENTS[e.entidad]||{label:e.entidad}).label}</span>
       ${e.tipo_contrato==='prueba'?`<span style="font-size:10px;padding:2px 6px;border-radius:8px;background:var(--amber-light);color:var(--amber);font-weight:500">Prueba</span>`:''}
@@ -2845,7 +2847,7 @@ async function openEmpDetail(id){
   const docs=e.documentos_empleado||[];
   const DOC_TYPES=['ine','csf','nss_doc','contrato_prueba','contrato_indeterminado','baja_imss'];
   let html=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
-    ${e.puesto?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">Puesto</div><div style="font-size:13px">${e.puesto}</div></div>`:''}
+    ${e.puesto_id?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">Puesto</div><div style="font-size:13px">${puestoNombre(e.puesto_id)}</div></div>`:''}
     <div><div style="font-size:10px;color:var(--text3);font-weight:500">Ingreso</div><div style="font-size:13px">${fmt(e.fecha_ingreso)}</div></div>
     ${e.nss?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">NSS</div><div style="font-size:13px;font-family:var(--mono)">${e.nss}</div></div>`:''}
     ${e.curp?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">CURP</div><div style="font-size:12px;font-family:var(--mono)">${e.curp}</div></div>`:''}
@@ -2922,11 +2924,12 @@ function openEmpModal(id){
   document.getElementById('ef-nombre').value=e?e.nombre:'';
   document.getElementById('ef-ent').value=e?e.entidad:'PUE';
   const puestoSel=document.getElementById('ef-puesto');
-  puestoSel.value=e?e.puesto||'':'';
-  if(e&&e.puesto&&puestoSel.value!==e.puesto){
+  puestoSel.value=e?e.puesto_id||'':'';
+  if(e&&e.puesto_id&&puestoSel.value!==e.puesto_id){
+    const nombrePrevio=puestoNombre(e.puesto_id);
     const opt=document.createElement('option');
-    opt.value=e.puesto;opt.textContent=e.puesto+' (inactivo)';
-    puestoSel.appendChild(opt);puestoSel.value=e.puesto;
+    opt.value=e.puesto_id;opt.textContent=nombrePrevio+' (inactivo)';
+    puestoSel.appendChild(opt);puestoSel.value=e.puesto_id;
   }
   document.getElementById('ef-ingreso').value=e?e.fecha_ingreso:new Date().toISOString().slice(0,10);
   document.getElementById('ef-contrato').value=e?e.tipo_contrato:'prueba';
@@ -2943,7 +2946,7 @@ async function saveEmp(){
   if(!nombre||!fecha_ingreso){toast('Nombre y fecha de ingreso son obligatorios',true);return;}
   const tipo_contrato=document.getElementById('ef-contrato').value;
   const fin_prueba=tipo_contrato==='prueba'?(()=>{const d=new Date(fecha_ingreso+'T12:00:00');d.setDate(d.getDate()+30);return d.toISOString().slice(0,10);})():null;
-  const obj={nombre,entidad:document.getElementById('ef-ent').value,puesto:document.getElementById('ef-puesto').value||null,fecha_ingreso,tipo_contrato,fecha_fin_prueba:fin_prueba,curp:document.getElementById('ef-curp').value||null,rfc:document.getElementById('ef-rfc').value||null,nss:document.getElementById('ef-nss').value||null,activo:true};
+  const obj={nombre,entidad:document.getElementById('ef-ent').value,puesto_id:document.getElementById('ef-puesto').value||null,fecha_ingreso,tipo_contrato,fecha_fin_prueba:fin_prueba,curp:document.getElementById('ef-curp').value||null,rfc:document.getElementById('ef-rfc').value||null,nss:document.getElementById('ef-nss').value||null,activo:true};
   setLoading('emp-save-btn',true);
   let empId=editEmpId;
   if(editEmpId){
@@ -3081,7 +3084,7 @@ function renderAsistGrid(){
         const title=est?est.label+(a.notas?': '+a.notas:''):'Sin registrar';
         return`<td><div class="asist-cell ${!est?'sin-registro':''}" style="${style}" title="${title}" onclick="openAsistPicker('${e.id}','${fecha}')">${est?est.ico:'—'}</div></td>`;
       }).join('');
-      return`<tr><td class="asist-name">${e.nombre}<div style="font-size:10px;font-weight:400;color:var(--text3)">${e.puesto||''}</div></td>${cells}<td class="asist-total">${total}</td></tr>`;
+      return`<tr><td class="asist-name">${e.nombre}<div style="font-size:10px;font-weight:400;color:var(--text3)">${puestoNombre(e.puesto_id)}</div></td>${cells}<td class="asist-total">${total}</td></tr>`;
     }).join('');
     const grandTotal=dayTotals.reduce((s,n)=>s+n,0);
     tfoot=`<tr class="asist-tot-row"><td class="asist-name">Asistieron</td>${dayTotals.map(n=>`<td class="asist-total">${n}</td>`).join('')}<td class="asist-total">${grandTotal}</td></tr>`;
@@ -3752,7 +3755,7 @@ function openUniformeModal(empId){
   document.getElementById('uf-obs').value='';
   document.getElementById('uf-cantidad').value='2';
   // Default mandil if cocinera
-  if(e&&e.puesto&&e.puesto.toLowerCase().includes('cocin')){
+  if(e&&puestoNombre(e.puesto_id).toLowerCase().includes('cocin')){
     document.getElementById('uf-tipo').value='mandil';
   } else {
     document.getElementById('uf-tipo').value='playera';
@@ -3849,7 +3852,7 @@ let contratoEmpId=null;
 function openContratoModal(empId){
   contratoEmpId=empId;
   const e=empData.find(x=>x.id===empId);
-  document.getElementById('cont-emp-ref').textContent=e?'📄 '+e.nombre+' — '+e.puesto:'';
+  document.getElementById('cont-emp-ref').textContent=e?'📄 '+e.nombre+' — '+puestoNombre(e.puesto_id):'';
   const hoy=new Date().toISOString().slice(0,10);
   document.getElementById('cf-fecha-firma').value=hoy;
   document.getElementById('cf-salario').value='';
@@ -3960,7 +3963,7 @@ li{margin:6px 0;text-align:justify}
 
 <h2>C L Á U S U L A S:</h2>
 
-<p class="clausula"><strong>PRIMERA: Objeto. -</strong> EL PATRÓN contrata al EL TRABAJADOR para que bajo su dirección y dependencia le preste sus servicios personales de manera subordinada en el puesto de <strong>${(e.puesto||'_____________').toUpperCase()}</strong> en cualquier área que EL PATRÓN determine, en cualquier domicilio de EL PATRÓN dentro de la República Mexicana, o en cualquier establecimiento que EL PATRÓN le indique.</p>
+<p class="clausula"><strong>PRIMERA: Objeto. -</strong> EL PATRÓN contrata al EL TRABAJADOR para que bajo su dirección y dependencia le preste sus servicios personales de manera subordinada en el puesto de <strong>${(puestoNombre(e.puesto_id)||'_____________').toUpperCase()}</strong> en cualquier área que EL PATRÓN determine, en cualquier domicilio de EL PATRÓN dentro de la República Mexicana, o en cualquier establecimiento que EL PATRÓN le indique.</p>
 <p>En el entendido de que EL PATRÓN podrá dar por terminada sin responsabilidad para Él, la relación laboral con EL TRABAJADOR si éste no acredita la capacidad, aptitudes y facultades para desempeñar el trabajo para el cual se le contrata.</p>
 <p>EL TRABAJADOR declara estar capacitado y tener los conocimientos específicos necesarios para desempeñar el trabajo para el cual se le contrata y conviene en llevar a cabo las actividades que se le designen con la intensidad, cuidado, esmero y productividad requeridos, asimismo, se obliga a desarrollar todas las actividades inherentes y/o relacionadas con tal trabajo, incluyendo aquellas que sean propias del mismo, de acuerdo con el uso y la costumbre, obedeciendo las instrucciones que al efecto reciba de EL PATRÓN y acatando todas las órdenes que reciba de sus superiores, así como las que contengan cualquier circular o disposición que emita EL PATRÓN y a cumplir con las obligaciones que le impone éste contrato, la Ley Federal del Trabajo, el Reglamento Interior de Trabajo y Políticas internas de EL PATRÓN que sean de observancia general para EL TRABAJADOR.</p>
 <p>EL TRABAJADOR está de acuerdo en cumplir todas y cada una de sus obligaciones que de manera enunciativa más no limitativa se describen en el perfil de puestos que se anexa al presente documento como <strong>Anexo A</strong> y que en caso de no hacerlo EL PATRÓN podrá dar por terminada la relación de trabajo sin responsabilidad para Él.</p>
