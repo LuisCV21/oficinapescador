@@ -2030,6 +2030,7 @@ function daysUntil(s){if(!s)return 999;return Math.round((new Date(s+'T12:00:00'
 function oblStatus(o){const d=daysUntil(o.fecha_limite);if(d<0)return'overdue';if(d<=7)return'urgent';if(d<=15)return'soon';return'ok'}
 function oblIcon(o){return o.icono||catInfo(o.categoria).icono}
 function catBg(clave,pct){return `color-mix(in srgb, ${catInfo(clave).color} ${pct}%, var(--surface))`}
+function entBg(entidad,pct){const c=(ENTS[entidad]||{color:'#5f6368'}).color;return `color-mix(in srgb, ${c} ${pct}%, var(--surface))`}
 function initials(n){return(n||'?').split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase()}
 function nextDate(ds,recur){
   const d=new Date(ds+'T12:00:00');
@@ -2871,8 +2872,9 @@ function renderEmpCard(e){
   const prueba_alerta=dias!==null&&dias<=7&&dias>=0;
   const prueba_vencida=dias!==null&&dias<0;
   const docs=e.documentos_empleado||[];
-  return`<div class="emp-card ${!e.activo?'emp-inactive':''}" onclick="openEmpDetail('${e.id}')">
-    <div class="emp-avatar">${initials(e.nombre)}</div>
+  const entColor=(ENTS[e.entidad]||{color:'#5f6368'}).color;
+  return`<div class="emp-card ${!e.activo?'emp-inactive':''}" style="background:${entBg(e.entidad,14)};border-left:4px solid ${entColor}" onclick="openEmpDetail('${e.id}')">
+    <div class="emp-avatar" style="background:${entBg(e.entidad,45)};color:${entColor}">${initials(e.nombre)}</div>
     <div class="emp-name">${e.nombre}</div>
     <div class="emp-puesto">${puestoNombre(e.puesto_id)||'Sin puesto'}</div>
     <div class="emp-tags">
