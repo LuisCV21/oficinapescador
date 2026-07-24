@@ -2825,10 +2825,10 @@ function renderRhWidgets(){
   let html='<div class="widgets" style="margin-bottom:14px">';
   html+='<div class="widget"><div class="widget-accent" style="background:var(--blue)"></div><div class="widget-label">Empleados activos</div><div class="widget-val wv-blue">'+activos.length+'</div></div>';
   html+='<div class="widget"><div class="widget-accent" style="background:var(--amber)"></div><div class="widget-label">En período de prueba</div><div class="widget-val wv-amber">'+prueba.length+'</div></div>';
-  html+='<div class="widget"><div class="widget-accent" style="background:var(--green)"></div><div class="widget-label">Hotel</div><div class="widget-val">'+activos.filter(e=>e.entidad==='HOT').length+'</div></div>';
-  html+='<div class="widget"><div class="widget-accent" style="background:var(--purple)"></div><div class="widget-label">Puebla</div><div class="widget-val">'+activos.filter(e=>e.entidad==='PUE').length+'</div></div>';
-  html+='<div class="widget"><div class="widget-accent" style="background:var(--green)"></div><div class="widget-label">Florida</div><div class="widget-val">'+activos.filter(e=>e.entidad==='FLO').length+'</div></div>';
-  html+='<div class="widget"><div class="widget-accent" style="background:var(--red)"></div><div class="widget-label">Obra</div><div class="widget-val">'+activos.filter(e=>e.entidad==='OBR').length+'</div></div>';
+  ENT_ORDER.filter(ek=>activos.some(x=>x.entidad===ek)).forEach(ek=>{
+    const e=ENTS[ek];
+    html+='<div class="widget"><div class="widget-accent" style="background:'+e.color+'"></div><div class="widget-label">'+e.label+'</div><div class="widget-val" style="color:'+e.color+'">'+activos.filter(x=>x.entidad===ek).length+'</div></div>';
+  });
   html+='</div>';
   if(vencidos.length){
     html+='<div style="background:var(--red-light);border:1px solid #f7c1c1;border-radius:var(--r);padding:10px 14px;margin-bottom:10px;font-size:12px;color:var(--red);display:flex;align-items:center;gap:8px"><span style="font-size:16px">&#x1F6A8;</span><div><strong>Período de prueba vencido</strong> — '+vencidos.map(e=>e.nombre).join(', ')+' &middot; Definir si continúan o se dan de baja</div></div>';
