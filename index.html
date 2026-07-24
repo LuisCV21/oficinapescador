@@ -274,6 +274,18 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .cfgcat-meta{font-size:11px;color:var(--text2);margin-top:2px}
 
 /* OBL CARD */
+.obl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+.obl-tile{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--border);
+  border-radius:var(--rl);box-shadow:var(--shadow);padding:12px 13px;cursor:pointer;
+  display:flex;flex-direction:column;gap:10px;transition:box-shadow .2s,border-color .2s}
+.obl-tile:hover{box-shadow:var(--shadow2)}
+.obl-tile-top{display:flex;align-items:center;gap:9px;min-width:0}
+.obl-tile-icon{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.obl-tile-title{font-size:12.5px;font-weight:600;color:var(--text);line-height:1.25;min-width:0;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.obl-tile-bottom{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.obl-tile-bottom .days-chip{padding:4px 9px;font-size:10.5px}
+
 .obl-card{background:var(--surface);border-radius:var(--rl);
   border:1px solid var(--border);border-left:4px solid var(--border);box-shadow:var(--shadow);overflow:hidden;
   transition:box-shadow .2s,border-color .2s}
@@ -955,6 +967,14 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 </div>
 
 <!-- MODALES OBLIGACIONES -->
+<div class="modal-overlay" id="m-obl-detail">
+<div class="modal">
+  <div class="modal-hdr"><div class="modal-title" id="m-obl-detail-title">Obligación</div><button class="btn-icon" onclick="closeModal('m-obl-detail')">✕</button></div>
+  <div class="modal-body" id="m-obl-detail-body"></div>
+  <div class="modal-ftr" id="m-obl-detail-ftr"></div>
+</div>
+</div>
+
 <div class="modal-overlay" id="m-obl">
 <div class="modal">
   <div class="modal-hdr"><div class="modal-title" id="m-obl-title">Nueva obligación</div><button class="btn-icon" onclick="closeModal('m-obl')">✕</button></div>
@@ -2265,71 +2285,86 @@ function renderList(){
   statusSecs.forEach(sec=>{
     const items=data.filter(o=>oblStatus(o)===sec.key);
     if(!items.length)return;
-    html+=`<div class="sec-lbl">${sec.label} (${items.length})</div>`;
-    items.forEach(o=>html+=renderCard(o));
+    html+=`<div class="sec-lbl">${sec.label} (${items.length})</div><div class="obl-grid">`;
+    items.forEach(o=>html+=renderTile(o));
+    html+='</div>';
   });
   el.innerHTML=html;
 }
 
-function renderCard(o){
+function oblChip(o){
   const st=oblStatus(o);
   const days=daysUntil(o.fecha_limite);
+  if(st==='overdue')return{chipTxt:Math.abs(days)+'d vencida',chipCls:'dc-red'};
+  if(days===0)return{chipTxt:'Vence hoy',chipCls:'dc-red'};
+  return{chipTxt:days+' días',chipCls:st==='urgent'?'dc-amber':st==='soon'?'dc-copper':'dc-gray'};
+}
+function entPillHtml(o){
+  const isMulti=o.entidad==='MULTI';
+  if(isMulti)return'<span class="pill p-HOT"><span class="ent-dot" style="background:#1a73e8;width:6px;height:6px"></span>Hotel</span><span class="pill p-PUE"><span class="ent-dot" style="background:#6200ee;width:6px;height:6px"></span>Puebla</span>';
   const ent=ENTS[o.entidad]||{label:o.entidad,pill:'',color:'#999'};
-  let chipTxt='',chipCls='dc-gray';
-  if(st==='overdue'){chipTxt=Math.abs(days)+'d vencida';chipCls='dc-red';}
-  else if(days===0){chipTxt='Vence hoy';chipCls='dc-red';}
-  else{chipTxt=days+' días';chipCls=st==='urgent'?'dc-amber':st==='soon'?'dc-blue':'dc-gray';}
+  return'<span class="pill '+ent.pill+'"><span class="ent-dot" style="background:'+ent.color+';width:6px;height:6px"></span>'+ent.label+'</span>';
+}
+
+function renderTile(o){
+  const {chipTxt,chipCls}=oblChip(o);
+  const cat=catInfo(o.categoria);
+  const oid=o.id;
+  return '<div class="obl-tile" style="border-left-color:'+cat.color+'" onclick="openOblDetail(\''+oid+'\')">'
+    +'<div class="obl-tile-top">'
+    +'<div class="obl-tile-icon" style="background:'+catBg(o.categoria,22)+'">'+oblIcon(o)+'</div>'
+    +'<div class="obl-tile-title">'+o.nombre+'</div>'
+    +'</div>'
+    +'<div class="obl-tile-bottom">'+entPillHtml(o)
+    +'<div class="days-chip '+chipCls+'">'+chipTxt+'</div>'
+    +'</div>'
+    +'</div>';
+}
+
+function openOblDetail(id){
+  const o=oblData.find(x=>x.id===id);
+  if(!o)return;
+  const {chipTxt,chipCls}=oblChip(o);
+  const cat=catInfo(o.categoria);
   const pays=pagosData.filter(p=>p.obligacion_id===o.id);
   const lastPay=pays.length?pays[0]:null;
   const archivos=archivosData.filter(a=>a.pago_id===(lastPay&&lastPay.id));
   const hasFac=archivos.some(a=>a.tipo==='factura_pdf'||a.tipo==='factura_xml');
-  const isMulti=o.entidad==='MULTI';
-  const oid=o.id;
-  let entHtml=isMulti
-    ?'<span class="pill p-HOT"><span class="ent-dot" style="background:#1a73e8;width:6px;height:6px"></span>Hotel</span><span class="pill p-PUE"><span class="ent-dot" style="background:#6200ee;width:6px;height:6px"></span>Puebla</span>'
-    :'<span class="pill '+ent.pill+'"><span class="ent-dot" style="background:'+ent.color+';width:6px;height:6px"></span>'+ent.label+'</span>';
-  const cat=catInfo(o.categoria);
-  let meta=entHtml+'<span class="cat-tag" style="background:'+catBg(o.categoria,18)+';color:'+cat.color+'">'+cat.icono+' '+cat.label+'</span>';
+  let meta=entPillHtml(o)+'<span class="cat-tag" style="background:'+catBg(o.categoria,18)+';color:'+cat.color+'">'+cat.icono+' '+cat.label+'</span>';
   meta+='<span style="font-size:11px;color:var(--text2)">Límite: '+fmt(o.fecha_limite)+'</span>';
   if(o.monto_estimado)meta+='<span style="font-size:11px;color:var(--text2)">'+fmxn(o.monto_estimado)+'</span>';
   if(o.recurrencia&&o.recurrencia!=='none')meta+='<span class="recur-tag">'+RECUR[o.recurrencia]+'</span>';
   let attachHtml='';
   if(lastPay){
     attachHtml='<div class="obl-attach">'
-      +'<span class="attach-chip ok" onclick="openHist(\'' +oid+ '\')">📎 '+fmt(lastPay.fecha_pago)+' · '+fmxn(lastPay.monto)+'</span>';
+      +'<span class="attach-chip ok" onclick="openHist(\'' +id+ '\')">📎 '+fmt(lastPay.fecha_pago)+' · '+fmxn(lastPay.monto)+'</span>';
     if(!hasFac)attachHtml+='<span class="attach-chip warn">🧾 Factura pendiente</span>';
-    if(pays.length>1)attachHtml+='<span class="attach-chip" onclick="openHist(\'' +oid+ '\')">🕐 '+pays.length+' pagos</span>';
+    if(pays.length>1)attachHtml+='<span class="attach-chip" onclick="openHist(\'' +id+ '\')">🕐 '+pays.length+' pagos</span>';
     attachHtml+='</div>';
   }
-  let delBtn=isAdmin()?'<button class="btn-text red" onclick="delObl(\'' +oid+ '\')">Eliminar</button>':'';
-  let histBtn=pays.length?'<button class="btn-text" onclick="openHist(\'' +oid+ '\')">Historial</button>':'';
-  let respHtml=o.responsable?'<div style="font-size:10px;color:var(--text3)">'+o.responsable+'</div>':'';
-  let proxHtml=pays.length?'<span style="font-size:10px;color:var(--text3)">Próx. vencimiento: '+fmt(o.fecha_limite)+'</span>':'';
+  let respHtml=o.responsable?'<div style="font-size:11px;color:var(--text3);margin-top:8px">Responsable: '+o.responsable+'</div>':'';
   let notasHtml=o.notas?'<div class="obl-notes">'+o.notas+'</div>':'';
-  return '<div class="obl-card" style="background:'+catBg(o.categoria,9)+';border-left-color:'+cat.color+'">'
-    +'<div class="obl-card-body">'
+  document.getElementById('m-obl-detail-title').textContent=o.nombre;
+  document.getElementById('m-obl-detail-body').innerHTML=
+    '<div style="display:flex;align-items:flex-start;gap:14px">'
     +'<div class="obl-icon" style="background:'+catBg(o.categoria,22)+'">'+oblIcon(o)+'</div>'
-    +'<div class="obl-info">'
-    +'<div class="obl-title">'+o.nombre+'</div>'
-    +'<div class="obl-meta">'+meta+'</div>'
+    +'<div style="flex:1;min-width:0">'
+    +'<div class="obl-meta" style="margin-bottom:6px">'+meta+'</div>'
+    +'<div class="days-chip '+chipCls+'" style="display:inline-block">'+chipTxt+'</div>'
     +notasHtml
     +attachHtml
-    +'</div>'
-    +'<div class="obl-right">'
-    +'<div class="days-chip '+chipCls+'">'+chipTxt+'</div>'
     +respHtml
     +'</div>'
-    +'</div>'
-    +'<div class="obl-footer">'
-    +'<div class="obl-footer-l">'+proxHtml+'</div>'
-    +'<div class="obl-footer-r">'
-    +'<button class="btn btn-sm btn-filled" onclick="openPayModal(\'' +oid+ '\')">Registrar pago</button>'
-    +histBtn
-    +'<button class="btn-text" onclick="editObl(\'' +oid+ '\')">Editar</button>'
-    +delBtn
-    +'</div>'
-    +'</div>'
     +'</div>';
+  let histBtn=pays.length?'<button class="btn" onclick="closeModal(\'m-obl-detail\');openHist(\''+id+'\')">Historial</button>':'';
+  let delBtn=isAdmin()?'<button class="btn" style="background:var(--red-light);color:var(--red);border-color:#f7c1c1" onclick="closeModal(\'m-obl-detail\');delObl(\''+id+'\')">Eliminar</button>':'';
+  document.getElementById('m-obl-detail-ftr').innerHTML=
+    '<button class="btn" onclick="closeModal(\'m-obl-detail\')">Cerrar</button>'
+    +histBtn
+    +'<button class="btn" onclick="closeModal(\'m-obl-detail\');editObl(\''+id+'\')">Editar</button>'
+    +delBtn
+    +'<button class="btn btn-filled" onclick="closeModal(\'m-obl-detail\');openPayModal(\''+id+'\')">Registrar pago</button>';
+  openModal('m-obl-detail');
 }
 // ─── OBL CRUD ─────────────────────────────────────────────────
 function buildIconGrid(containerId,current,setter){
