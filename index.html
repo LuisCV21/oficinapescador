@@ -207,9 +207,14 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 /* ── CALENDARIO DE VENCIMIENTOS ── */
 .cal-widget{background:var(--surface);border-radius:var(--rxl);padding:20px;
   box-shadow:var(--shadow);border:1px solid var(--border);margin-bottom:20px}
-.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;cursor:pointer}
 .cal-title{font-family:var(--display);font-size:14px;font-weight:600;color:var(--slate)}
 .cal-nav{display:flex;align-items:center;gap:6px}
+.cal-toggle-ico{font-size:12px;font-weight:600;color:var(--copper);white-space:nowrap}
+.cal-widget.cal-collapsed{padding-bottom:14px}
+.cal-widget.cal-collapsed .cal-header{margin-bottom:0}
+.cal-widget.cal-collapsed #cal-body{display:none}
+.cal-widget.cal-collapsed .cal-monthctl{display:none}
 .cal-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:5px}
 .cal-dow div{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);text-align:center}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
@@ -733,17 +738,20 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
           <button class="btn btn-filled" onclick="openOblModal()">+ Nueva obligación</button>
         </div>
         <div class="widgets" id="widgets"></div>
-        <div class="cal-widget">
-          <div class="cal-header">
+        <div class="cal-widget cal-collapsed" id="cal-widget">
+          <div class="cal-header" onclick="toggleCal()">
             <div class="cal-title" id="cal-title"></div>
             <div class="cal-nav">
-              <button class="btn-icon" onclick="calNav(-1)" title="Mes anterior">◀</button>
-              <button class="btn btn-sm" onclick="calToday()">Hoy</button>
-              <button class="btn-icon" onclick="calNav(1)" title="Mes siguiente">▶</button>
+              <button class="btn-icon cal-monthctl" onclick="event.stopPropagation();calNav(-1)" title="Mes anterior">◀</button>
+              <button class="btn btn-sm cal-monthctl" onclick="event.stopPropagation();calToday()">Hoy</button>
+              <button class="btn-icon cal-monthctl" onclick="event.stopPropagation();calNav(1)" title="Mes siguiente">▶</button>
+              <span class="cal-toggle-ico" id="cal-toggle-ico">📅 Ver calendario ▾</span>
             </div>
           </div>
-          <div class="cal-dow"><div>Do</div><div>Lu</div><div>Ma</div><div>Mi</div><div>Ju</div><div>Vi</div><div>Sa</div></div>
-          <div class="cal-grid" id="cal-grid"></div>
+          <div id="cal-body">
+            <div class="cal-dow"><div>Do</div><div>Lu</div><div>Ma</div><div>Mi</div><div>Ju</div><div>Vi</div><div>Sa</div></div>
+            <div class="cal-grid" id="cal-grid"></div>
+          </div>
         </div>
         <div class="tabs-wrap">
           <div class="tabs-bar" id="tabs-bar"></div>
@@ -2008,7 +2016,7 @@ function isAdmin(){return currentPerfil&&currentPerfil.rol==='admin';}
 function canDelete(){return isAdmin();}
 function showIfAdmin(html){return isAdmin()?html:'';}
 let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[];
-let currentEnt=localStorage.getItem('ep_obl_ent')||null,currentRhEnt='ALL';
+let currentEnt=localStorage.getItem('ep_obl_ent')||null,currentRhEnt=null;
 let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null,editCatId=null,editCuentaId=null,editPuestoId=null;
 let cuentasPagoData=[],puestosData=[];
 let selIconObl='',selIconAcc='';
@@ -2244,10 +2252,14 @@ function renderWidgets(){
 // ─── CALENDARIO DE VENCIMIENTOS ────────────────────────────────
 let calMonth=new Date(TODAY.getFullYear(),TODAY.getMonth(),1);
 let calSelectedDate=null;
+let calExpanded=localStorage.getItem('ep_cal_expanded')==='1';
+function toggleCal(){calExpanded=!calExpanded;localStorage.setItem('ep_cal_expanded',calExpanded?'1':'0');renderCalendar();}
 function calNav(delta){calMonth.setMonth(calMonth.getMonth()+delta);renderCalendar();}
 function calToday(){calMonth=new Date(TODAY.getFullYear(),TODAY.getMonth(),1);calSelectedDate=null;renderCalendar();renderList();}
 function calDayClick(iso){if(!iso)return;calSelectedDate=(calSelectedDate===iso)?null:iso;renderCalendar();renderList();}
 function renderCalendar(){
+  document.getElementById('cal-widget').classList.toggle('cal-collapsed',!calExpanded);
+  document.getElementById('cal-toggle-ico').textContent=calExpanded?'Ocultar calendario ▴':'📅 Ver calendario ▾';
   const data=entData();
   const y=calMonth.getFullYear(),m=calMonth.getMonth();
   const label=calMonth.toLocaleDateString('es-MX',{month:'long',year:'numeric'});
@@ -2793,12 +2805,13 @@ function closeViewer(){document.getElementById('viewer-ov').classList.remove('op
 // ─── RH ──────────────────────────────────────────────────────
 function renderRhTabs(){
   const activos=empData.filter(e=>e.activo);
-  let html='<div class="tab '+(currentRhEnt==='ALL'?'active':'')+'" onclick="switchRhEnt(\'ALL\')">Todos ('+activos.length+')</div>';
-  ENT_ORDER.forEach(ek=>{
+  const withEmp=ENT_ORDER.filter(ek=>activos.some(x=>x.entidad===ek));
+  if(!withEmp.includes(currentRhEnt))currentRhEnt=withEmp[0]||null;
+  const html=withEmp.map(ek=>{
     const e=ENTS[ek];
     const cnt=activos.filter(x=>x.entidad===ek).length;
-    html+='<div class="tab '+(currentRhEnt===ek?'active':'')+'" onclick="switchRhEnt(\''+ek+'\')"><span class="ent-dot" style="background:'+e.color+'"></span>'+e.label+' ('+cnt+')</div>';
-  });
+    return '<div class="tab '+(currentRhEnt===ek?'active':'')+'" onclick="switchRhEnt(\''+ek+'\')"><span class="ent-dot" style="background:'+e.color+'"></span>'+e.label+' ('+cnt+')</div>';
+  }).join('');
   document.getElementById('rh-tabs-bar').innerHTML=html;
 }
 function switchRhEnt(ek){currentRhEnt=ek;renderEmps();}
@@ -2832,7 +2845,7 @@ function renderEmps(){
   const status=document.getElementById('rh-status').value;
   const search=document.getElementById('rh-search').value.toLowerCase().trim();
   const puestoFiltro=document.getElementById('rh-puesto').value;
-  if(currentRhEnt!=='ALL')data=data.filter(e=>e.entidad===currentRhEnt);
+  data=data.filter(e=>e.entidad===currentRhEnt);
   if(status==='activo')data=data.filter(e=>e.activo&&e.tipo_contrato!=='prueba'||e.activo&&daysUntil(e.fecha_fin_prueba)>7);
   else if(status==='prueba')data=data.filter(e=>e.activo&&e.tipo_contrato==='prueba');
   else data=data.filter(e=>!e.activo);
