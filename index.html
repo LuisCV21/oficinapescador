@@ -48,6 +48,8 @@
   --green-light:#0A1E0E;--amber-light:#1A1200;--red-light:#1A0808;
   --green:#4ABA6E;--amber:#D4960A;--red:#E05252;
   --green-mid:#4ABA6E;--amber-mid:#D4960A;--red-mid:#E05252;
+  --teal:#4DBFCF;--teal-light:#0A2226;
+  --purple:#B58AFF;--purple-light:#1D1430;
   --sb-bg:#0F2238;
 }
 
@@ -193,6 +195,15 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .wv-red{color:var(--red)}.wv-amber{color:var(--amber)}.wv-copper{color:var(--copper)}
 .wv-green{color:var(--green)}.wv-slate{color:var(--slate)}
 
+/* Obligaciones: barra de resumen compacta (más chica que el widget genérico) */
+#widgets{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+#widgets .widget{padding:8px 14px;border-left:3px solid var(--border);
+  display:flex;align-items:center;gap:9px;flex:1 1 130px;min-width:110px}
+#widgets .widget-icon{font-size:16px;margin-bottom:0}
+#widgets .widget-body{display:flex;flex-direction:column;gap:0;min-width:0}
+#widgets .widget-val{font-size:17px;font-weight:600;line-height:1.1}
+#widgets .widget-label{font-size:9px;margin-bottom:0;white-space:nowrap}
+
 /* ── TIMELINE ── */
 .tl-widget{background:var(--surface);border-radius:var(--rxl);padding:20px;
   box-shadow:var(--shadow);border:1px solid var(--border);margin-bottom:20px}
@@ -251,16 +262,25 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .sec-lbl{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;
   letter-spacing:.1em;padding:8px 0 4px;display:flex;align-items:center;gap:8px}
 .sec-lbl::after{content:'';flex:1;height:1px;background:var(--border)}
-.cat-sec-hdr{font-family:var(--display);font-size:15px;font-weight:600;color:var(--slate);
-  padding:18px 0 8px;margin-top:4px;border-top:1px solid var(--border)}
-.cat-sec-hdr:first-child{margin-top:0;padding-top:4px;border-top:none}
-.cat-sec-count{font-size:11px;font-weight:500;color:var(--text3);margin-left:6px}
+/* ── SECCIONES DE OBLIGACIONES (subpestañas) ── */
+.osec-tabs{display:flex;gap:8px;padding:14px 16px 0;flex-wrap:wrap}
+.osec-tab{padding:7px 15px;border-radius:18px;font-size:12px;font-weight:600;cursor:pointer;
+  border:1.5px solid var(--border2);background:var(--surface);color:var(--text2);transition:all .2s;
+  display:flex;align-items:center;gap:6px}
+.osec-tab:hover:not(.active){background:var(--surface2)}
+.osec-tab .tab-badge{background:rgba(0,0,0,.15)}
+.osec-tab.sec-recurrente.active{background:var(--teal);border-color:var(--teal);color:#fff}
+.osec-tab.sec-buro.active{background:var(--purple);border-color:var(--purple);color:#fff}
+.osec-tab.sec-otros.active{background:var(--slate);border-color:var(--slate);color:#fff}
 
 /* OBL CARD */
 .obl-card{background:var(--surface);border-radius:var(--rl);
-  border:1px solid var(--border);box-shadow:var(--shadow);overflow:hidden;
+  border:1px solid var(--border);border-left:4px solid var(--border);box-shadow:var(--shadow);overflow:hidden;
   transition:box-shadow .2s,border-color .2s}
 .obl-card:hover{box-shadow:var(--shadow2);border-color:var(--border2)}
+.obl-card.cat-recurrente{background:var(--teal-light);border-left-color:var(--teal)}
+.obl-card.cat-buro{background:var(--purple-light);border-left-color:var(--purple)}
+.obl-card.cat-otros{background:var(--surface2);border-left-color:var(--text3)}
 .obl-card-body{display:flex;align-items:flex-start;gap:14px;padding:14px 16px}
 .obl-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0}
 .obl-info{flex:1;min-width:0}
@@ -686,6 +706,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         </div>
         <div class="tabs-wrap">
           <div class="tabs-bar" id="tabs-bar"></div>
+          <div class="osec-tabs" id="osec-tabs"></div>
           <div class="toolbar">
             <div class="toolbar-l">
               <div class="srch-wrap"><span class="srch-ico">🔍</span><input class="srch" type="text" id="s-search" placeholder="Buscar..." oninput="renderList()"></div>
@@ -1880,11 +1901,18 @@ function canDelete(){return isAdmin();}
 function showIfAdmin(html){return isAdmin()?html:'';}
 let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[];
 let currentEnt=localStorage.getItem('ep_obl_ent')||null,currentRhEnt='ALL';
+let currentOblSec=localStorage.getItem('ep_obl_sec')||null;
 const OBL_SECTIONS=[
-  {key:'recurrente',label:'🔁 Recurrente',cats:['servicio','seguro']},
-  {key:'buro',label:'🏛️ Trámites y burocracia',cats:['imss','impuesto']},
-  {key:'otros',label:'📋 Otros',cats:['otro']},
+  {key:'recurrente',label:'🔁 Recurrente'},
+  {key:'buro',label:'🏛️ Trámites y burocracia'},
+  {key:'otros',label:'📋 Otros'},
 ];
+function oblSection(o){
+  if(o.categoria==='imss'||o.categoria==='impuesto')return 'buro';
+  if(o.recurrencia==='annual')return 'buro';
+  if(o.categoria==='servicio'||o.categoria==='seguro')return 'recurrente';
+  return 'otros';
+}
 let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null;
 let selIconObl='',selIconAcc='';
 let pendingFiles={};
@@ -2032,6 +2060,7 @@ function renderAll(){
   renderTabs();
   renderWidgets();
   renderTimeline();
+  renderSecTabs();
   renderList();
   updateSidebarBadge();
 }
@@ -2047,10 +2076,10 @@ function renderWidgets(){
   const ids=new Set(data.map(o=>o.id));
   const conPagos=new Set(pagosData.filter(p=>ids.has(p.obligacion_id)).map(p=>p.obligacion_id)).size;
   document.getElementById('widgets').innerHTML=`
-    <div class="widget"><div class="widget-accent" style="background:var(--red)"></div><span class="widget-icon">🚨</span><div class="widget-label">Vencidas</div><div class="widget-val wv-red">${ov}</div><div class="widget-sub">Atención inmediata</div></div>
-    <div class="widget"><div class="widget-accent" style="background:var(--amber)"></div><span class="widget-icon">⚠️</span><div class="widget-label">Urgentes</div><div class="widget-val wv-amber">${ug}</div><div class="widget-sub">≤ 7 días</div></div>
-    <div class="widget"><div class="widget-accent" style="background:var(--copper)"></div><span class="widget-icon">📅</span><div class="widget-label">Próximas</div><div class="widget-val wv-copper">${sn}</div><div class="widget-sub">≤ 15 días</div></div>
-    <div class="widget"><div class="widget-accent" style="background:var(--green)"></div><span class="widget-icon">✅</span><div class="widget-label">Con historial</div><div class="widget-val wv-green">${conPagos}</div><div class="widget-sub">De ${data.length} registradas</div></div>
+    <div class="widget" style="border-left-color:var(--red)"><span class="widget-icon">🚨</span><div class="widget-body"><div class="widget-val wv-red">${ov}</div><div class="widget-label">Vencidas</div></div></div>
+    <div class="widget" style="border-left-color:var(--amber)"><span class="widget-icon">⚠️</span><div class="widget-body"><div class="widget-val wv-amber">${ug}</div><div class="widget-label">Urgentes</div></div></div>
+    <div class="widget" style="border-left-color:var(--copper)"><span class="widget-icon">📅</span><div class="widget-body"><div class="widget-val wv-copper">${sn}</div><div class="widget-label">Próximas</div></div></div>
+    <div class="widget" style="border-left-color:var(--green)"><span class="widget-icon">✅</span><div class="widget-body"><div class="widget-val wv-green">${conPagos}</div><div class="widget-label">Con historial</div></div></div>
   `;
 }
 
@@ -2089,7 +2118,27 @@ function renderTabs(){
   });
   document.getElementById('tabs-bar').innerHTML=html;
 }
-function switchEnt(ek){currentEnt=ek;localStorage.setItem('ep_obl_ent',ek);renderTabs();renderWidgets();renderTimeline();renderList();}
+function switchEnt(ek){currentEnt=ek;localStorage.setItem('ep_obl_ent',ek);renderTabs();renderWidgets();renderTimeline();renderSecTabs();renderList();}
+
+// ─── SECCIONES (subpestañas Recurrente / Burocracia / Otros) ──
+function pickDefaultSec(){
+  const data=entData();
+  const found=OBL_SECTIONS.find(s=>data.some(o=>oblSection(o)===s.key));
+  return found?found.key:'recurrente';
+}
+function renderSecTabs(){
+  const data=entData();
+  const avail=OBL_SECTIONS.filter(s=>s.key!=='otros'||data.some(o=>oblSection(o)==='otros'));
+  if(!currentOblSec||!avail.some(s=>s.key===currentOblSec))currentOblSec=pickDefaultSec();
+  let html='';
+  avail.forEach(s=>{
+    const items=data.filter(o=>oblSection(o)===s.key);
+    const cnt=items.filter(o=>['overdue','urgent'].includes(oblStatus(o))).length;
+    html+=`<div class="osec-tab sec-${s.key} ${currentOblSec===s.key?'active':''}" onclick="switchOblSec('${s.key}')">${s.label} (${items.length})${cnt>0?` <span class="tab-badge">${cnt}</span>`:''}</div>`;
+  });
+  document.getElementById('osec-tabs').innerHTML=html;
+}
+function switchOblSec(key){currentOblSec=key;localStorage.setItem('ep_obl_sec',key);renderSecTabs();renderList();}
 
 // ─── LIST ─────────────────────────────────────────────────────
 function renderList(){
@@ -2098,6 +2147,7 @@ function renderList(){
   const status=document.getElementById('s-status').value;
   const search=document.getElementById('s-search').value.toLowerCase().trim();
   data=data.filter(o=>o.entidad===currentEnt||(o.entidad==='MULTI'&&(currentEnt==='HOT'||currentEnt==='PUE')));
+  data=data.filter(o=>oblSection(o)===currentOblSec);
   if(cat!=='ALL')data=data.filter(o=>o.categoria===cat);
   if(status!=='ALL')data=data.filter(o=>oblStatus(o)===status);
   if(search)data=data.filter(o=>o.nombre.toLowerCase().includes(search)||(o.notas||'').toLowerCase().includes(search));
@@ -2108,16 +2158,11 @@ function renderList(){
   if(!data.length){el.innerHTML=`<div class="empty"><div class="empty-ico">📋</div>Sin obligaciones para esta selección</div>`;return;}
   const statusSecs=[{key:'overdue',label:'Vencidas'},{key:'urgent',label:'Urgentes — ≤ 7 días'},{key:'soon',label:'Próximas — ≤ 15 días'},{key:'ok',label:'Al corriente'}];
   let html='';
-  OBL_SECTIONS.forEach(catSec=>{
-    const catItems=data.filter(o=>catSec.cats.includes(o.categoria));
-    if(!catItems.length)return;
-    html+=`<div class="cat-sec-hdr">${catSec.label}<span class="cat-sec-count">(${catItems.length})</span></div>`;
-    statusSecs.forEach(sec=>{
-      const items=catItems.filter(o=>oblStatus(o)===sec.key);
-      if(!items.length)return;
-      html+=`<div class="sec-lbl">${sec.label} (${items.length})</div>`;
-      items.forEach(o=>html+=renderCard(o));
-    });
+  statusSecs.forEach(sec=>{
+    const items=data.filter(o=>oblStatus(o)===sec.key);
+    if(!items.length)return;
+    html+=`<div class="sec-lbl">${sec.label} (${items.length})</div>`;
+    items.forEach(o=>html+=renderCard(o));
   });
   el.innerHTML=html;
 }
@@ -2156,7 +2201,7 @@ function renderCard(o){
   let respHtml=o.responsable?'<div style="font-size:10px;color:var(--text3)">'+o.responsable+'</div>':'';
   let proxHtml=pays.length?'<span style="font-size:10px;color:var(--text3)">Próx. vencimiento: '+fmt(o.fecha_limite)+'</span>':'';
   let notasHtml=o.notas?'<div class="obl-notes">'+o.notas+'</div>':'';
-  return '<div class="obl-card">'
+  return '<div class="obl-card cat-'+oblSection(o)+'">'
     +'<div class="obl-card-body">'
     +'<div class="obl-icon" style="background:'+iconBg(o.categoria)+'">'+oblIcon(o)+'</div>'
     +'<div class="obl-info">'
