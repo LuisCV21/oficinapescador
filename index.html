@@ -262,15 +262,6 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .sec-lbl{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;
   letter-spacing:.1em;padding:8px 0 4px;display:flex;align-items:center;gap:8px}
 .sec-lbl::after{content:'';flex:1;height:1px;background:var(--border)}
-/* ── SECCIONES DE OBLIGACIONES (subpestañas) ── */
-.osec-tabs{display:flex;gap:8px;padding:14px 16px 0;flex-wrap:wrap}
-.osec-tab{padding:7px 15px;border-radius:18px;font-size:12px;font-weight:600;cursor:pointer;
-  border:1.5px solid var(--border2);background:var(--surface);color:var(--text2);transition:all .2s;
-  display:flex;align-items:center;gap:6px}
-.osec-tab:hover:not(.active){background:var(--surface2)}
-.osec-tab .tab-badge{background:rgba(0,0,0,.15)}
-.osec-tab.active{background:var(--slate);border-color:var(--slate);color:#fff}
-
 /* ── CONFIGURACIÓN: CATEGORÍAS ── */
 .cfgcat-row{display:flex;align-items:center;gap:12px;background:var(--surface);
   border:1px solid var(--border);border-radius:var(--rl);padding:12px 16px;
@@ -731,7 +722,6 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         </div>
         <div class="tabs-wrap">
           <div class="tabs-bar" id="tabs-bar"></div>
-          <div class="osec-tabs" id="osec-tabs"></div>
           <div class="toolbar">
             <div class="toolbar-l">
               <div class="srch-wrap"><span class="srch-ico">🔍</span><input class="srch" type="text" id="s-search" placeholder="Buscar..." oninput="renderList()"></div>
@@ -1986,15 +1976,6 @@ function canDelete(){return isAdmin();}
 function showIfAdmin(html){return isAdmin()?html:'';}
 let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[];
 let currentEnt=localStorage.getItem('ep_obl_ent')||null,currentRhEnt='ALL';
-let currentOblSec=localStorage.getItem('ep_obl_sec')||null;
-const OBL_SECTIONS=[
-  {key:'recurrente',label:'🔁 Recurrente'},
-  {key:'buro',label:'🏛️ Trámites y burocracia'},
-];
-function oblSection(o){
-  if(o.recurrencia==='annual')return 'buro';
-  return catInfo(o.categoria).tipo==='buro'?'buro':'recurrente';
-}
 let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null,editCatId=null,editCuentaId=null,editPuestoId=null;
 let cuentasPagoData=[],puestosData=[];
 let selIconObl='',selIconAcc='';
@@ -2165,7 +2146,6 @@ function renderAll(){
   renderTabs();
   renderWidgets();
   renderTimeline();
-  renderSecTabs();
   renderList();
   updateSidebarBadge();
 }
@@ -2263,27 +2243,7 @@ function renderTabs(){
   });
   document.getElementById('tabs-bar').innerHTML=html;
 }
-function switchEnt(ek){currentEnt=ek;localStorage.setItem('ep_obl_ent',ek);renderTabs();renderWidgets();renderTimeline();renderSecTabs();renderList();}
-
-// ─── SECCIONES (subpestañas Recurrente / Burocracia / Otros) ──
-function pickDefaultSec(){
-  const data=entData();
-  const found=OBL_SECTIONS.find(s=>data.some(o=>oblSection(o)===s.key));
-  return found?found.key:'recurrente';
-}
-function renderSecTabs(){
-  const data=entData();
-  const avail=OBL_SECTIONS;
-  if(!currentOblSec||!avail.some(s=>s.key===currentOblSec))currentOblSec=pickDefaultSec();
-  let html='';
-  avail.forEach(s=>{
-    const items=data.filter(o=>oblSection(o)===s.key);
-    const cnt=items.filter(o=>['overdue','urgent'].includes(oblStatus(o))).length;
-    html+=`<div class="osec-tab sec-${s.key} ${currentOblSec===s.key?'active':''}" onclick="switchOblSec('${s.key}')">${s.label} (${items.length})${cnt>0?` <span class="tab-badge">${cnt}</span>`:''}</div>`;
-  });
-  document.getElementById('osec-tabs').innerHTML=html;
-}
-function switchOblSec(key){currentOblSec=key;localStorage.setItem('ep_obl_sec',key);renderSecTabs();renderList();}
+function switchEnt(ek){currentEnt=ek;localStorage.setItem('ep_obl_ent',ek);renderTabs();renderWidgets();renderTimeline();renderList();}
 
 // ─── LIST ─────────────────────────────────────────────────────
 function renderList(){
@@ -2292,7 +2252,6 @@ function renderList(){
   const status=document.getElementById('s-status').value;
   const search=document.getElementById('s-search').value.toLowerCase().trim();
   data=data.filter(o=>o.entidad===currentEnt||(o.entidad==='MULTI'&&(currentEnt==='HOT'||currentEnt==='PUE')));
-  data=data.filter(o=>oblSection(o)===currentOblSec);
   if(cat!=='ALL')data=data.filter(o=>o.categoria===cat);
   if(status!=='ALL')data=data.filter(o=>oblStatus(o)===status);
   if(search)data=data.filter(o=>o.nombre.toLowerCase().includes(search)||(o.notas||'').toLowerCase().includes(search));
