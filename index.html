@@ -2310,7 +2310,7 @@ function renderTile(o){
   const {chipTxt,chipCls}=oblChip(o);
   const cat=catInfo(o.categoria);
   const oid=o.id;
-  return '<div class="obl-tile" style="border-left-color:'+cat.color+';background:'+catBg(o.categoria,16)+'" onclick="openOblDetail(\''+oid+'\')">'
+  return '<div class="obl-tile" style="border-left-color:'+cat.color+';background:'+catBg(o.categoria,22)+'" onclick="openOblDetail(\''+oid+'\')">'
     +'<div class="obl-tile-top">'
     +'<div class="obl-tile-icon" style="background:'+catBg(o.categoria,32)+'">'+oblIcon(o)+'</div>'
     +'<div class="obl-tile-title">'+o.nombre+'</div>'
