@@ -251,6 +251,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .sec-lbl{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;
   letter-spacing:.1em;padding:8px 0 4px;display:flex;align-items:center;gap:8px}
 .sec-lbl::after{content:'';flex:1;height:1px;background:var(--border)}
+.cat-sec-hdr{font-family:var(--display);font-size:15px;font-weight:600;color:var(--slate);
+  padding:18px 0 8px;margin-top:4px;border-top:1px solid var(--border)}
+.cat-sec-hdr:first-child{margin-top:0;padding-top:4px;border-top:none}
+.cat-sec-count{font-size:11px;font-weight:500;color:var(--text3);margin-left:6px}
 
 /* OBL CARD */
 .obl-card{background:var(--surface);border-radius:var(--rl);
@@ -608,8 +612,13 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       <div class="sb-header">
         <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em">Menú principal</div>
       </div>
+      <div class="sb-section">Inicio</div>
+      <div class="sb-item active" onclick="showPage('inicio')" id="si-inicio">
+        <span class="sb-item-icon">🏠</span>
+        <span class="sb-item-label">Inicio</span>
+      </div>
       <div class="sb-section">Operación</div>
-      <div class="sb-item active" onclick="showPage('obligaciones')" id="si-obligaciones">
+      <div class="sb-item" onclick="showPage('obligaciones')" id="si-obligaciones">
         <span class="sb-item-icon">🗓️</span>
         <span class="sb-item-label">Obligaciones</span>
         <span class="sb-badge" id="badge-obls" style="display:none">0</span>
@@ -656,12 +665,16 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
     </div>
     <div class="content">
 
-      <!-- OBLIGACIONES -->
-      <div class="page active" id="page-obligaciones">
+      <!-- INICIO -->
+      <div class="page active" id="page-inicio">
         <div id="gm-container"></div>
         <div id="supervision-container"></div>
-        <div id="nota-container"></div>
         <div id="missing-container"></div>
+        <div id="nota-container"></div>
+      </div>
+
+      <!-- OBLIGACIONES -->
+      <div class="page" id="page-obligaciones">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
           <div style="font-size:18px;font-weight:500;color:var(--text)">Obligaciones y pagos</div>
           <button class="btn btn-filled" onclick="openOblModal()">+ Nueva obligación</button>
@@ -1866,7 +1879,12 @@ function isAdmin(){return currentPerfil&&currentPerfil.rol==='admin';}
 function canDelete(){return isAdmin();}
 function showIfAdmin(html){return isAdmin()?html:'';}
 let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[];
-let currentEnt='ALL',currentRhEnt='ALL';
+let currentEnt=localStorage.getItem('ep_obl_ent')||null,currentRhEnt='ALL';
+const OBL_SECTIONS=[
+  {key:'recurrente',label:'🔁 Recurrente',cats:['servicio','seguro']},
+  {key:'buro',label:'🏛️ Trámites y burocracia',cats:['imss','impuesto']},
+  {key:'otros',label:'📋 Otros',cats:['otro']},
+];
 let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null;
 let selIconObl='',selIconAcc='';
 let pendingFiles={};
@@ -2011,35 +2029,40 @@ function renderAll(){
   renderNota();
   // renderSupervisionWidget(); // PAUSADO (Luis pidió pausar el módulo de tareas) — descomenta para reactivar
   renderMissingDocs();
+  renderTabs();
   renderWidgets();
   renderTimeline();
-  renderTabs();
   renderList();
   updateSidebarBadge();
 }
 
+function entData(){return oblData.filter(o=>o.entidad===currentEnt||(o.entidad==='MULTI'&&(currentEnt==='HOT'||currentEnt==='PUE')));}
+
 // ─── WIDGETS ──────────────────────────────────────────────────
 function renderWidgets(){
-  const ov=oblData.filter(o=>oblStatus(o)==='overdue').length;
-  const ug=oblData.filter(o=>oblStatus(o)==='urgent').length;
-  const sn=oblData.filter(o=>oblStatus(o)==='soon').length;
-  const conPagos=new Set(pagosData.map(p=>p.obligacion_id)).size;
+  const data=entData();
+  const ov=data.filter(o=>oblStatus(o)==='overdue').length;
+  const ug=data.filter(o=>oblStatus(o)==='urgent').length;
+  const sn=data.filter(o=>oblStatus(o)==='soon').length;
+  const ids=new Set(data.map(o=>o.id));
+  const conPagos=new Set(pagosData.filter(p=>ids.has(p.obligacion_id)).map(p=>p.obligacion_id)).size;
   document.getElementById('widgets').innerHTML=`
     <div class="widget"><div class="widget-accent" style="background:var(--red)"></div><span class="widget-icon">🚨</span><div class="widget-label">Vencidas</div><div class="widget-val wv-red">${ov}</div><div class="widget-sub">Atención inmediata</div></div>
     <div class="widget"><div class="widget-accent" style="background:var(--amber)"></div><span class="widget-icon">⚠️</span><div class="widget-label">Urgentes</div><div class="widget-val wv-amber">${ug}</div><div class="widget-sub">≤ 7 días</div></div>
     <div class="widget"><div class="widget-accent" style="background:var(--copper)"></div><span class="widget-icon">📅</span><div class="widget-label">Próximas</div><div class="widget-val wv-copper">${sn}</div><div class="widget-sub">≤ 15 días</div></div>
-    <div class="widget"><div class="widget-accent" style="background:var(--green)"></div><span class="widget-icon">✅</span><div class="widget-label">Con historial</div><div class="widget-val wv-green">${conPagos}</div><div class="widget-sub">De ${oblData.length} registradas</div></div>
+    <div class="widget"><div class="widget-accent" style="background:var(--green)"></div><span class="widget-icon">✅</span><div class="widget-label">Con historial</div><div class="widget-val wv-green">${conPagos}</div><div class="widget-sub">De ${data.length} registradas</div></div>
   `;
 }
 
 // ─── TIMELINE ─────────────────────────────────────────────────
 function renderTimeline(){
   let html='';
+  const data=entData();
   for(let i=0;i<45;i++){
     const d=new Date(TODAY);d.setDate(d.getDate()+i);
     const iso=d.toISOString().slice(0,10);
     const dn=['Do','Lu','Ma','Mi','Ju','Vi','Sa'][d.getDay()];
-    const evs=oblData.filter(o=>o.fecha_limite===iso);
+    const evs=data.filter(o=>o.fecha_limite===iso);
     let evH='';
     evs.forEach(o=>{
       const st=oblStatus(o);
@@ -2052,9 +2075,13 @@ function renderTimeline(){
 }
 
 // ─── TABS ─────────────────────────────────────────────────────
+function pickDefaultEnt(){
+  const found=ENT_ORDER.find(ek=>oblData.some(o=>(o.entidad===ek||(o.entidad==='MULTI'&&(ek==='HOT'||ek==='PUE')))&&['overdue','urgent'].includes(oblStatus(o))));
+  return found||ENT_ORDER[0];
+}
 function renderTabs(){
-  const allB=oblData.filter(o=>['overdue','urgent'].includes(oblStatus(o))).length;
-  let html=`<div class="tab ${currentEnt==='ALL'?'active':''}" onclick="switchEnt('ALL')">Todos${allB>0?` <span class="tab-badge">${allB}</span>`:''}</div>`;
+  if(!currentEnt||!ENT_ORDER.includes(currentEnt))currentEnt=pickDefaultEnt();
+  let html='';
   ENT_ORDER.forEach(ek=>{
     const e=ENTS[ek];if(!e)return;
     const cnt=oblData.filter(o=>(o.entidad===ek||(o.entidad==='MULTI'&&(ek==='HOT'||ek==='PUE')))&&['overdue','urgent'].includes(oblStatus(o))).length;
@@ -2062,7 +2089,7 @@ function renderTabs(){
   });
   document.getElementById('tabs-bar').innerHTML=html;
 }
-function switchEnt(ek){currentEnt=ek;renderTabs();renderList();}
+function switchEnt(ek){currentEnt=ek;localStorage.setItem('ep_obl_ent',ek);renderTabs();renderWidgets();renderTimeline();renderList();}
 
 // ─── LIST ─────────────────────────────────────────────────────
 function renderList(){
@@ -2070,7 +2097,7 @@ function renderList(){
   const cat=document.getElementById('s-cat').value;
   const status=document.getElementById('s-status').value;
   const search=document.getElementById('s-search').value.toLowerCase().trim();
-  if(currentEnt!=='ALL')data=data.filter(o=>o.entidad===currentEnt||(o.entidad==='MULTI'&&(currentEnt==='HOT'||currentEnt==='PUE')));
+  data=data.filter(o=>o.entidad===currentEnt||(o.entidad==='MULTI'&&(currentEnt==='HOT'||currentEnt==='PUE')));
   if(cat!=='ALL')data=data.filter(o=>o.categoria===cat);
   if(status!=='ALL')data=data.filter(o=>oblStatus(o)===status);
   if(search)data=data.filter(o=>o.nombre.toLowerCase().includes(search)||(o.notas||'').toLowerCase().includes(search));
@@ -2079,13 +2106,18 @@ function renderList(){
   document.getElementById('list-count').textContent=`${data.length} obligación${data.length!==1?'es':''}`;
   const el=document.getElementById('obl-list');
   if(!data.length){el.innerHTML=`<div class="empty"><div class="empty-ico">📋</div>Sin obligaciones para esta selección</div>`;return;}
-  const secs=[{key:'overdue',label:'Vencidas'},{key:'urgent',label:'Urgentes — ≤ 7 días'},{key:'soon',label:'Próximas — ≤ 15 días'},{key:'ok',label:'Al corriente'}];
+  const statusSecs=[{key:'overdue',label:'Vencidas'},{key:'urgent',label:'Urgentes — ≤ 7 días'},{key:'soon',label:'Próximas — ≤ 15 días'},{key:'ok',label:'Al corriente'}];
   let html='';
-  secs.forEach(sec=>{
-    const items=data.filter(o=>oblStatus(o)===sec.key);
-    if(!items.length)return;
-    html+=`<div class="sec-lbl">${sec.label} (${items.length})</div>`;
-    items.forEach(o=>html+=renderCard(o));
+  OBL_SECTIONS.forEach(catSec=>{
+    const catItems=data.filter(o=>catSec.cats.includes(o.categoria));
+    if(!catItems.length)return;
+    html+=`<div class="cat-sec-hdr">${catSec.label}<span class="cat-sec-count">(${catItems.length})</span></div>`;
+    statusSecs.forEach(sec=>{
+      const items=catItems.filter(o=>oblStatus(o)===sec.key);
+      if(!items.length)return;
+      html+=`<div class="sec-lbl">${sec.label} (${items.length})</div>`;
+      items.forEach(o=>html+=renderCard(o));
+    });
   });
   el.innerHTML=html;
 }
