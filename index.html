@@ -582,6 +582,21 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .asist-tot-row td{background:var(--copper-light);border-top:2px solid var(--copper);border-bottom:none}
 .asist-tot-row td.asist-name{color:var(--copper-dark);text-transform:uppercase;font-size:11px;letter-spacing:.04em}
 .asist-tot-row td.asist-total{color:var(--copper-dark)}
+
+/* ── IMPRESIÓN ASISTENCIA ── */
+#print-asist{display:none}
+@media print{
+  body *{visibility:hidden}
+  #print-asist,#print-asist *{visibility:visible}
+  #print-asist{display:block;position:absolute;left:0;top:0;width:100%;padding:0}
+  .print-asist-title{font-size:16px;font-weight:700;color:#000}
+  .print-asist-sub{font-size:11px;color:#333;margin-bottom:12px}
+  .print-asist-table{width:100%;border-collapse:collapse;font-size:11px;color:#000}
+  .print-asist-table th,.print-asist-table td{border:1px solid #999;padding:5px 6px;text-align:center}
+  .print-asist-table td:first-child,.print-asist-table th:first-child{text-align:left}
+  .print-asist-table tfoot td{font-weight:700;background:#f0f0f0}
+  .print-legend{margin-top:10px;font-size:9px;color:#333}
+}
 .asist-estatus-opt{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--r);
   border:1.5px solid var(--border2);cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
 .asist-estatus-opt:hover{border-color:var(--copper)}
@@ -808,6 +823,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             <button class="btn-icon" onclick="goAsistWeek(-1)" title="Semana anterior">◀</button>
             <button class="btn btn-sm" onclick="goAsistToday()">Esta semana</button>
             <button class="btn-icon" onclick="goAsistWeek(1)" title="Semana siguiente">▶</button>
+            <button class="btn btn-sm" onclick="printAsistencia()">🖨️ Imprimir</button>
           </div>
         </div>
         <div class="tabs-bar" id="asist-tabs-bar">
@@ -819,6 +835,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <div style="font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin:22px 0 10px">Incidencias de la semana</div>
         <div id="asist-incidencias" style="display:flex;flex-direction:column;gap:8px;padding-bottom:70px"></div>
       </div>
+      <div id="print-asist"></div>
 
       <!-- ACCESOS -->
       <div class="page" id="page-accesos">
@@ -2897,6 +2914,41 @@ function renderAsistIncidencias(emps){
       <span class="pill" style="background:${est.bg};color:${est.color}">${est.ico} ${est.label}${destino}</span>
     </div>`;
   }).join('');
+}
+
+// ─── IMPRESIÓN SEMANAL ──────────────────────────────────────────
+function printAsistencia(){
+  const days=asistWeekDays(asistWeekStart);
+  const diaLabels=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const activeIds=new Set(empData.filter(e=>e.entidad===asistActiveEnt&&e.activo).map(e=>e.id));
+  const weekEmpIds=new Set(asistData.map(a=>a.empleado_id));
+  const emps=empData.filter(e=>activeIds.has(e.id)||weekEmpIds.has(e.id)).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  const byEmpFecha={};
+  asistData.forEach(a=>{byEmpFecha[a.empleado_id+'_'+a.fecha]=a;});
+  const CODES={asistio:'A',descanso:'D',falta:'F',vacaciones:'V',incapacidad:'I',baja:'B',cambio_sucursal:'C'};
+
+  const thead=`<tr><th>Empleado</th>${days.map((d,i)=>`<th>${diaLabels[i]}<br>${Number(d.slice(8,10))}</th>`).join('')}<th>Total</th></tr>`;
+  const dayTotals=days.map(()=>0);
+  const rows=emps.map(e=>{
+    let total=0;
+    const cells=days.map((fecha,i)=>{
+      const a=byEmpFecha[e.id+'_'+fecha];
+      if(a&&a.estatus==='asistio'){total++;dayTotals[i]++;}
+      return`<td>${a?(CODES[a.estatus]||'?'):'—'}</td>`;
+    }).join('');
+    return`<tr><td>${e.nombre}</td>${cells}<td>${total}</td></tr>`;
+  }).join('');
+  const grandTotal=dayTotals.reduce((s,n)=>s+n,0);
+  const tfoot=`<tr><td>Asistieron</td>${dayTotals.map(n=>`<td>${n}</td>`).join('')}<td>${grandTotal}</td></tr>`;
+  const entLabel=(ENTS[asistActiveEnt]||{label:asistActiveEnt}).label;
+
+  document.getElementById('print-asist').innerHTML=`
+    <div class="print-asist-title">🐟 El Pescador — Asistencia semanal</div>
+    <div class="print-asist-sub">${entLabel} · Semana del ${fmtFechaCorta(days[0])} al ${fmtFechaCorta(days[6])}${emps.length?'':' · Sin empleados activos'}</div>
+    <table class="print-asist-table"><thead>${thead}</thead><tbody>${rows}</tbody><tfoot>${tfoot}</tfoot></table>
+    <div class="print-legend">A = Asistió · D = Descanso · F = Falta · V = Vacaciones · I = Incapacidad · B = Baja/Retiro · C = Cambió de sucursal · — = Sin registrar</div>
+  `;
+  window.print();
 }
 
 function openAsistPicker(empId,fecha){
