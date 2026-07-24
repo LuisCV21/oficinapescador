@@ -927,9 +927,9 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
           </div>
         </div>
         <div class="tabs-bar" id="nomina-tabs-bar">
-          <div class="tab active" data-ent="PUE" onclick="switchNominaEnt('PUE')">Puebla</div>
-          <div class="tab" data-ent="HOT" onclick="switchNominaEnt('HOT')">Hotel</div>
-          <div class="tab" data-ent="FLO" onclick="switchNominaEnt('FLO')">Florida</div>
+          <div class="tab active" data-ent="PUE" onclick="switchNomSemEnt('PUE')">Puebla</div>
+          <div class="tab" data-ent="HOT" onclick="switchNomSemEnt('HOT')">Hotel</div>
+          <div class="tab" data-ent="FLO" onclick="switchNomSemEnt('FLO')">Florida</div>
         </div>
         <div id="nomina-content" style="margin:14px 0"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
       </div>
@@ -3324,7 +3324,7 @@ async function clearAsistDia(){
 let nominaActiveEnt='PUE',nominaWeekStart=null,nominaPeriodo=null,nominaLineas=[];
 const NOMINA_DESCANSOS=['DOMINGO','LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO','VARIADOS'];
 
-function switchNominaEnt(ent){
+function switchNomSemEnt(ent){
   nominaActiveEnt=ent;
   document.querySelectorAll('#nomina-tabs-bar .tab').forEach(t=>t.classList.toggle('active',t.dataset.ent===ent));
   loadNomina().then(renderNomina);
