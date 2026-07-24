@@ -1,0 +1,1 @@
+-- Baseline placeholder: schema already existed on remote before migrations were tracked locally.

@@ -753,10 +753,21 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       <!-- CONFIGURACIÓN -->
       <div class="page" id="page-config">
         <div class="page-hdr">
-          <div><div class="page-title">Configuración</div><div class="page-sub">Categorías de obligaciones — colores, íconos y a qué grupo pertenecen</div></div>
-          <button class="btn btn-filled" onclick="openCatModal()">+ Nueva categoría</button>
+          <div><div class="page-title">Configuración</div><div class="page-sub" id="config-sub">Categorías de obligaciones — colores, íconos y a qué grupo pertenecen</div></div>
+          <button class="btn btn-filled" id="config-add-btn" onclick="openCatModal()">+ Nueva categoría</button>
         </div>
-        <div id="config-cats-list"></div>
+        <div class="tabs-wrap">
+          <div class="tabs-bar">
+            <div class="tab active" onclick="configTab('cats',this)">🏷️ Categorías</div>
+            <div class="tab" onclick="configTab('cuentas',this)">💳 Métodos de pago</div>
+            <div class="tab" onclick="configTab('puestos',this)">🧑‍💼 Puestos</div>
+          </div>
+          <div style="padding:14px 16px 16px">
+            <div id="config-cats-list"></div>
+            <div id="config-cuentas-list" style="display:none"></div>
+            <div id="config-puestos-list" style="display:none"></div>
+          </div>
+        </div>
       </div>
 
       <!-- BITÁCORA -->
@@ -805,6 +816,9 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
               <div class="srch-wrap"><span class="srch-ico">🔍</span><input class="srch" type="text" id="rh-search" placeholder="Buscar empleado..." oninput="renderEmps()"></div>
               <select class="fsel" id="rh-status" onchange="renderEmps()">
                 <option value="activo">Activos</option><option value="prueba">En prueba</option><option value="inactivo">Dados de baja</option>
+              </select>
+              <select class="fsel" id="rh-puesto" onchange="renderEmps()">
+                <option value="ALL">Todos los puestos</option>
               </select>
             </div>
           </div>
@@ -1008,6 +1022,26 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 </div>
 </div>
 
+<div class="modal-overlay" id="m-cuenta">
+<div class="modal">
+  <div class="modal-hdr"><div class="modal-title" id="m-cuenta-title">Nueva cuenta / método de pago</div><button class="btn-icon" onclick="closeModal('m-cuenta')">✕</button></div>
+  <div class="modal-body">
+    <div class="f-row"><label>Nombre <span class="req">*</span></label><input type="text" id="cuf-nombre" placeholder="Ej. Santander — Puebla"/></div>
+  </div>
+  <div class="modal-ftr"><button class="btn" onclick="closeModal('m-cuenta')">Cancelar</button><button class="btn btn-filled" id="cuenta-save-btn" onclick="saveCuenta()">Guardar</button></div>
+</div>
+</div>
+
+<div class="modal-overlay" id="m-puesto">
+<div class="modal">
+  <div class="modal-hdr"><div class="modal-title" id="m-puesto-title">Nuevo puesto</div><button class="btn-icon" onclick="closeModal('m-puesto')">✕</button></div>
+  <div class="modal-body">
+    <div class="f-row"><label>Nombre <span class="req">*</span></label><input type="text" id="puf-nombre" placeholder="Ej. Mesero"/></div>
+  </div>
+  <div class="modal-ftr"><button class="btn" onclick="closeModal('m-puesto')">Cancelar</button><button class="btn btn-filled" id="puesto-save-btn" onclick="savePuesto()">Guardar</button></div>
+</div>
+</div>
+
 <div class="modal-overlay" id="m-pay">
 <div class="modal">
   <div class="modal-hdr"><div class="modal-title">Registrar pago</div><button class="btn-icon" onclick="closeModal('m-pay')">✕</button></div>
@@ -1025,13 +1059,6 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       <div class="f-row"><label>Banco / cuenta <span class="req">*</span></label>
         <select id="pf-banco">
           <option value="">Seleccionar...</option>
-          <option value="Scotiabank — Puebla">Scotiabank — Puebla</option>
-          <option value="BBVA — Hotel">BBVA — Hotel</option>
-          <option value="Scotiabank — Florida">Scotiabank — Florida</option>
-          <option value="BBVA — Florida">BBVA — Florida</option>
-          <option value="Scotiabank — Obra">Scotiabank — Obra</option>
-          <option value="Efectivo">Efectivo</option>
-          <option value="Otro">Otro</option>
         </select>
       </div>
       <div class="f-row"><label>Referencia / folio</label><input type="text" id="pf-ref" placeholder="Opcional"/></div>
@@ -1085,7 +1112,9 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
           <option value="HOT">Hotel</option><option value="PUE">Puebla</option><option value="FLO">Florida</option><option value="OBR">Obra</option>
         </select>
       </div>
-      <div class="f-row"><label>Puesto</label><input type="text" id="ef-puesto" placeholder="Mesero, cocinero..."/></div>
+      <div class="f-row"><label>Puesto</label>
+        <select id="ef-puesto"><option value="">Sin puesto</option></select>
+      </div>
     </div>
     <div class="f-grid">
       <div class="f-row"><label>Fecha de ingreso <span class="req">*</span></label><input type="date" id="ef-ingreso"/></div>
@@ -1964,7 +1993,8 @@ function oblSection(o){
   if(o.recurrencia==='annual')return 'buro';
   return catInfo(o.categoria).tipo==='buro'?'buro':'recurrente';
 }
-let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null,editCatId=null;
+let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null,editCatId=null,editCuentaId=null,editPuestoId=null;
+let cuentasPagoData=[],puestosData=[];
 let selIconObl='',selIconAcc='';
 let pendingFiles={};
 let repoPath=[];
@@ -2040,7 +2070,7 @@ async function initApp(user){
 
 // ─── LOAD DATA ────────────────────────────────────────────────
 async function loadAll(){
-  await Promise.all([loadObligaciones(),loadOblCategorias(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger()]);
+  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger()]);
   renderAll();
 }
 async function loadBalances(){
@@ -2066,6 +2096,16 @@ async function loadObligaciones(){
 async function loadOblCategorias(){
   const {data}=await sb.from('obl_categorias').select('*').order('orden');
   catData=data||[];
+}
+async function loadCuentasPago(){
+  const {data}=await sb.from('cuentas_pago').select('*').order('orden');
+  cuentasPagoData=data||[];
+  populateCuentaSelect();
+}
+async function loadPuestos(){
+  const {data}=await sb.from('puestos').select('*').order('orden');
+  puestosData=data||[];
+  populatePuestoSelects();
 }
 async function loadPagos(){
   const {data}=await sb.from('pagos').select('*').order('created_at',{ascending:false});
@@ -2107,7 +2147,11 @@ function showPage(id){
   else if(id==='flotilla')renderFlotilla();
   else if(id==='balance')switchBalTab(balActiveTab);
   else if(id==='asistencia')loadAsistencia().then(renderAsistGrid);
-  else if(id==='config')renderConfigCats();
+  else if(id==='config'){
+    if(configTabCurrent==='cuentas')renderConfigCuentas();
+    else if(configTabCurrent==='puestos')renderConfigPuestos();
+    else renderConfigCats();
+  }
 }
 
 function renderAll(){
@@ -2138,6 +2182,29 @@ function populateCatSelects(){
     const prev=ofCat.value;
     ofCat.innerHTML=active.map(c=>`<option value="${c.clave}">${c.icono} ${c.label}</option>`).join('');
     if([...ofCat.options].some(o=>o.value===prev))ofCat.value=prev;
+  }
+}
+function populateCuentaSelect(){
+  const active=cuentasPagoData.filter(c=>c.activa!==false);
+  const sel=document.getElementById('pf-banco');
+  if(!sel)return;
+  const prev=sel.value;
+  sel.innerHTML='<option value="">Seleccionar...</option>'+active.map(c=>`<option value="${c.nombre}">${c.nombre}</option>`).join('');
+  if([...sel.options].some(o=>o.value===prev))sel.value=prev;
+}
+function populatePuestoSelects(){
+  const active=puestosData.filter(p=>p.activa!==false);
+  const ef=document.getElementById('ef-puesto');
+  if(ef){
+    const prev=ef.value;
+    ef.innerHTML='<option value="">Sin puesto</option>'+active.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
+    if([...ef.options].some(o=>o.value===prev))ef.value=prev;
+  }
+  const rh=document.getElementById('rh-puesto');
+  if(rh){
+    const prev=rh.value||'ALL';
+    rh.innerHTML='<option value="ALL">Todos los puestos</option>'+active.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
+    rh.value=[...rh.options].some(o=>o.value===prev)?prev:'ALL';
   }
 }
 
@@ -2404,6 +2471,127 @@ async function toggleCat(id,activar){
   await loadOblCategorias();populateCatSelects();renderConfigCats();renderAll();
 }
 
+// ─── CONFIGURACIÓN: TABS ────────────────────────────────────
+let configTabCurrent='cats';
+function configTab(tab,el){
+  configTabCurrent=tab;
+  document.querySelectorAll('#page-config .tab').forEach(t=>t.classList.remove('active'));
+  if(el)el.classList.add('active');
+  document.getElementById('config-cats-list').style.display=tab==='cats'?'block':'none';
+  document.getElementById('config-cuentas-list').style.display=tab==='cuentas'?'block':'none';
+  document.getElementById('config-puestos-list').style.display=tab==='puestos'?'block':'none';
+  const sub=document.getElementById('config-sub');
+  const addBtn=document.getElementById('config-add-btn');
+  if(tab==='cats'){
+    sub.textContent='Categorías de obligaciones — colores, íconos y a qué grupo pertenecen';
+    addBtn.textContent='+ Nueva categoría';
+    addBtn.setAttribute('onclick','openCatModal()');
+    renderConfigCats();
+  }else if(tab==='cuentas'){
+    sub.textContent='Cuentas y métodos de pago — se usan al registrar un pago en Obligaciones';
+    addBtn.textContent='+ Nueva cuenta';
+    addBtn.setAttribute('onclick','openCuentaModal()');
+    renderConfigCuentas();
+  }else{
+    sub.textContent='Puestos de Recursos Humanos — se usan al dar de alta empleados y para filtrarlos';
+    addBtn.textContent='+ Nuevo puesto';
+    addBtn.setAttribute('onclick','openPuestoModal()');
+    renderConfigPuestos();
+  }
+}
+
+// ─── CUENTAS / MÉTODOS DE PAGO (configurables, tabla cuentas_pago) ──
+function renderConfigCuentas(){
+  const el=document.getElementById('config-cuentas-list');
+  if(!el)return;
+  if(!cuentasPagoData.length){el.innerHTML=`<div class="empty"><div class="empty-ico">💳</div>Sin cuentas de pago aún</div>`;return;}
+  const admin=isAdmin();
+  el.innerHTML=cuentasPagoData.map(c=>{
+    const usedCount=pagosData.filter(p=>p.banco===c.nombre).length;
+    return `<div class="cfgcat-row ${c.activa===false?'inactive':''}">
+      <div class="cfgcat-swatch" style="background:var(--slate-light)">💳</div>
+      <div class="cfgcat-info">
+        <div class="cfgcat-label">${c.nombre}</div>
+        <div class="cfgcat-meta">${usedCount} pago${usedCount!==1?'s':''} registrado${usedCount!==1?'s':''}${c.activa===false?' · inactiva':''}</div>
+      </div>
+      ${admin?`<button class="btn-text" onclick="editCuenta('${c.id}')">Editar</button><button class="btn-text ${c.activa===false?'':'red'}" onclick="toggleCuenta('${c.id}',${c.activa===false})">${c.activa===false?'Reactivar':'Desactivar'}</button>`:''}
+    </div>`;
+  }).join('');
+}
+function openCuentaModal(id){
+  if(!isAdmin())return;
+  editCuentaId=id||null;
+  const c=id?cuentasPagoData.find(x=>x.id===id):null;
+  document.getElementById('m-cuenta-title').textContent=id?'Editar cuenta / método de pago':'Nueva cuenta / método de pago';
+  document.getElementById('cuf-nombre').value=c?c.nombre:'';
+  openModal('m-cuenta');
+}
+function editCuenta(id){openCuentaModal(id);}
+async function saveCuenta(){
+  const nombre=document.getElementById('cuf-nombre').value.trim();
+  if(!nombre){toast('El nombre es obligatorio',true);return;}
+  const obj={nombre,updated_at:new Date().toISOString()};
+  setLoading('cuenta-save-btn',true);
+  let err;
+  if(editCuentaId){({error:err}=await sb.from('cuentas_pago').update(obj).eq('id',editCuentaId));}
+  else{({error:err}=await sb.from('cuentas_pago').insert({...obj,orden:cuentasPagoData.length+1}));}
+  setLoading('cuenta-save-btn',false);
+  if(err){toast('Error al guardar: '+(err.message.includes('duplicate')?'ya existe una cuenta con ese nombre':err.message),true);return;}
+  toast(editCuentaId?'Cuenta actualizada':'Cuenta creada');
+  closeModal('m-cuenta');await loadCuentasPago();renderConfigCuentas();
+}
+async function toggleCuenta(id,activar){
+  if(!isAdmin())return;
+  await sb.from('cuentas_pago').update({activa:activar}).eq('id',id);
+  await loadCuentasPago();renderConfigCuentas();
+}
+
+// ─── PUESTOS (configurables, tabla puestos) ─────────────────
+function renderConfigPuestos(){
+  const el=document.getElementById('config-puestos-list');
+  if(!el)return;
+  if(!puestosData.length){el.innerHTML=`<div class="empty"><div class="empty-ico">🧑‍💼</div>Sin puestos aún</div>`;return;}
+  const admin=isAdmin();
+  el.innerHTML=puestosData.map(p=>{
+    const usedCount=empData.filter(e=>e.puesto===p.nombre).length;
+    return `<div class="cfgcat-row ${p.activa===false?'inactive':''}">
+      <div class="cfgcat-swatch" style="background:var(--slate-light)">🧑‍💼</div>
+      <div class="cfgcat-info">
+        <div class="cfgcat-label">${p.nombre}</div>
+        <div class="cfgcat-meta">${usedCount} empleado${usedCount!==1?'s':''}${p.activa===false?' · inactivo':''}</div>
+      </div>
+      ${admin?`<button class="btn-text" onclick="editPuesto('${p.id}')">Editar</button><button class="btn-text ${p.activa===false?'':'red'}" onclick="togglePuesto('${p.id}',${p.activa===false})">${p.activa===false?'Reactivar':'Desactivar'}</button>`:''}
+    </div>`;
+  }).join('');
+}
+function openPuestoModal(id){
+  if(!isAdmin())return;
+  editPuestoId=id||null;
+  const p=id?puestosData.find(x=>x.id===id):null;
+  document.getElementById('m-puesto-title').textContent=id?'Editar puesto':'Nuevo puesto';
+  document.getElementById('puf-nombre').value=p?p.nombre:'';
+  openModal('m-puesto');
+}
+function editPuesto(id){openPuestoModal(id);}
+async function savePuesto(){
+  const nombre=document.getElementById('puf-nombre').value.trim();
+  if(!nombre){toast('El nombre es obligatorio',true);return;}
+  const obj={nombre,updated_at:new Date().toISOString()};
+  setLoading('puesto-save-btn',true);
+  let err;
+  if(editPuestoId){({error:err}=await sb.from('puestos').update(obj).eq('id',editPuestoId));}
+  else{({error:err}=await sb.from('puestos').insert({...obj,orden:puestosData.length+1}));}
+  setLoading('puesto-save-btn',false);
+  if(err){toast('Error al guardar: '+(err.message.includes('duplicate')?'ya existe un puesto con ese nombre':err.message),true);return;}
+  toast(editPuestoId?'Puesto actualizado':'Puesto creado');
+  closeModal('m-puesto');await loadPuestos();renderConfigPuestos();
+}
+async function togglePuesto(id,activar){
+  if(!isAdmin())return;
+  await sb.from('puestos').update({activa:activar}).eq('id',id);
+  await loadPuestos();renderConfigPuestos();
+}
+
 // ─── PAY ─────────────────────────────────────────────────────
 function openPayModal(id){
   payOblId=id;pendingFiles={};
@@ -2608,9 +2796,11 @@ function renderEmps(){
   let data=[...empData];
   const status=document.getElementById('rh-status').value;
   const search=document.getElementById('rh-search').value.toLowerCase().trim();
+  const puestoFiltro=document.getElementById('rh-puesto').value;
   if(status==='activo')data=data.filter(e=>e.activo&&e.tipo_contrato!=='prueba'||e.activo&&daysUntil(e.fecha_fin_prueba)>7);
   else if(status==='prueba')data=data.filter(e=>e.activo&&e.tipo_contrato==='prueba');
   else data=data.filter(e=>!e.activo);
+  if(puestoFiltro&&puestoFiltro!=='ALL')data=data.filter(e=>e.puesto===puestoFiltro);
   if(search)data=data.filter(e=>e.nombre.toLowerCase().includes(search)||(e.puesto||'').toLowerCase().includes(search));
   const el=document.getElementById('rh-list');
   if(!data.length){el.innerHTML=`<div class="empty"><div class="empty-ico">👥</div>Sin empleados para esta selección</div>`;return;}
@@ -2731,7 +2921,13 @@ function openEmpModal(id){
   document.getElementById('m-emp-title').textContent=id?'Editar empleado':'Nuevo empleado';
   document.getElementById('ef-nombre').value=e?e.nombre:'';
   document.getElementById('ef-ent').value=e?e.entidad:'PUE';
-  document.getElementById('ef-puesto').value=e?e.puesto||'':'';
+  const puestoSel=document.getElementById('ef-puesto');
+  puestoSel.value=e?e.puesto||'':'';
+  if(e&&e.puesto&&puestoSel.value!==e.puesto){
+    const opt=document.createElement('option');
+    opt.value=e.puesto;opt.textContent=e.puesto+' (inactivo)';
+    puestoSel.appendChild(opt);puestoSel.value=e.puesto;
+  }
   document.getElementById('ef-ingreso').value=e?e.fecha_ingreso:new Date().toISOString().slice(0,10);
   document.getElementById('ef-contrato').value=e?e.tipo_contrato:'prueba';
   document.getElementById('ef-curp').value=e?e.curp||'':'';
@@ -5198,7 +5394,9 @@ function setupRealtime(){
   if(realtimeChannel){sb.removeChannel(realtimeChannel);}
   realtimeChannel=sb.channel('ep-changes')
     .on('postgres_changes',{event:'*',schema:'public',table:'obligaciones'},async()=>{await loadObligaciones();renderAll();})
-    .on('postgres_changes',{event:'*',schema:'public',table:'obl_categorias'},async()=>{await loadOblCategorias();populateCatSelects();renderAll();if(document.getElementById('page-config')&&document.getElementById('page-config').classList.contains('active'))renderConfigCats();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'obl_categorias'},async()=>{await loadOblCategorias();populateCatSelects();renderAll();if(document.getElementById('page-config')&&document.getElementById('page-config').classList.contains('active')&&configTabCurrent==='cats')renderConfigCats();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'cuentas_pago'},async()=>{await loadCuentasPago();if(document.getElementById('page-config')&&document.getElementById('page-config').classList.contains('active')&&configTabCurrent==='cuentas')renderConfigCuentas();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'puestos'},async()=>{await loadPuestos();if(document.getElementById('page-config')&&document.getElementById('page-config').classList.contains('active')&&configTabCurrent==='puestos')renderConfigPuestos();})
     .on('postgres_changes',{event:'*',schema:'public',table:'pagos'},async()=>{await loadPagos();renderAll();})
     .on('postgres_changes',{event:'*',schema:'public',table:'archivos_pago'},async()=>{await loadArchivos();renderAll();})
     .on('postgres_changes',{event:'*',schema:'public',table:'empleados'},async()=>{await loadEmpleados();if(document.getElementById('page-rh').classList.contains('active'))renderEmps();if(document.getElementById('page-asistencia').classList.contains('active'))renderAsistGrid();})
