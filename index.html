@@ -275,7 +275,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 
 /* OBL CARD */
 .obl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
-.obl-tile{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--border);
+.obl-tile{border:1px solid var(--border);border-left:4px solid var(--border);
   border-radius:var(--rl);box-shadow:var(--shadow);padding:12px 13px;cursor:pointer;
   display:flex;flex-direction:column;gap:10px;transition:box-shadow .2s,border-color .2s}
 .obl-tile:hover{box-shadow:var(--shadow2)}
@@ -2310,9 +2310,9 @@ function renderTile(o){
   const {chipTxt,chipCls}=oblChip(o);
   const cat=catInfo(o.categoria);
   const oid=o.id;
-  return '<div class="obl-tile" style="border-left-color:'+cat.color+'" onclick="openOblDetail(\''+oid+'\')">'
+  return '<div class="obl-tile" style="border-left-color:'+cat.color+';background:'+catBg(o.categoria,16)+'" onclick="openOblDetail(\''+oid+'\')">'
     +'<div class="obl-tile-top">'
-    +'<div class="obl-tile-icon" style="background:'+catBg(o.categoria,22)+'">'+oblIcon(o)+'</div>'
+    +'<div class="obl-tile-icon" style="background:'+catBg(o.categoria,32)+'">'+oblIcon(o)+'</div>'
     +'<div class="obl-tile-title">'+o.nombre+'</div>'
     +'</div>'
     +'<div class="obl-tile-bottom">'+entPillHtml(o)
