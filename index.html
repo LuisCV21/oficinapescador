@@ -319,10 +319,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 
 /* ── PILLS ── */
 .pill{display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
-.p-HOT{background:#E8F0FE;color:#1A3A5C}.p-PUE{background:#F3E8FF;color:#4A1D8C}
-.p-FLO{background:#E8F5EC;color:#276B3A}.p-OBR{background:#FDE8E8;color:#9B1C1C}
-.p-OFI{background:#E0F2F5;color:#1A5F6A}.p-PER{background:var(--copper-light);color:var(--copper-dark)}
-.p-CEN{background:var(--surface2);color:var(--text2)}.p-MULTI{background:#F3E8FF;color:#4A1D8C}
+.p-HOT{background:#FCE4EC;color:#AD1457}.p-PUE{background:#FFF1DE;color:#B35C00}
+.p-FLO{background:#E3F0FC;color:#0D47A1}.p-OBR{background:#FDECEA;color:#B71C1C}
+.p-OFI{background:#E6F4EA;color:#1B5E20}.p-PER{background:#F5E6E6;color:#6E1F1F}
+.p-CEN{background:#FFF6DC;color:#8A6D00}.p-MULTI{background:#F3E8FF;color:#4A1D8C}
 .cat-tag{font-size:10px;padding:2px 8px;border-radius:10px;background:var(--surface2);color:var(--text2);font-weight:600}
 .recur-tag{font-size:10px;padding:2px 8px;border-radius:10px;background:var(--copper-light);color:var(--copper);font-weight:600}
 .attach-chip{display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:3px 10px;
@@ -1961,13 +1961,13 @@ const sb=supabase.createClient(SUPA_URL,SUPA_KEY);
 // ─── CONSTANTS ───────────────────────────────────────────────
 const TODAY=new Date();TODAY.setHours(0,0,0,0);
 const ENTS={
-  HOT:{label:'Hotel',pill:'p-HOT',color:'#1a73e8'},
-  PUE:{label:'Puebla',pill:'p-PUE',color:'#6200ee'},
-  FLO:{label:'Florida',pill:'p-FLO',color:'#188038'},
-  OBR:{label:'Obra',pill:'p-OBR',color:'#c5221f'},
-  OFI:{label:'Oficina',pill:'p-OFI',color:'#007b83'},
-  PER:{label:'Personal',pill:'p-PER',color:'#e37400'},
-  CEN:{label:'Central',pill:'p-CEN',color:'#5f6368'},
+  HOT:{label:'Hotel',pill:'p-HOT',color:'#D6336C'},
+  PUE:{label:'Puebla',pill:'p-PUE',color:'#EF8B1E'},
+  FLO:{label:'Florida',pill:'p-FLO',color:'#1565C0'},
+  OBR:{label:'Obra',pill:'p-OBR',color:'#D32F2F'},
+  OFI:{label:'Oficina',pill:'p-OFI',color:'#2E7D32'},
+  PER:{label:'Personal',pill:'p-PER',color:'#8E2A2A'},
+  CEN:{label:'Central',pill:'p-CEN',color:'#F2A900'},
   MULTI:{label:'Hotel + Puebla',pill:'p-MULTI',color:'#6200ee'},
 };
 const ENT_ORDER=['HOT','PUE','FLO','OBR','OFI','PER','CEN'];
@@ -2301,7 +2301,7 @@ function oblChip(o){
 }
 function entPillHtml(o){
   const isMulti=o.entidad==='MULTI';
-  if(isMulti)return'<span class="pill p-HOT"><span class="ent-dot" style="background:#1a73e8;width:6px;height:6px"></span>Hotel</span><span class="pill p-PUE"><span class="ent-dot" style="background:#6200ee;width:6px;height:6px"></span>Puebla</span>';
+  if(isMulti)return'<span class="pill p-HOT"><span class="ent-dot" style="background:'+ENTS.HOT.color+';width:6px;height:6px"></span>Hotel</span><span class="pill p-PUE"><span class="ent-dot" style="background:'+ENTS.PUE.color+';width:6px;height:6px"></span>Puebla</span>';
   const ent=ENTS[o.entidad]||{label:o.entidad,pill:'',color:'#999'};
   return'<span class="pill '+ent.pill+'"><span class="ent-dot" style="background:'+ent.color+';width:6px;height:6px"></span>'+ent.label+'</span>';
 }
