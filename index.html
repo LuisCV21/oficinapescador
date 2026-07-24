@@ -610,6 +610,40 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   .print-asist-table tfoot td{font-weight:700;background:#f0f0f0}
   .print-legend{margin-top:10px;font-size:9px;color:#333}
 }
+
+/* ── NÓMINA ── */
+.nomina-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  background:var(--copper-light);border:1px solid var(--copper);border-radius:var(--rl);
+  padding:14px 18px;margin-bottom:14px;flex-wrap:wrap}
+.nomina-banner-txt{font-size:13px;color:var(--copper-dark);font-weight:600}
+.nomina-table-wrap{overflow-x:auto;background:var(--surface);border-radius:var(--rl);border:1px solid var(--border);box-shadow:var(--shadow)}
+.nomina-table{width:100%;border-collapse:collapse;font-size:12px;min-width:1180px}
+.nomina-table th{background:var(--surface2);color:var(--text2);text-transform:uppercase;
+  font-size:9.5px;letter-spacing:.03em;padding:8px 6px;border-bottom:1px solid var(--border);white-space:nowrap}
+.nomina-table td{padding:6px;border-bottom:1px solid var(--border);text-align:center;vertical-align:middle;white-space:nowrap}
+.nomina-table td.nom-name{text-align:left;font-weight:600;color:var(--text);padding:6px 10px}
+.nomina-table td.nom-name .nom-puesto{font-weight:400;font-size:10px;color:var(--text3)}
+.nomina-table input{width:64px;padding:5px 6px;border:1px solid var(--border2);border-radius:6px;
+  background:var(--surface);color:var(--text);font-size:12px;text-align:center;font-family:var(--mono)}
+.nomina-table input:focus{outline:none;border-color:var(--copper)}
+.nomina-table select{padding:5px 4px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:11px}
+.nom-computed{font-family:var(--mono);color:var(--text2)}
+.nom-total{font-family:var(--mono);font-weight:700;color:var(--green)}
+.nomina-tot-row td{background:var(--copper-light);border-top:2px solid var(--copper);border-bottom:none;font-weight:700;color:var(--copper-dark)}
+
+#print-nomina{display:none}
+@media print{
+  #print-nomina,#print-nomina *{visibility:visible}
+  #print-nomina{display:block;position:absolute;left:0;top:0;width:100%;padding:0}
+  .recibo-grid{display:grid;grid-template-columns:1fr 1fr;gap:0}
+  .recibo-card{border:1px solid #999;padding:12px 14px;font-size:11px;color:#000;break-inside:avoid}
+  .recibo-card h4{margin:0 0 2px;font-size:12px}
+  .recibo-card .rc-sub{font-size:9.5px;color:#333;margin-bottom:8px}
+  .recibo-card table{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:6px}
+  .recibo-card td{padding:2px 0}
+  .recibo-card .rc-total{font-weight:700;font-size:12px;border-top:1px solid #000;padding-top:4px;margin-top:4px}
+  .recibo-card .rc-firma{margin-top:22px;border-top:1px solid #000;padding-top:3px;font-size:9px;text-align:center}
+}
 .asist-estatus-opt{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--r);
   border:1.5px solid var(--border2);cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
 .asist-estatus-opt:hover{border-color:var(--copper)}
@@ -690,6 +724,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       <div class="sb-item" onclick="showPage('asistencia')" id="si-asistencia">
         <span class="sb-item-icon">🗓️</span>
         <span class="sb-item-label">Asistencia</span>
+      </div>
+      <div class="sb-item" onclick="showPage('nomina')" id="si-nomina">
+        <span class="sb-item-icon">💵</span>
+        <span class="sb-item-label">Nómina</span>
       </div>
       <div class="sb-item" onclick="showPage('flotilla')" id="si-flotilla">
         <span class="sb-item-icon">🚗</span>
@@ -873,6 +911,29 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <div id="asist-incidencias" style="display:flex;flex-direction:column;gap:8px;padding-bottom:70px"></div>
       </div>
       <div id="print-asist"></div>
+
+      <!-- NÓMINA -->
+      <div class="page" id="page-nomina">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">Nómina semanal</div>
+            <div class="page-sub" id="nomina-week-label"></div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn-icon" onclick="goNominaWeek(-1)" title="Semana anterior">◀</button>
+            <button class="btn btn-sm" onclick="goNominaToday()">Esta semana</button>
+            <button class="btn-icon" onclick="goNominaWeek(1)" title="Semana siguiente">▶</button>
+            <button class="btn btn-sm" onclick="printNomina()" id="nomina-print-btn" style="display:none">🖨️ Recibos</button>
+          </div>
+        </div>
+        <div class="tabs-bar" id="nomina-tabs-bar">
+          <div class="tab active" data-ent="PUE" onclick="switchNominaEnt('PUE')">Puebla</div>
+          <div class="tab" data-ent="HOT" onclick="switchNominaEnt('HOT')">Hotel</div>
+          <div class="tab" data-ent="FLO" onclick="switchNominaEnt('FLO')">Florida</div>
+        </div>
+        <div id="nomina-content" style="margin:14px 0"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+      </div>
+      <div id="print-nomina"></div>
 
       <!-- ACCESOS -->
       <div class="page" id="page-accesos">
@@ -1068,6 +1129,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   <div class="modal-hdr"><div class="modal-title" id="m-puesto-title">Nuevo puesto</div><button class="btn-icon" onclick="closeModal('m-puesto')">✕</button></div>
   <div class="modal-body">
     <div class="f-row"><label>Nombre <span class="req">*</span></label><input type="text" id="puf-nombre" placeholder="Ej. Mesero"/></div>
+    <div class="f-row"><label>Salario diario sugerido</label><input type="number" step="0.01" id="puf-salario" placeholder="316.00"/></div>
   </div>
   <div class="modal-ftr"><button class="btn" onclick="closeModal('m-puesto')">Cancelar</button><button class="btn btn-filled" id="puesto-save-btn" onclick="savePuesto()">Guardar</button></div>
 </div>
@@ -1144,7 +1206,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         </select>
       </div>
       <div class="f-row"><label>Puesto</label>
-        <select id="ef-puesto"><option value="">Sin puesto</option></select>
+        <select id="ef-puesto" onchange="prefillSalarioPuesto()"><option value="">Sin puesto</option></select>
       </div>
     </div>
     <div class="f-grid">
@@ -1157,6 +1219,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         </select>
       </div>
     </div>
+    <div class="f-row"><label>Salario diario</label><input type="number" step="0.01" id="ef-salario" placeholder="316.00"/></div>
     <div class="modal-sec">Datos fiscales / IMSS</div>
     <div class="f-grid">
       <div class="f-row"><label>CURP</label><input type="text" id="ef-curp" placeholder="18 caracteres" style="font-family:var(--mono);font-size:12px"/></div>
@@ -2172,6 +2235,7 @@ function showPage(id){
   else if(id==='flotilla')renderFlotilla();
   else if(id==='balance')switchBalTab(balActiveTab);
   else if(id==='asistencia')loadAsistencia().then(renderAsistGrid);
+  else if(id==='nomina')loadNomina().then(renderNomina);
   else if(id==='config'){
     if(configTabCurrent==='cuentas')renderConfigCuentas();
     else if(configTabCurrent==='puestos')renderConfigPuestos();
@@ -2610,13 +2674,15 @@ function openPuestoModal(id){
   const p=id?puestosData.find(x=>x.id===id):null;
   document.getElementById('m-puesto-title').textContent=id?'Editar puesto':'Nuevo puesto';
   document.getElementById('puf-nombre').value=p?p.nombre:'';
+  document.getElementById('puf-salario').value=p&&p.salario_sugerido!=null?p.salario_sugerido:'';
   openModal('m-puesto');
 }
 function editPuesto(id){openPuestoModal(id);}
 async function savePuesto(){
   const nombre=document.getElementById('puf-nombre').value.trim();
   if(!nombre){toast('El nombre es obligatorio',true);return;}
-  const obj={nombre,updated_at:new Date().toISOString()};
+  const salarioVal=document.getElementById('puf-salario').value;
+  const obj={nombre,salario_sugerido:salarioVal?Number(salarioVal):null,updated_at:new Date().toISOString()};
   setLoading('puesto-save-btn',true);
   let err;
   if(editPuestoId){({error:err}=await sb.from('puestos').update(obj).eq('id',editPuestoId));}
@@ -2985,17 +3051,27 @@ function openEmpModal(id){
   document.getElementById('ef-curp').value=e?e.curp||'':'';
   document.getElementById('ef-rfc').value=e?e.rfc||'':'';
   document.getElementById('ef-nss').value=e?e.nss||'':'';
+  document.getElementById('ef-salario').value=e&&e.salario_diario!=null?e.salario_diario:'';
   resetFileZones([['fz-ine','fl-ine','🪪','Adjuntar INE','ff-ine'],['fz-csf','fl-csf','📋','Adjuntar CSF','ff-csf'],['fz-nss-doc','fl-nss-doc','📄','Comprobante NSS','ff-nss-doc']]);
   openModal('m-emp');
 }
 function editEmp(id){openEmpModal(id);}
+function prefillSalarioPuesto(){
+  if(editEmpId)return; // no pisar el salario de alguien que ya tiene uno capturado
+  const salEl=document.getElementById('ef-salario');
+  if(salEl.value)return;
+  const puestoId=document.getElementById('ef-puesto').value;
+  const p=puestosData.find(x=>x.id===puestoId);
+  if(p&&p.salario_sugerido!=null)salEl.value=p.salario_sugerido;
+}
 async function saveEmp(){
   const nombre=document.getElementById('ef-nombre').value.trim();
   const fecha_ingreso=document.getElementById('ef-ingreso').value;
   if(!nombre||!fecha_ingreso){toast('Nombre y fecha de ingreso son obligatorios',true);return;}
   const tipo_contrato=document.getElementById('ef-contrato').value;
   const fin_prueba=tipo_contrato==='prueba'?(()=>{const d=new Date(fecha_ingreso+'T12:00:00');d.setDate(d.getDate()+30);return d.toISOString().slice(0,10);})():null;
-  const obj={nombre,entidad:document.getElementById('ef-ent').value,puesto_id:document.getElementById('ef-puesto').value||null,fecha_ingreso,tipo_contrato,fecha_fin_prueba:fin_prueba,curp:document.getElementById('ef-curp').value||null,rfc:document.getElementById('ef-rfc').value||null,nss:document.getElementById('ef-nss').value||null,activo:true};
+  const salarioVal=document.getElementById('ef-salario').value;
+  const obj={nombre,entidad:document.getElementById('ef-ent').value,puesto_id:document.getElementById('ef-puesto').value||null,fecha_ingreso,tipo_contrato,fecha_fin_prueba:fin_prueba,curp:document.getElementById('ef-curp').value||null,rfc:document.getElementById('ef-rfc').value||null,nss:document.getElementById('ef-nss').value||null,salario_diario:salarioVal?Number(salarioVal):null,activo:true};
   setLoading('emp-save-btn',true);
   let empId=editEmpId;
   if(editEmpId){
@@ -3242,6 +3318,198 @@ async function clearAsistDia(){
   closeModal('m-asist-dia');
   await loadAsistencia();renderAsistGrid();
   toast('Registro eliminado');
+}
+
+// ─── NÓMINA ─────────────────────────────────────────────────
+let nominaActiveEnt='PUE',nominaWeekStart=null,nominaPeriodo=null,nominaLineas=[];
+const NOMINA_DESCANSOS=['DOMINGO','LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO','VARIADOS'];
+
+function switchNominaEnt(ent){
+  nominaActiveEnt=ent;
+  document.querySelectorAll('#nomina-tabs-bar .tab').forEach(t=>t.classList.toggle('active',t.dataset.ent===ent));
+  loadNomina().then(renderNomina);
+}
+function goNominaWeek(delta){
+  const d=new Date(nominaWeekStart+'T12:00:00');
+  d.setDate(d.getDate()+delta*7);
+  nominaWeekStart=dateToISO(d);
+  loadNomina().then(renderNomina);
+}
+function goNominaToday(){
+  nominaWeekStart=asistDefaultSunday();
+  loadNomina().then(renderNomina);
+}
+
+async function loadNomina(){
+  if(!nominaWeekStart)nominaWeekStart=asistDefaultSunday();
+  const ent=nominaActiveEnt,week=nominaWeekStart;
+  const{data:periodos}=await sb.from('nomina_periodos').select('*').eq('entidad',ent).eq('semana_inicio',week);
+  if(ent!==nominaActiveEnt||week!==nominaWeekStart)return; // llegó tarde: ya se cambió de pestaña/semana
+  nominaPeriodo=(periodos&&periodos[0])||null;
+  if(nominaPeriodo){
+    const{data:lineas}=await sb.from('nomina_lineas').select('*').eq('periodo_id',nominaPeriodo.id);
+    nominaLineas=lineas||[];
+  }else{
+    nominaLineas=[];
+  }
+}
+
+function nominaCalc(l){
+  const salario=Number(l.salario_diario)||0;
+  const diasPagados=Number(l.dias_pagados)||0;
+  const nominaFiscal=salario*diasPagados;
+  const primaDominical=l.trabajo_domingo?salario*0.25:0;
+  const subtotal=nominaFiscal+primaDominical;
+  const total=subtotal-(Number(l.retencion_isr)||0)-(Number(l.retencion_imss)||0);
+  return{nominaFiscal,primaDominical,subtotal,total};
+}
+
+function renderNomina(){
+  const days=asistWeekDays(nominaWeekStart);
+  document.getElementById('nomina-week-label').textContent='Semana del '+fmtFechaCorta(days[0])+' al '+fmtFechaCorta(days[6]);
+  const el=document.getElementById('nomina-content');
+  const printBtn=document.getElementById('nomina-print-btn');
+  if(!nominaPeriodo){
+    printBtn.style.display='none';
+    el.innerHTML=`<div class="nomina-banner">
+      <div class="nomina-banner-txt">📋 Todavía no se ha generado la nómina de esta semana para ${(ENTS[nominaActiveEnt]||{label:nominaActiveEnt}).label}.</div>
+      <button class="btn btn-filled" onclick="generarNomina()">⚡ Generar nómina de esta semana</button>
+    </div>`;
+    return;
+  }
+  printBtn.style.display='inline-flex';
+  const empById={};empData.forEach(e=>{empById[e.id]=e;});
+  const sorted=[...nominaLineas].sort((a,b)=>{
+    const ea=empById[a.empleado_id],eb=empById[b.empleado_id];
+    return(ea?ea.nombre:'').localeCompare(eb?eb.nombre:'');
+  });
+  const rows=sorted.map(l=>renderNominaRow(l,empById[l.empleado_id])).join('');
+  const totals=nominaLineas.reduce((acc,l)=>{
+    const c=nominaCalc(l);
+    acc.pagados+=Number(l.dias_pagados)||0;
+    acc.subtotal+=c.subtotal;acc.isr+=Number(l.retencion_isr)||0;acc.imss+=Number(l.retencion_imss)||0;acc.total+=c.total;
+    return acc;
+  },{pagados:0,subtotal:0,isr:0,imss:0,total:0});
+  const activeIds=new Set(empData.filter(e=>e.entidad===nominaActiveEnt&&e.activo).map(e=>e.id));
+  const lineaIds=new Set(nominaLineas.map(l=>l.empleado_id));
+  const faltantes=[...activeIds].filter(id=>!lineaIds.has(id)).map(id=>empById[id]).filter(Boolean).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  el.innerHTML=`<div class="nomina-table-wrap"><table class="nomina-table">
+    <thead><tr>
+      <th style="text-align:left">Empleado</th><th>Descanso</th><th>Salario</th><th>Días trab.</th>
+      <th>¿Domingo?</th><th>Días pag.</th><th>Prima dom.</th><th>Subtotal</th><th>ISR</th><th>IMSS</th><th>Total</th><th></th>
+    </tr></thead>
+    <tbody>${rows||'<tr><td colspan="12" style="padding:20px;color:var(--text3)">Sin empleados en esta nómina</td></tr>'}</tbody>
+    <tfoot><tr class="nomina-tot-row">
+      <td colspan="5" style="text-align:right">TOTALES</td>
+      <td>${totals.pagados}</td><td></td>
+      <td class="nom-computed">${fmxn(totals.subtotal)}</td>
+      <td>${fmxn(totals.isr)}</td><td>${fmxn(totals.imss)}</td>
+      <td class="nom-total">${fmxn(totals.total)}</td><td></td>
+    </tr></tfoot>
+  </table></div>
+  ${faltantes.length?`<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span style="font-size:12px;color:var(--text2)">Agregar a la nómina:</span>
+    ${faltantes.map(e=>`<button class="btn-text" onclick="agregarLineaNomina('${e.id}')">+ ${e.nombre}</button>`).join('')}
+  </div>`:''}`;
+}
+
+function renderNominaRow(l,e){
+  if(!e)return'';
+  const c=nominaCalc(l);
+  return`<tr>
+    <td class="nom-name">${e.nombre}<div class="nom-puesto">${puestoNombre(e.puesto_id)||''}</div></td>
+    <td><select onchange="updateLineaField('${l.id}','dia_descanso',this.value)">
+      <option value="" ${!l.dia_descanso?'selected':''}>—</option>
+      ${NOMINA_DESCANSOS.map(d=>`<option ${l.dia_descanso===d?'selected':''}>${d}</option>`).join('')}
+    </select></td>
+    <td><input type="number" step="0.01" value="${l.salario_diario}" onchange="updateLineaField('${l.id}','salario_diario',this.value)"></td>
+    <td>${l.dias_trabajados}</td>
+    <td><input type="checkbox" ${l.trabajo_domingo?'checked':''} onchange="updateLineaField('${l.id}','trabajo_domingo',this.checked)"></td>
+    <td><input type="number" step="1" value="${l.dias_pagados}" onchange="updateLineaField('${l.id}','dias_pagados',this.value)"></td>
+    <td class="nom-computed">${fmxn(c.primaDominical)}</td>
+    <td class="nom-computed">${fmxn(c.subtotal)}</td>
+    <td><input type="number" step="0.01" value="${l.retencion_isr}" onchange="updateLineaField('${l.id}','retencion_isr',this.value)"></td>
+    <td><input type="number" step="0.01" value="${l.retencion_imss}" onchange="updateLineaField('${l.id}','retencion_imss',this.value)"></td>
+    <td class="nom-total">${fmxn(c.total)}</td>
+    <td>${isAdmin()?`<button class="btn-text red" style="font-size:10px" onclick="eliminarLineaNomina('${l.id}')">✕</button>`:''}</td>
+  </tr>`;
+}
+
+async function updateLineaField(lineaId,field,value){
+  const l=nominaLineas.find(x=>x.id===lineaId);
+  if(!l)return;
+  let v=value;
+  if(['salario_diario','dias_pagados','retencion_isr','retencion_imss'].includes(field))v=Number(value)||0;
+  l[field]=v;
+  renderNomina();
+  const{error}=await sb.from('nomina_lineas').update({[field]:v,updated_at:new Date().toISOString()}).eq('id',lineaId);
+  if(error)toast('Error al guardar: '+error.message,true);
+}
+
+async function generarNomina(){
+  const days=asistWeekDays(nominaWeekStart);
+  const domingoIso=days[0];
+  const{data:periodo,error:pe}=await sb.from('nomina_periodos').insert({entidad:nominaActiveEnt,semana_inicio:nominaWeekStart,semana_fin:days[6]}).select().single();
+  if(pe){toast('Error al generar: '+pe.message,true);return;}
+  nominaPeriodo=periodo;
+  const activos=empData.filter(e=>e.entidad===nominaActiveEnt&&e.activo);
+  const{data:asistSemana}=await sb.from('asistencia').select('*').eq('entidad',nominaActiveEnt).gte('fecha',days[0]).lte('fecha',days[6]);
+  const lineas=activos.map(e=>{
+    const regs=(asistSemana||[]).filter(a=>a.empleado_id===e.id);
+    const trabajados=regs.filter(a=>a.estatus==='asistio').length;
+    const domingo=regs.find(a=>a.fecha===domingoIso);
+    const trabajoDomingo=!!(domingo&&domingo.estatus==='asistio');
+    const sugerido=trabajados>0?Math.min(trabajados+1,7):0;
+    return{periodo_id:periodo.id,empleado_id:e.id,dias_trabajados:trabajados,dias_pagados:sugerido,trabajo_domingo:trabajoDomingo,salario_diario:e.salario_diario||0,dia_descanso:null,retencion_isr:0,retencion_imss:0};
+  });
+  if(lineas.length){
+    const{error:le}=await sb.from('nomina_lineas').insert(lineas);
+    if(le){toast('Error al generar líneas: '+le.message,true);return;}
+  }
+  await loadNomina();renderNomina();
+  toast('Nómina generada ✓');
+}
+
+async function agregarLineaNomina(empId){
+  const e=empData.find(x=>x.id===empId);
+  if(!e||!nominaPeriodo)return;
+  const{error}=await sb.from('nomina_lineas').insert({periodo_id:nominaPeriodo.id,empleado_id:empId,dias_trabajados:0,dias_pagados:0,trabajo_domingo:false,salario_diario:e.salario_diario||0});
+  if(error){toast('Error: '+error.message,true);return;}
+  await loadNomina();renderNomina();
+}
+
+async function eliminarLineaNomina(lineaId){
+  if(!isAdmin())return;
+  await sb.from('nomina_lineas').delete().eq('id',lineaId);
+  await loadNomina();renderNomina();
+}
+
+function printNomina(){
+  const empById={};empData.forEach(e=>{empById[e.id]=e;});
+  const days=asistWeekDays(nominaWeekStart);
+  const entLabel=(ENTS[nominaActiveEnt]||{label:nominaActiveEnt}).label;
+  const cards=nominaLineas.map(l=>{
+    const e=empById[l.empleado_id];if(!e)return'';
+    const c=nominaCalc(l);
+    return`<div class="recibo-card">
+      <h4>🐟 El Pescador — Recibo de nómina</h4>
+      <div class="rc-sub">${entLabel} · Semana del ${fmtFechaCorta(days[0])} al ${fmtFechaCorta(days[6])}</div>
+      <table>
+        <tr><td><strong>Nombre:</strong></td><td>${e.nombre}</td></tr>
+        <tr><td><strong>Puesto:</strong></td><td>${puestoNombre(e.puesto_id)||''}</td></tr>
+        <tr><td>Días pagados</td><td>${l.dias_pagados}</td></tr>
+        <tr><td>Salario diario</td><td>${fmxn(l.salario_diario)}</td></tr>
+        <tr><td>Prima dominical</td><td>${fmxn(c.primaDominical)}</td></tr>
+        <tr><td>Subtotal</td><td>${fmxn(c.subtotal)}</td></tr>
+        <tr><td>Retención ISR</td><td>-${fmxn(l.retencion_isr)}</td></tr>
+        <tr><td>Retención IMSS</td><td>-${fmxn(l.retencion_imss)}</td></tr>
+      </table>
+      <div class="rc-total">TOTAL A PAGAR: ${fmxn(c.total)}</div>
+      <div class="rc-firma">RECIBÍ — FIRMA DEL EMPLEADO</div>
+    </div>`;
+  }).join('');
+  document.getElementById('print-nomina').innerHTML=`<div class="recibo-grid">${cards}</div>`;
+  window.print();
 }
 
 // ─── ACCESOS ─────────────────────────────────────────────────
@@ -3904,7 +4172,7 @@ function openContratoModal(empId){
   document.getElementById('cont-emp-ref').textContent=e?'📄 '+e.nombre+' — '+puestoNombre(e.puesto_id):'';
   const hoy=new Date().toISOString().slice(0,10);
   document.getElementById('cf-fecha-firma').value=hoy;
-  document.getElementById('cf-salario').value='';
+  document.getElementById('cf-salario').value=e&&e.salario_diario!=null?e.salario_diario:'';
   document.getElementById('cf-beneficiario').value='';
   document.getElementById('cf-beneficiario-pct').value='100%';
   // Calculate 30 days
@@ -5465,6 +5733,8 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'bitacora_tareas'},async()=>{await loadBitacora();if(document.getElementById('page-bitacora').classList.contains('active'))renderBitacora();})
     .on('postgres_changes',{event:'*',schema:'public',table:'bitacora_registros'},async()=>{const hoy=new Date().toISOString().slice(0,10);const{data:regs}=await sb.from('bitacora_registros').select('*').eq('fecha',hoy);bitRegistros=regs||[];if(document.getElementById('page-bitacora').classList.contains('active'))renderBitacora();})
     .on('postgres_changes',{event:'*',schema:'public',table:'asistencia'},async()=>{if(document.getElementById('page-asistencia').classList.contains('active'))await loadAsistencia().then(renderAsistGrid);})
+    .on('postgres_changes',{event:'*',schema:'public',table:'nomina_periodos'},async()=>{if(document.getElementById('page-nomina').classList.contains('active'))await loadNomina().then(renderNomina);})
+    .on('postgres_changes',{event:'*',schema:'public',table:'nomina_lineas'},async()=>{if(document.getElementById('page-nomina').classList.contains('active'))await loadNomina().then(renderNomina);})
     .subscribe((status)=>{
       if(status==='SUBSCRIBED'){console.log('Realtime conectado ✓');showRealtimeIndicator(true);}
       else if(status==='CLOSED'||status==='CHANNEL_ERROR'){showRealtimeIndicator(false);setTimeout(setupRealtime,3000);}
