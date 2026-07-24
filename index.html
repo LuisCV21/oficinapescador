@@ -924,6 +924,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             <button class="btn btn-sm" onclick="goNominaToday()">Esta semana</button>
             <button class="btn-icon" onclick="goNominaWeek(1)" title="Semana siguiente">▶</button>
             <button class="btn btn-sm" onclick="printNomina()" id="nomina-print-btn" style="display:none">🖨️ Recibos</button>
+            <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🗑️ Borrar</button>
           </div>
         </div>
         <div class="tabs-bar" id="nomina-tabs-bar">
@@ -3369,8 +3370,10 @@ function renderNomina(){
   document.getElementById('nomina-week-label').textContent='Semana del '+fmtFechaCorta(days[0])+' al '+fmtFechaCorta(days[6]);
   const el=document.getElementById('nomina-content');
   const printBtn=document.getElementById('nomina-print-btn');
+  const delBtn=document.getElementById('nomina-del-btn');
   if(!nominaPeriodo){
     printBtn.style.display='none';
+    delBtn.style.display='none';
     el.innerHTML=`<div class="nomina-banner">
       <div class="nomina-banner-txt">📋 Todavía no se ha generado la nómina de esta semana para ${(ENTS[nominaActiveEnt]||{label:nominaActiveEnt}).label}.</div>
       <button class="btn btn-filled" onclick="generarNomina()">⚡ Generar nómina de esta semana</button>
@@ -3378,6 +3381,7 @@ function renderNomina(){
     return;
   }
   printBtn.style.display='inline-flex';
+  delBtn.style.display=isAdmin()?'inline-flex':'none';
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
   const sorted=[...nominaLineas].sort((a,b)=>{
     const ea=empById[a.empleado_id],eb=empById[b.empleado_id];
@@ -3468,6 +3472,16 @@ async function generarNomina(){
   }
   await loadNomina();renderNomina();
   toast('Nómina generada ✓');
+}
+
+async function borrarNomina(){
+  if(!isAdmin()||!nominaPeriodo)return;
+  if(!confirm('¿Borrar toda la nómina de esta semana para '+(ENTS[nominaActiveEnt]||{label:nominaActiveEnt}).label+'? Esto elimina las líneas de todos los empleados.'))return;
+  const{error}=await sb.from('nomina_periodos').delete().eq('id',nominaPeriodo.id);
+  if(error){toast('Error al borrar: '+error.message,true);return;}
+  nominaPeriodo=null;nominaLineas=[];
+  renderNomina();
+  toast('Nómina borrada');
 }
 
 async function agregarLineaNomina(empId){
