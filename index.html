@@ -269,18 +269,24 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   display:flex;align-items:center;gap:6px}
 .osec-tab:hover:not(.active){background:var(--surface2)}
 .osec-tab .tab-badge{background:rgba(0,0,0,.15)}
-.osec-tab.sec-recurrente.active{background:var(--teal);border-color:var(--teal);color:#fff}
-.osec-tab.sec-buro.active{background:var(--purple);border-color:var(--purple);color:#fff}
-.osec-tab.sec-otros.active{background:var(--slate);border-color:var(--slate);color:#fff}
+.osec-tab.active{background:var(--slate);border-color:var(--slate);color:#fff}
+
+/* ── CONFIGURACIÓN: CATEGORÍAS ── */
+.cfgcat-row{display:flex;align-items:center;gap:12px;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--rl);padding:12px 16px;
+  margin-bottom:8px;box-shadow:var(--shadow)}
+.cfgcat-row.inactive{opacity:.5}
+.cfgcat-swatch{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;
+  justify-content:center;font-size:17px;flex-shrink:0}
+.cfgcat-info{flex:1;min-width:0}
+.cfgcat-label{font-size:13px;font-weight:600;color:var(--text)}
+.cfgcat-meta{font-size:11px;color:var(--text2);margin-top:2px}
 
 /* OBL CARD */
 .obl-card{background:var(--surface);border-radius:var(--rl);
   border:1px solid var(--border);border-left:4px solid var(--border);box-shadow:var(--shadow);overflow:hidden;
   transition:box-shadow .2s,border-color .2s}
-.obl-card:hover{box-shadow:var(--shadow2);border-color:var(--border2)}
-.obl-card.cat-recurrente{background:var(--teal-light);border-left-color:var(--teal)}
-.obl-card.cat-buro{background:var(--purple-light);border-left-color:var(--purple)}
-.obl-card.cat-otros{background:var(--surface2);border-left-color:var(--text3)}
+.obl-card:hover{box-shadow:var(--shadow2)}
 .obl-card-body{display:flex;align-items:flex-start;gap:14px;padding:14px 16px}
 .obl-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0}
 .obl-info{flex:1;min-width:0}
@@ -679,6 +685,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <span class="sb-item-icon">🗂️</span>
         <span class="sb-item-label">Archivos</span>
       </div>
+      <div class="sb-item" onclick="showPage('config')" id="si-config" style="display:none">
+        <span class="sb-item-icon">⚙️</span>
+        <span class="sb-item-label">Configuración</span>
+      </div>
       <div class="sb-footer">
         <div class="sb-version">v1.0 · El Pescador</div>
       </div>
@@ -712,8 +722,6 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
               <div class="srch-wrap"><span class="srch-ico">🔍</span><input class="srch" type="text" id="s-search" placeholder="Buscar..." oninput="renderList()"></div>
               <select class="fsel" id="s-cat" onchange="renderList()">
                 <option value="ALL">Todas las categorías</option>
-                <option value="imss">IMSS / Nómina</option><option value="impuesto">Impuestos SAT</option>
-                <option value="servicio">Servicios</option><option value="seguro">Seguros</option><option value="otro">Otro</option>
               </select>
               <select class="fsel" id="s-status" onchange="renderList()">
                 <option value="ALL">Todos los estados</option>
@@ -725,6 +733,15 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
           </div>
           <div class="card-list" id="obl-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
+      </div>
+
+      <!-- CONFIGURACIÓN -->
+      <div class="page" id="page-config">
+        <div class="page-hdr">
+          <div><div class="page-title">Configuración</div><div class="page-sub">Categorías de obligaciones — colores, íconos y a qué grupo pertenecen</div></div>
+          <button class="btn btn-filled" onclick="openCatModal()">+ Nueva categoría</button>
+        </div>
+        <div id="config-cats-list"></div>
       </div>
 
       <!-- BITÁCORA -->
@@ -931,10 +948,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         </select>
       </div>
       <div class="f-row"><label>Categoría</label>
-        <select id="of-cat">
-          <option value="imss">IMSS / Nómina</option><option value="impuesto">Impuestos SAT</option>
-          <option value="servicio">Servicios</option><option value="seguro">Seguros</option><option value="otro">Otro</option>
-        </select>
+        <select id="of-cat"></select>
       </div>
     </div>
     <div class="f-grid">
@@ -954,6 +968,26 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
     <div class="f-row"><label>Notas</label><textarea id="of-notes" placeholder="Instrucciones, referencias..."></textarea></div>
   </div>
   <div class="modal-ftr"><button class="btn" onclick="closeModal('m-obl')">Cancelar</button><button class="btn btn-filled" id="obl-save-btn" onclick="saveObl()">Guardar</button></div>
+</div>
+</div>
+
+<div class="modal-overlay" id="m-cat">
+<div class="modal">
+  <div class="modal-hdr"><div class="modal-title" id="m-cat-title">Nueva categoría</div><button class="btn-icon" onclick="closeModal('m-cat')">✕</button></div>
+  <div class="modal-body">
+    <div class="f-row"><label>Nombre <span class="req">*</span></label><input type="text" id="cf-label" placeholder="Ej. Renta de local"/></div>
+    <div class="f-grid">
+      <div class="f-row"><label>Clave interna <span class="req">*</span></label><input type="text" id="cf-clave" placeholder="ej. renta" style="font-family:var(--mono)"/></div>
+      <div class="f-row"><label>Grupo</label>
+        <select id="cf-tipo"><option value="recurrente">🔁 Recurrente</option><option value="buro">🏛️ Trámites y burocracia</option></select>
+      </div>
+    </div>
+    <div class="f-grid">
+      <div class="f-row"><label>Ícono (emoji)</label><input type="text" id="cf-icono" maxlength="4" placeholder="📋" style="text-align:center;font-size:18px"/></div>
+      <div class="f-row"><label>Color</label><input type="color" id="cf-color" value="#5f6368" style="width:100%;height:38px;padding:2px;cursor:pointer"/></div>
+    </div>
+  </div>
+  <div class="modal-ftr"><button class="btn" onclick="closeModal('m-cat')">Cancelar</button><button class="btn btn-filled" id="cat-save-btn" onclick="saveCat()">Guardar</button></div>
 </div>
 </div>
 
@@ -1881,16 +1915,19 @@ const ENTS={
   MULTI:{label:'Hotel + Puebla',pill:'p-MULTI',color:'#6200ee'},
 };
 const ENT_ORDER=['HOT','PUE','FLO','OBR','OFI','PER','CEN'];
-const CATS={imss:'IMSS/Nómina',impuesto:'Impuestos SAT',servicio:'Servicios',seguro:'Seguros',otro:'Otro'};
 const RECUR={none:'—',weekly:'Semanal',monthly:'Mensual',bimonthly:'Bimestral',annual:'Anual'};
 const ICONS=['👥','🏛️','💡','🛡️','📋','🏦','📦','🚗','🔧','📱','💻','🏢','📊','💰','🧾','📄','🔑','⚡','💧','🌐','📝','🔒','🏗️','🍽️','🏨','📡','🖨️','📞'];
-const DEF_ICONS={imss:'👥',impuesto:'🏛️',servicio:'💡',seguro:'🛡️',otro:'📋'};
 const FILE_LABELS={pago:'Comprobante',cotizacion:'Cotización',factura_pdf:'Factura PDF',factura_xml:'XML SAT',ine:'INE',csf:'CSF',nss_doc:'NSS',contrato_prueba:'Contrato prueba',contrato_indeterminado:'Contrato',baja_imss:'Baja IMSS',otro:'Documento'};
 const DOC_TIPOS_VEH={tarjeta_circulacion:'Tarjeta de circulación',seguro:'Seguro',tenencia:'Tenencia',verificacion:'Verificación',factura:'Factura',otro:'Otro'};
 const DOC_ICONS_VEH={tarjeta_circulacion:'📋',seguro:'🛡️',tenencia:'🏛️',verificacion:'✅',factura:'🧾',otro:'📄'};
 const VEH_ICONS={moto:'🏍️',camioneta:'🚚',auto:'🚗',otro:'🚙'};
 const FILE_ICONS={pago:'📄',cotizacion:'📋',factura_pdf:'🧾',factura_xml:'📁',ine:'🪪',csf:'📋',nss_doc:'📄',contrato_prueba:'📝',contrato_indeterminado:'📝',baja_imss:'📄',otro:'📄'};
-const CAT_FOLDER={imss:'👥 IMSS y Nómina',impuesto:'🏛️ Impuestos SAT',servicio:'💡 Servicios',seguro:'🛡️ Seguros',otro:'📋 Otros'};
+
+// ─── CATEGORÍAS DE OBLIGACIONES (configurables, tabla obl_categorias) ──
+let catData=[];
+function catInfo(clave){
+  return catData.find(c=>c.clave===clave)||{clave,label:clave||'Sin categoría',icono:'📋',color:'#5f6368',tipo:'recurrente',activa:true};
+}
 
 // STATE
 let currentUser=null,currentPerfil=null;
@@ -1905,15 +1942,12 @@ let currentOblSec=localStorage.getItem('ep_obl_sec')||null;
 const OBL_SECTIONS=[
   {key:'recurrente',label:'🔁 Recurrente'},
   {key:'buro',label:'🏛️ Trámites y burocracia'},
-  {key:'otros',label:'📋 Otros'},
 ];
 function oblSection(o){
-  if(o.categoria==='imss'||o.categoria==='impuesto')return 'buro';
   if(o.recurrencia==='annual')return 'buro';
-  if(o.categoria==='servicio'||o.categoria==='seguro')return 'recurrente';
-  return 'otros';
+  return catInfo(o.categoria).tipo==='buro'?'buro':'recurrente';
 }
-let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null;
+let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null,editCatId=null;
 let selIconObl='',selIconAcc='';
 let pendingFiles={};
 let repoPath=[];
@@ -1923,8 +1957,8 @@ function fmt(s){if(!s)return'';const d=new Date(s+'T12:00:00');return d.toLocale
 function fmxn(n){if(!n&&n!==0)return'';return'$'+Number(n).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function daysUntil(s){if(!s)return 999;return Math.round((new Date(s+'T12:00:00')-TODAY)/86400000)}
 function oblStatus(o){const d=daysUntil(o.fecha_limite);if(d<0)return'overdue';if(d<=7)return'urgent';if(d<=15)return'soon';return'ok'}
-function oblIcon(o){return o.icono||(DEF_ICONS[o.categoria]||'📋')}
-function iconBg(cat){return{imss:'#e8f0fe',impuesto:'#fef7e0',servicio:'#e6f4ea',seguro:'#e8f0fe',otro:'#f1f3f4'}[cat]||'#f1f3f4'}
+function oblIcon(o){return o.icono||catInfo(o.categoria).icono}
+function catBg(clave,pct){return `color-mix(in srgb, ${catInfo(clave).color} ${pct}%, var(--surface))`}
 function initials(n){return(n||'?').split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase()}
 function nextDate(ds,recur){
   const d=new Date(ds+'T12:00:00');
@@ -1981,13 +2015,15 @@ async function initApp(user){
   const rolEl=document.getElementById('tb-role');
   if(p&&p.rol==='admin'){rolEl.textContent='Admin';}
   else{rolEl.textContent='Oficinista';}
+  const siConfig=document.getElementById('si-config');
+  if(siConfig)siConfig.style.display=isAdmin()?'flex':'none';
   await loadAll();
   setupRealtime();
 }
 
 // ─── LOAD DATA ────────────────────────────────────────────────
 async function loadAll(){
-  await Promise.all([loadObligaciones(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger()]);
+  await Promise.all([loadObligaciones(),loadOblCategorias(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger()]);
   renderAll();
 }
 async function loadBalances(){
@@ -2009,6 +2045,10 @@ async function loadAdoLedger(){
 async function loadObligaciones(){
   const {data}=await sb.from('obligaciones').select('*').eq('activa',true).order('fecha_limite');
   oblData=data||[];
+}
+async function loadOblCategorias(){
+  const {data}=await sb.from('obl_categorias').select('*').order('orden');
+  catData=data||[];
 }
 async function loadPagos(){
   const {data}=await sb.from('pagos').select('*').order('created_at',{ascending:false});
@@ -2050,6 +2090,7 @@ function showPage(id){
   else if(id==='flotilla')renderFlotilla();
   else if(id==='balance')switchBalTab(balActiveTab);
   else if(id==='asistencia')loadAsistencia().then(renderAsistGrid);
+  else if(id==='config')renderConfigCats();
 }
 
 function renderAll(){
@@ -2057,12 +2098,30 @@ function renderAll(){
   renderNota();
   // renderSupervisionWidget(); // PAUSADO (Luis pidió pausar el módulo de tareas) — descomenta para reactivar
   renderMissingDocs();
+  populateCatSelects();
   renderTabs();
   renderWidgets();
   renderTimeline();
   renderSecTabs();
   renderList();
   updateSidebarBadge();
+}
+
+// ─── SELECTS DE CATEGORÍA (dinámicos, desde catData) ───────────
+function populateCatSelects(){
+  const active=catData.filter(c=>c.activa!==false);
+  const sCat=document.getElementById('s-cat');
+  if(sCat){
+    const prev=sCat.value;
+    sCat.innerHTML='<option value="ALL">Todas las categorías</option>'+active.map(c=>`<option value="${c.clave}">${c.icono} ${c.label}</option>`).join('');
+    sCat.value=[...sCat.options].some(o=>o.value===prev)?prev:'ALL';
+  }
+  const ofCat=document.getElementById('of-cat');
+  if(ofCat){
+    const prev=ofCat.value;
+    ofCat.innerHTML=active.map(c=>`<option value="${c.clave}">${c.icono} ${c.label}</option>`).join('');
+    if([...ofCat.options].some(o=>o.value===prev))ofCat.value=prev;
+  }
 }
 
 function entData(){return oblData.filter(o=>o.entidad===currentEnt||(o.entidad==='MULTI'&&(currentEnt==='HOT'||currentEnt==='PUE')));}
@@ -2128,7 +2187,7 @@ function pickDefaultSec(){
 }
 function renderSecTabs(){
   const data=entData();
-  const avail=OBL_SECTIONS.filter(s=>s.key!=='otros'||data.some(o=>oblSection(o)==='otros'));
+  const avail=OBL_SECTIONS;
   if(!currentOblSec||!avail.some(s=>s.key===currentOblSec))currentOblSec=pickDefaultSec();
   let html='';
   avail.forEach(s=>{
@@ -2184,7 +2243,8 @@ function renderCard(o){
   let entHtml=isMulti
     ?'<span class="pill p-HOT"><span class="ent-dot" style="background:#1a73e8;width:6px;height:6px"></span>Hotel</span><span class="pill p-PUE"><span class="ent-dot" style="background:#6200ee;width:6px;height:6px"></span>Puebla</span>'
     :'<span class="pill '+ent.pill+'"><span class="ent-dot" style="background:'+ent.color+';width:6px;height:6px"></span>'+ent.label+'</span>';
-  let meta=entHtml+'<span class="cat-tag">'+(CATS[o.categoria]||o.categoria)+'</span>';
+  const cat=catInfo(o.categoria);
+  let meta=entHtml+'<span class="cat-tag" style="background:'+catBg(o.categoria,18)+';color:'+cat.color+'">'+cat.icono+' '+cat.label+'</span>';
   meta+='<span style="font-size:11px;color:var(--text2)">Límite: '+fmt(o.fecha_limite)+'</span>';
   if(o.monto_estimado)meta+='<span style="font-size:11px;color:var(--text2)">'+fmxn(o.monto_estimado)+'</span>';
   if(o.recurrencia&&o.recurrencia!=='none')meta+='<span class="recur-tag">'+RECUR[o.recurrencia]+'</span>';
@@ -2201,9 +2261,9 @@ function renderCard(o){
   let respHtml=o.responsable?'<div style="font-size:10px;color:var(--text3)">'+o.responsable+'</div>':'';
   let proxHtml=pays.length?'<span style="font-size:10px;color:var(--text3)">Próx. vencimiento: '+fmt(o.fecha_limite)+'</span>':'';
   let notasHtml=o.notas?'<div class="obl-notes">'+o.notas+'</div>':'';
-  return '<div class="obl-card cat-'+oblSection(o)+'">'
+  return '<div class="obl-card" style="background:'+catBg(o.categoria,9)+';border-left-color:'+cat.color+'">'
     +'<div class="obl-card-body">'
-    +'<div class="obl-icon" style="background:'+iconBg(o.categoria)+'">'+oblIcon(o)+'</div>'
+    +'<div class="obl-icon" style="background:'+catBg(o.categoria,22)+'">'+oblIcon(o)+'</div>'
     +'<div class="obl-info">'
     +'<div class="obl-title">'+o.nombre+'</div>'
     +'<div class="obl-meta">'+meta+'</div>'
@@ -2239,7 +2299,8 @@ function openOblModal(id){
   document.getElementById('m-obl-title').textContent=id?'Editar obligación':'Nueva obligación';
   document.getElementById('of-name').value=o?o.nombre:'';
   document.getElementById('of-ent').value=o?o.entidad:'HOT';
-  document.getElementById('of-cat').value=o?o.categoria:'imss';
+  populateCatSelects();
+  document.getElementById('of-cat').value=o?o.categoria:(catData[0]?catData[0].clave:'');
   document.getElementById('of-date').value=o?o.fecha_limite:'';
   document.getElementById('of-amount').value=o?o.monto_estimado:'';
   document.getElementById('of-recur').value=o?o.recurrencia:'monthly';
@@ -2255,7 +2316,7 @@ async function saveObl(){
   const fecha_limite=document.getElementById('of-date').value;
   if(!nombre||!fecha_limite){toast('Nombre y fecha son obligatorios',true);return;}
   const cat=document.getElementById('of-cat').value;
-  const icon=selIconObl||(DEF_ICONS[cat]||'📋');
+  const icon=selIconObl||catInfo(cat).icono;
   const obj={nombre,entidad:document.getElementById('of-ent').value,categoria:cat,fecha_limite,monto_estimado:document.getElementById('of-amount').value||null,recurrencia:document.getElementById('of-recur').value,responsable:document.getElementById('of-resp').value||null,notas:document.getElementById('of-notes').value||null,icono:icon,updated_at:new Date().toISOString()};
   setLoading('obl-save-btn',true);
   let err;
@@ -2270,6 +2331,60 @@ async function delObl(id){
   if(!confirm('¿Eliminar esta obligación y todo su historial?'))return;
   await sb.from('obligaciones').update({activa:false}).eq('id',id);
   toast('Obligación eliminada');await loadObligaciones();await loadPagos();await loadArchivos();renderAll();
+}
+
+// ─── CONFIGURACIÓN: CATEGORÍAS ─────────────────────────────────
+function renderConfigCats(){
+  const el=document.getElementById('config-cats-list');
+  if(!el)return;
+  if(!catData.length){el.innerHTML=`<div class="empty"><div class="empty-ico">🏷️</div>Sin categorías aún</div>`;return;}
+  el.innerHTML=catData.map(c=>{
+    const tipoLabel=c.tipo==='buro'?'🏛️ Trámites y burocracia':'🔁 Recurrente';
+    const usedCount=oblData.filter(o=>o.categoria===c.clave).length;
+    const admin=isAdmin();
+    return `<div class="cfgcat-row ${c.activa===false?'inactive':''}">
+      <div class="cfgcat-swatch" style="background:${catBg(c.clave,22)}">${c.icono}</div>
+      <div class="cfgcat-info">
+        <div class="cfgcat-label">${c.label}</div>
+        <div class="cfgcat-meta">clave: ${c.clave} · ${tipoLabel} · ${usedCount} obligación${usedCount!==1?'es':''}${c.activa===false?' · inactiva':''}</div>
+      </div>
+      ${admin?`<button class="btn-text" onclick="editCat('${c.id}')">Editar</button><button class="btn-text ${c.activa===false?'':'red'}" onclick="toggleCat('${c.id}',${c.activa===false})">${c.activa===false?'Reactivar':'Desactivar'}</button>`:''}
+    </div>`;
+  }).join('');
+}
+function openCatModal(id){
+  if(!isAdmin())return;
+  editCatId=id||null;
+  const c=id?catData.find(x=>x.id===id):null;
+  document.getElementById('m-cat-title').textContent=id?'Editar categoría':'Nueva categoría';
+  document.getElementById('cf-label').value=c?c.label:'';
+  const claveEl=document.getElementById('cf-clave');
+  claveEl.value=c?c.clave:'';
+  claveEl.disabled=!!id;
+  document.getElementById('cf-tipo').value=c?c.tipo:'recurrente';
+  document.getElementById('cf-icono').value=c?c.icono:'📋';
+  document.getElementById('cf-color').value=c?c.color:'#5f6368';
+  openModal('m-cat');
+}
+function editCat(id){openCatModal(id);}
+async function saveCat(){
+  const label=document.getElementById('cf-label').value.trim();
+  const clave=document.getElementById('cf-clave').value.trim().toLowerCase().replace(/[^a-z0-9_]/g,'_');
+  if(!label||!clave){toast('Nombre y clave son obligatorios',true);return;}
+  const obj={label,tipo:document.getElementById('cf-tipo').value,icono:document.getElementById('cf-icono').value.trim()||'📋',color:document.getElementById('cf-color').value,updated_at:new Date().toISOString()};
+  setLoading('cat-save-btn',true);
+  let err;
+  if(editCatId){({error:err}=await sb.from('obl_categorias').update(obj).eq('id',editCatId));}
+  else{({error:err}=await sb.from('obl_categorias').insert({...obj,clave,orden:catData.length+1}));}
+  setLoading('cat-save-btn',false);
+  if(err){toast('Error al guardar: '+(err.message.includes('duplicate')?'ya existe una categoría con esa clave':err.message),true);return;}
+  toast(editCatId?'Categoría actualizada':'Categoría creada');
+  closeModal('m-cat');await loadOblCategorias();populateCatSelects();renderConfigCats();renderAll();
+}
+async function toggleCat(id,activar){
+  if(!isAdmin())return;
+  await sb.from('obl_categorias').update({activa:activar}).eq('id',id);
+  await loadOblCategorias();populateCatSelects();renderConfigCats();renderAll();
 }
 
 // ─── PAY ─────────────────────────────────────────────────────
@@ -2921,7 +3036,7 @@ function renderRepo(){
   const grid=document.getElementById('repo-grid');
   let pathHtml=`<span class="repo-seg" onclick="repoNav([])">🗂️ Archivos</span>`;
   if(repoPath.length>0){const ek=repoPath[0];const e=ENTS[ek]||{label:ek};pathHtml+=`<span class="repo-sep">/</span><span class="repo-seg" onclick="repoNav(['${ek}'])">${e.label}</span>`;}
-  if(repoPath.length>1){const ck=repoPath[1];const cLabel=ck==='empleados'?'👥 Expedientes empleados':(CAT_FOLDER[ck]||ck);pathHtml+=`<span class="repo-sep">/</span><span class="repo-seg" onclick="repoNav(['${repoPath[0]}','${ck}'])">${cLabel}</span>`;}
+  if(repoPath.length>1){const ck=repoPath[1];const cLabel=ck==='empleados'?'👥 Expedientes empleados':(catInfo(ck).icono+' '+catInfo(ck).label);pathHtml+=`<span class="repo-sep">/</span><span class="repo-seg" onclick="repoNav(['${repoPath[0]}','${ck}'])">${cLabel}</span>`;}
   document.getElementById('repo-path').innerHTML=pathHtml;
   if(repoPath.length===0){
     const entKeys=Object.keys(tree);
@@ -2937,7 +3052,7 @@ function renderRepo(){
     if(!catKeys.length){grid.innerHTML=`<div class="repo-empty">Sin archivos en esta entidad</div>`;return;}
     grid.innerHTML=catKeys.map(ck=>{
       const files=cats[ck];
-      const cLabel=ck==='empleados'?'👥 Expedientes empleados':(CAT_FOLDER[ck]||ck);
+      const cLabel=ck==='empleados'?'👥 Expedientes empleados':(catInfo(ck).icono+' '+catInfo(ck).label);
       return`<div class="repo-card" onclick="repoNav(['${ek}','${ck}'])"><div class="repo-folder-ico">${cLabel.split(' ')[0]}</div><div class="repo-folder-name">${cLabel.replace(/^[^\s]+ /,'')}</div><div class="repo-folder-meta">${files.length} archivo${files.length!==1?'s':''}</div></div>`;
     }).join('');
   }else{
@@ -5031,6 +5146,7 @@ function setupRealtime(){
   if(realtimeChannel){sb.removeChannel(realtimeChannel);}
   realtimeChannel=sb.channel('ep-changes')
     .on('postgres_changes',{event:'*',schema:'public',table:'obligaciones'},async()=>{await loadObligaciones();renderAll();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'obl_categorias'},async()=>{await loadOblCategorias();populateCatSelects();renderAll();if(document.getElementById('page-config')&&document.getElementById('page-config').classList.contains('active'))renderConfigCats();})
     .on('postgres_changes',{event:'*',schema:'public',table:'pagos'},async()=>{await loadPagos();renderAll();})
     .on('postgres_changes',{event:'*',schema:'public',table:'archivos_pago'},async()=>{await loadArchivos();renderAll();})
     .on('postgres_changes',{event:'*',schema:'public',table:'empleados'},async()=>{await loadEmpleados();if(document.getElementById('page-rh').classList.contains('active'))renderEmps();if(document.getElementById('page-asistencia').classList.contains('active'))renderAsistGrid();})
