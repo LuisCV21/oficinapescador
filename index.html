@@ -2761,9 +2761,16 @@ function closeViewer(){document.getElementById('viewer-ov').classList.remove('op
 
 // ─── RH ──────────────────────────────────────────────────────
 function renderRhTabs(){
-  let html='<div class="tab active" style="pointer-events:none">Empleados</div>';
+  const activos=empData.filter(e=>e.activo);
+  let html='<div class="tab '+(currentRhEnt==='ALL'?'active':'')+'" onclick="switchRhEnt(\'ALL\')">Todos ('+activos.length+')</div>';
+  ENT_ORDER.forEach(ek=>{
+    const e=ENTS[ek];
+    const cnt=activos.filter(x=>x.entidad===ek).length;
+    html+='<div class="tab '+(currentRhEnt===ek?'active':'')+'" onclick="switchRhEnt(\''+ek+'\')"><span class="ent-dot" style="background:'+e.color+'"></span>'+e.label+' ('+cnt+')</div>';
+  });
   document.getElementById('rh-tabs-bar').innerHTML=html;
 }
+function switchRhEnt(ek){currentRhEnt=ek;renderEmps();}
 
 function renderRhWidgets(){
   const activos=empData.filter(e=>e.activo);
@@ -2789,10 +2796,12 @@ function renderRhWidgets(){
 }
 function renderEmps(){
   renderRhWidgets();
+  renderRhTabs();
   let data=[...empData];
   const status=document.getElementById('rh-status').value;
   const search=document.getElementById('rh-search').value.toLowerCase().trim();
   const puestoFiltro=document.getElementById('rh-puesto').value;
+  if(currentRhEnt!=='ALL')data=data.filter(e=>e.entidad===currentRhEnt);
   if(status==='activo')data=data.filter(e=>e.activo&&e.tipo_contrato!=='prueba'||e.activo&&daysUntil(e.fecha_fin_prueba)>7);
   else if(status==='prueba')data=data.filter(e=>e.activo&&e.tipo_contrato==='prueba');
   else data=data.filter(e=>!e.activo);
