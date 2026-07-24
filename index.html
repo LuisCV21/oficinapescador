@@ -167,6 +167,35 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .gm-pill.alert{background:rgba(181,84,26,.4);border-color:rgba(181,84,26,.6)}
 .gm-pill.ok{background:rgba(39,107,58,.4);border-color:rgba(39,107,58,.6)}
 
+/* ── INICIO: resumen por sucursal ── */
+.branch-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:20px}
+.branch-card{background:var(--surface);border-radius:var(--rl);border:1px solid var(--border);
+  border-left:4px solid var(--border);box-shadow:var(--shadow);padding:14px 16px;cursor:pointer;transition:box-shadow .2s}
+.branch-card:hover{box-shadow:var(--shadow2)}
+.branch-card-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text2);
+  display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.branch-card-emp{font-size:22px;font-weight:600;color:var(--text);line-height:1}
+.branch-card-emp-lbl{font-size:10px;color:var(--text3);margin-top:2px}
+.branch-card-obl{display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.branch-card-obl span{font-size:11px;font-weight:600}
+
+/* ── INICIO: dos columnas (vencimientos / nomina) ── */
+.home-2col{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;margin-bottom:20px;align-items:start}
+@media (max-width:820px){.home-2col{grid-template-columns:1fr}}
+.home-card{background:var(--surface);border-radius:var(--rxl);border:1px solid var(--border);box-shadow:var(--shadow);padding:18px 20px}
+.home-card-title{font-family:var(--display);font-size:14px;font-weight:600;color:var(--slate);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+.venc-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer}
+.venc-item:last-child{border-bottom:none}
+.venc-item:hover .venc-name{color:var(--copper)}
+.venc-ico{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+.venc-name{font-size:12.5px;font-weight:600;color:var(--text);transition:color .15s}
+.venc-sub{font-size:10.5px;color:var(--text3);margin-top:1px}
+.nomsem-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid var(--border)}
+.nomsem-row:last-child{border-bottom:none}
+.nomsem-badge{font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:10px}
+.nomsem-badge.ok{background:var(--green-light);color:var(--green)}
+.nomsem-badge.pend{background:var(--amber-light);color:var(--amber)}
+
 /* ── NOTA RAPIDA ── */
 .nota-widget{background:var(--amber-light);border:1px solid rgba(138,90,0,.2);
   border-radius:var(--rl);padding:14px 16px;margin-bottom:20px}
@@ -764,6 +793,11 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       <!-- INICIO -->
       <div class="page active" id="page-inicio">
         <div id="gm-container"></div>
+        <div id="branch-summary-container"></div>
+        <div class="home-2col">
+          <div id="vencimientos-container"></div>
+          <div id="nomina-status-container"></div>
+        </div>
         <div id="supervision-container"></div>
         <div id="missing-container"></div>
         <div id="nota-container"></div>
@@ -2246,6 +2280,9 @@ function showPage(id){
 
 function renderAll(){
   renderGoodMorning();
+  renderBranchSummary();
+  renderVencimientos();
+  renderNominaStatusWidget();
   renderNota();
   // renderSupervisionWidget(); // PAUSADO (Luis pidió pausar el módulo de tareas) — descomenta para reactivar
   renderMissingDocs();
@@ -5658,6 +5695,76 @@ function renderGoodMorning(){
   if(!ov&&!ug&&!prueba.length)pills='<div class="gm-pill ok">✓ Todo al corriente</div>';
   const el=document.getElementById('gm-container');
   if(el)el.innerHTML=`<div class="gm-widget"><div class="gm-greeting">${greeting}, ${nombre} 👋</div><div class="gm-date">${new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div><div class="gm-pills">${pills}</div></div>`;
+}
+
+// ─── INICIO: RESUMEN POR SUCURSAL ──────────────────────────────
+function renderBranchSummary(){
+  const el=document.getElementById('branch-summary-container');
+  if(!el)return;
+  const activos=(empData||[]).filter(e=>e.activo);
+  const withEmp=ENT_ORDER.filter(ek=>activos.some(x=>x.entidad===ek));
+  if(!withEmp.length){el.innerHTML='';return;}
+  const cards=withEmp.map(ek=>{
+    const e=ENTS[ek];
+    const cnt=activos.filter(x=>x.entidad===ek).length;
+    const obls=(oblData||[]).filter(o=>o.entidad===ek||(o.entidad==='MULTI'&&(ek==='HOT'||ek==='PUE')));
+    const ov=obls.filter(o=>oblStatus(o)==='overdue').length;
+    const ug=obls.filter(o=>oblStatus(o)==='urgent').length;
+    const oblHtml=(ov+ug)>0
+      ?`<span style="color:var(--red)">🚨 ${ov}</span><span style="color:var(--amber)">⚠️ ${ug}</span>`
+      :`<span style="color:var(--green)">✓ al corriente</span>`;
+    return`<div class="branch-card" style="border-left-color:${e.color}" onclick="showPage('obligaciones');switchEnt('${ek}')">
+      <div class="branch-card-label"><span class="ent-dot" style="background:${e.color}"></span>${e.label}</div>
+      <div class="branch-card-emp">${cnt}</div>
+      <div class="branch-card-emp-lbl">empleado${cnt!==1?'s':''} activo${cnt!==1?'s':''}</div>
+      <div class="branch-card-obl">${oblHtml}</div>
+    </div>`;
+  }).join('');
+  el.innerHTML=`<div class="branch-summary-grid">${cards}</div>`;
+}
+
+// ─── INICIO: PRÓXIMOS VENCIMIENTOS ─────────────────────────────
+function renderVencimientos(){
+  const el=document.getElementById('vencimientos-container');
+  if(!el)return;
+  const ord={overdue:0,urgent:1,soon:2,ok:3};
+  const data=[...(oblData||[])].sort((a,b)=>{
+    const sa=ord[oblStatus(a)]??4,sb=ord[oblStatus(b)]??4;
+    return sa!==sb?sa-sb:a.fecha_limite.localeCompare(b.fecha_limite);
+  }).slice(0,5);
+  if(!data.length){el.innerHTML='';return;}
+  const items=data.map(o=>{
+    const cat=catInfo(o.categoria);
+    const {chipTxt,chipCls}=oblChip(o);
+    const ent=(ENTS[o.entidad]||{label:o.entidad}).label;
+    return`<div class="venc-item" onclick="openOblDetail('${o.id}')">
+      <div class="venc-ico" style="background:${catBg(o.categoria,26)}">${oblIcon(o)}</div>
+      <div style="flex:1;min-width:0">
+        <div class="venc-name">${o.nombre}</div>
+        <div class="venc-sub">${ent} · ${fmt(o.fecha_limite)}</div>
+      </div>
+      <div class="days-chip ${chipCls}" style="font-size:10.5px;padding:3px 9px">${chipTxt}</div>
+    </div>`;
+  }).join('');
+  el.innerHTML=`<div class="home-card"><div class="home-card-title">📅 Próximos vencimientos<button class="btn-text" onclick="showPage('obligaciones')">Ver todas</button></div>${items}</div>`;
+}
+
+// ─── INICIO: ESTADO DE NÓMINA DE LA SEMANA ─────────────────────
+async function renderNominaStatusWidget(){
+  const el=document.getElementById('nomina-status-container');
+  if(!el)return;
+  const weekStart=asistDefaultSunday();
+  const{data:periodos}=await sb.from('nomina_periodos').select('entidad').eq('semana_inicio',weekStart).in('entidad',['PUE','HOT','FLO']);
+  const done=new Set((periodos||[]).map(p=>p.entidad));
+  const rows=['PUE','HOT','FLO'].filter(ek=>ENTS[ek]).map(ek=>{
+    const e=ENTS[ek];
+    const ok=done.has(ek);
+    return`<div class="nomsem-row">
+      <div style="display:flex;align-items:center;gap:8px"><span class="ent-dot" style="background:${e.color}"></span><span style="font-size:12.5px;font-weight:600">${e.label}</span></div>
+      <div class="nomsem-badge ${ok?'ok':'pend'}" style="cursor:pointer" onclick="showPage('nomina');switchNomSemEnt('${ek}')">${ok?'✓ Generada':'Pendiente'}</div>
+    </div>`;
+  }).join('');
+  el.innerHTML=`<div class="home-card"><div class="home-card-title">💵 Nómina de esta semana<button class="btn-text" onclick="showPage('nomina')">Ir</button></div>${rows}</div>`;
 }
 
 // ─── NOTA RÁPIDA ──────────────────────────────────────────────
