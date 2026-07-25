@@ -625,6 +625,21 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .asist-tot-row td.asist-name{color:var(--copper-dark);text-transform:uppercase;font-size:11px;letter-spacing:.04em}
 .asist-tot-row td.asist-total{color:var(--copper-dark)}
 
+/* ── HORAS EXTRA ── */
+.he-table{width:100%;border-collapse:collapse;font-size:12px}
+.he-table th{background:var(--surface2);color:var(--text2);text-transform:uppercase;
+  font-size:9.5px;letter-spacing:.03em;padding:6px 4px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:center}
+.he-table td{padding:3px;border-bottom:1px solid var(--border);text-align:center;vertical-align:middle}
+.he-table td.he-name{text-align:left;font-weight:600;color:var(--text);white-space:nowrap;padding:6px 10px}
+.he-table td.he-rate{color:var(--text2);white-space:nowrap;font-size:11px}
+.he-input{width:34px;text-align:center;border:1.5px solid var(--border2);border-radius:6px;padding:4px 2px;font-size:12px;background:var(--surface2)}
+.he-input:focus{outline:none;border-color:var(--copper);background:var(--surface)}
+.he-total{font-weight:700;color:var(--slate)}
+.he-neto{font-weight:700;color:var(--green)}
+.he-neto.neg{color:var(--red)}
+.he-tot-row td{background:var(--copper-light);border-top:2px solid var(--copper);border-bottom:none;font-weight:700}
+.he-tot-row td.he-name{color:var(--copper-dark);text-transform:uppercase;font-size:11px;letter-spacing:.04em}
+
 /* ── IMPRESIÓN ASISTENCIA ── */
 #print-asist{display:none}
 @media print{
@@ -757,6 +772,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       <div class="sb-item" onclick="showPage('nomina')" id="si-nomina">
         <span class="sb-item-icon">💵</span>
         <span class="sb-item-label">Nómina</span>
+      </div>
+      <div class="sb-item" onclick="showPage('horasextra')" id="si-horasextra">
+        <span class="sb-item-icon">⏱️</span>
+        <span class="sb-item-label">Horas extra</span>
       </div>
       <div class="sb-item" onclick="showPage('flotilla')" id="si-flotilla">
         <span class="sb-item-icon">🚗</span>
@@ -972,6 +991,29 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <div id="nomina-content" style="margin:14px 0"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
       </div>
       <div id="print-nomina"></div>
+
+      <!-- HORAS EXTRA -->
+      <div class="page" id="page-horasextra">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">Horas extra y retardos</div>
+            <div class="page-sub" id="horasextra-week-label"></div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn-icon" onclick="goHorasExtraWeek(-1)" title="Semana anterior">◀</button>
+            <button class="btn btn-sm" onclick="goHorasExtraToday()">Esta semana</button>
+            <button class="btn-icon" onclick="goHorasExtraWeek(1)" title="Semana siguiente">▶</button>
+            <button class="btn btn-sm" onclick="imprimirHorasExtra()">📊 Imprimir</button>
+          </div>
+        </div>
+        <div class="tabs-bar" id="horasextra-tabs-bar">
+          <div class="tab active" data-ent="PUE" onclick="switchHorasExtraEnt('PUE')">Puebla</div>
+          <div class="tab" data-ent="HOT" onclick="switchHorasExtraEnt('HOT')">Hotel</div>
+          <div class="tab" data-ent="FLO" onclick="switchHorasExtraEnt('FLO')">Florida</div>
+        </div>
+        <div style="overflow-x:auto;margin:14px 0" id="horasextra-grid-wrap"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+      </div>
+      <div id="print-horasextra"></div>
 
       <!-- ACCESOS -->
       <div class="page" id="page-accesos">
@@ -2314,6 +2356,7 @@ function showPage(id){
   else if(id==='balance')switchBalTab(balActiveTab);
   else if(id==='asistencia')loadAsistencia().then(renderAsistGrid);
   else if(id==='nomina')loadNomina().then(renderNomina);
+  else if(id==='horasextra')loadHorasExtra().then(renderHorasExtraGrid);
   else if(id==='config'){
     if(configTabCurrent==='cuentas')renderConfigCuentas();
     else if(configTabCurrent==='puestos')renderConfigPuestos();
@@ -3807,6 +3850,161 @@ table{border-collapse:collapse;width:100%;table-layout:fixed}
     <td class="nr">$ ${fmxnPlain(totals.imss)}</td>
     <td class="nr">$ ${fmxnPlain(totals.total)}</td>
   </tr>
+</table>
+</body></html>`;
+  const w=window.open('','_blank');
+  w.document.write(html);
+  w.document.close();
+}
+
+// ─── HORAS EXTRA / RETARDOS ─────────────────────────────────────
+let horasExtraActiveEnt='PUE',horasExtraWeekStart=null,horasExtraData=[];
+const HORASEXTRA_DIAS=['SÁBADO','DOMINGO','LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES'];
+const HORASEXTRA_TITULO={HOT:'HOTEL REAL DE POZA',PUE:'RESTAURANTE EL PESCADOR PUEBLA',FLO:'RESTAURANTE EL PESCADOR FLORIDA'};
+
+function horasExtraDefaultSaturday(){
+  const d=new Date();
+  const diff=(d.getDay()+1)%7; // dias desde el ultimo sabado
+  d.setDate(d.getDate()-diff);
+  return dateToISO(d);
+}
+async function loadHorasExtra(){
+  if(!horasExtraWeekStart)horasExtraWeekStart=horasExtraDefaultSaturday();
+  const ent=horasExtraActiveEnt,week=horasExtraWeekStart;
+  const days=asistWeekDays(week);
+  const{data}=await sb.from('horas_extra').select('*').eq('entidad',ent).gte('fecha',days[0]).lte('fecha',days[6]);
+  if(ent!==horasExtraActiveEnt||week!==horasExtraWeekStart)return;
+  horasExtraData=data||[];
+}
+function switchHorasExtraEnt(ent){
+  horasExtraActiveEnt=ent;
+  document.querySelectorAll('#horasextra-tabs-bar .tab').forEach(t=>t.classList.toggle('active',t.dataset.ent===ent));
+  loadHorasExtra().then(renderHorasExtraGrid);
+}
+function goHorasExtraWeek(delta){
+  const d=new Date(horasExtraWeekStart+'T12:00:00');
+  d.setDate(d.getDate()+delta*7);
+  horasExtraWeekStart=dateToISO(d);
+  loadHorasExtra().then(renderHorasExtraGrid);
+}
+function goHorasExtraToday(){
+  horasExtraWeekStart=horasExtraDefaultSaturday();
+  loadHorasExtra().then(renderHorasExtraGrid);
+}
+function horasExtraRate(e){return e&&e.salario_diario?Number(e.salario_diario)/8:0;}
+
+function renderHorasExtraGrid(){
+  const days=asistWeekDays(horasExtraWeekStart);
+  document.getElementById('horasextra-week-label').textContent='Semana del '+fmtFechaCorta(days[0])+' al '+fmtFechaCorta(days[6]);
+  const activeIds=new Set(empData.filter(e=>e.entidad===horasExtraActiveEnt&&e.activo).map(e=>e.id));
+  const weekEmpIds=new Set(horasExtraData.map(h=>h.empleado_id));
+  const emps=empData.filter(e=>activeIds.has(e.id)||weekEmpIds.has(e.id)).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  const byEmpFecha={};
+  horasExtraData.forEach(h=>{byEmpFecha[h.empleado_id+'_'+h.fecha]=h;});
+
+  const thead1=`<tr><th rowspan="2" style="text-align:left">Empleado</th><th rowspan="2">$ Hr.extra/retardo</th>${days.map((d,i)=>`<th colspan="2">${HORASEXTRA_DIAS[i]}<br><span style="font-weight:400;font-size:9px">${Number(d.slice(8,10))}</span></th>`).join('')}<th rowspan="2">Total<br>HE</th><th rowspan="2">Total<br>RET</th><th rowspan="2">Total a pagar/<br>descontar</th></tr>`;
+  const thead2=`<tr>${days.map(()=>'<th>HE</th><th>RT</th>').join('')}</tr>`;
+
+  const el=document.getElementById('horasextra-grid-wrap');
+  if(!emps.length){
+    el.innerHTML=`<div class="empty"><div class="empty-ico">⏱️</div>Sin empleados activos en esta sucursal</div>`;
+    return;
+  }
+  const rows=emps.map(e=>{
+    const rate=horasExtraRate(e);
+    let totalHE=0,totalRT=0;
+    const cells=days.map(fecha=>{
+      const h=byEmpFecha[e.id+'_'+fecha];
+      const he=h?h.he:0,rt=h?h.rt:0;
+      totalHE+=he;totalRT+=rt;
+      return`<td><input type="number" min="0" step="1" class="he-input" value="${he||''}" onchange="updateHorasExtraCelda('${e.id}','${fecha}','he',this.value)"></td>`+
+            `<td><input type="number" min="0" step="1" class="he-input" value="${rt||''}" onchange="updateHorasExtraCelda('${e.id}','${fecha}','rt',this.value)"></td>`;
+    }).join('');
+    const neto=(totalHE-totalRT)*rate;
+    return`<tr><td class="he-name">${e.nombre}<div style="font-size:10px;font-weight:400;color:var(--text3)">${puestoNombre(e.puesto_id)||''}</div></td>`+
+      `<td class="he-rate">${fmxn(rate)}</td>${cells}<td class="he-total">${totalHE}</td><td class="he-total">${totalRT}</td>`+
+      `<td class="he-neto ${neto<0?'neg':''}">${fmxnSigned(neto)}</td></tr>`;
+  }).join('');
+
+  el.innerHTML=`<table class="he-table"><thead>${thead1}${thead2}</thead><tbody>${rows}</tbody></table>`;
+}
+
+async function updateHorasExtraCelda(empId,fecha,field,value){
+  const v=Math.max(0,Math.round(Number(value))||0);
+  let h=horasExtraData.find(x=>x.empleado_id===empId&&x.fecha===fecha);
+  if(!h){h={empleado_id:empId,fecha,entidad:horasExtraActiveEnt,he:0,rt:0};horasExtraData.push(h);}
+  h[field]=v;
+  renderHorasExtraGrid();
+  const{error}=await sb.from('horas_extra').upsert({empleado_id:empId,fecha,entidad:horasExtraActiveEnt,he:h.he,rt:h.rt,updated_at:new Date().toISOString()},{onConflict:'empleado_id,fecha'});
+  if(error)toast('Error al guardar: '+error.message,true);
+}
+
+function imprimirHorasExtra(){
+  const empById={};empData.forEach(e=>{empById[e.id]=e;});
+  const days=asistWeekDays(horasExtraWeekStart);
+  const activeIds=new Set(empData.filter(e=>e.entidad===horasExtraActiveEnt&&e.activo).map(e=>e.id));
+  const weekEmpIds=new Set(horasExtraData.map(h=>h.empleado_id));
+  const emps=empData.filter(e=>activeIds.has(e.id)||weekEmpIds.has(e.id)).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  const byEmpFecha={};
+  horasExtraData.forEach(h=>{byEmpFecha[h.empleado_id+'_'+h.fecha]=h;});
+  const titulo=HORASEXTRA_TITULO[horasExtraActiveEnt]||(ENTS[horasExtraActiveEnt]||{label:horasExtraActiveEnt}).label;
+
+  const rows=emps.map((e,i)=>{
+    const rate=horasExtraRate(e);
+    let totalHE=0,totalRT=0;
+    const cells=days.map(fecha=>{
+      const h=byEmpFecha[e.id+'_'+fecha];
+      const he=h?h.he:0,rt=h?h.rt:0;
+      totalHE+=he;totalRT+=rt;
+      return`<td class="nc">${he||''}</td><td class="nc">${rt||''}</td>`;
+    }).join('');
+    const neto=(totalHE-totalRT)*rate;
+    return`<tr>
+      <td class="nc">${i+1}</td>
+      <td class="nl">${e.nombre.toUpperCase()}</td>
+      <td class="nr">$${fmxnPlain(rate)}</td>
+      ${cells}
+      <td class="nc nb">${totalHE}</td>
+      <td class="nc nb">${totalRT}</td>
+      <td class="nr nb ${neto<0?'neg':''}">${neto<0?'-':''}$${fmxnPlain(Math.abs(neto))}</td>
+    </tr>`;
+  }).join('');
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Horas extra — ${titulo}</title>
+<style>
+@page{size:letter landscape;margin:0.6cm}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:8px;color:#000}
+table{border-collapse:collapse;width:100%;table-layout:fixed}
+.he-wrap{border:2px solid #000}
+.he-title td{background:#f6a94d;text-align:center;font-size:20px;font-weight:700;letter-spacing:1px;padding:8px 0;border-bottom:2px solid #000}
+.he-sub td{background:#fbd9ac;text-align:center;font-weight:700;font-size:11px;border-bottom:2px solid #000;padding:5px 8px}
+.he-cols th{border:1px solid #000;background:#fff;font-size:9px;font-weight:700;text-align:center;padding:4px 3px;vertical-align:bottom;line-height:1.2}
+.he-data td{border:1px solid #000;font-size:10px;padding:3px 5px;white-space:nowrap}
+.he-data td.nl{text-align:left;white-space:normal;word-break:break-word;font-weight:600}
+.he-data td.nc{text-align:center}
+.he-data td.nr{text-align:right;font-family:Consolas,'Courier New',monospace}
+.he-data td.nb{font-weight:700}
+.he-data td.neg{color:#B00000}
+.print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a73e8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:Arial,sans-serif}
+@media print{.print-btn{display:none}body{padding:0}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
+<table class="he-wrap">
+  <colgroup>
+    <col style="width:2.5%"><col style="width:19%"><col style="width:6.5%">
+    ${days.map(()=>'<col style="width:4.3%"><col style="width:4.3%">').join('')}
+    <col style="width:6%"><col style="width:6%"><col style="width:9%">
+  </colgroup>
+  <tr class="he-title"><td colspan="${3+days.length*2+3}">${titulo}</td></tr>
+  <tr class="he-sub"><td colspan="${3+days.length*2+3}">CONTROL DE HORAS EXTRAS &nbsp;·&nbsp; SEMANA: DEL ${fmtNominaRango(days[0],days[6])}</td></tr>
+  <tr class="he-cols">
+    <th rowspan="2">No.</th><th rowspan="2">NOMBRE</th><th rowspan="2">$ HRE/RT</th>
+    ${days.map((d,i)=>{const dd=new Date(d+'T12:00:00');return`<th colspan="2">${String(dd.getDate()).padStart(2,'0')}-${NOMINA_MESES[dd.getMonth()].slice(0,3)}<br>${HORASEXTRA_DIAS[i]}</th>`;}).join('')}
+    <th rowspan="2">TOTAL<br>DE HRE</th><th rowspan="2">TOTAL<br>RET</th><th rowspan="2">TOTAL A PAGAR/<br>DESCONTAR</th>
+  </tr>
+  <tr class="he-cols">${days.map(()=>'<th>HE</th><th>RT</th>').join('')}</tr>
+  <tbody class="he-data">${rows||`<tr><td colspan="${3+days.length*2+3}" style="text-align:center;padding:16px">Sin empleados esta semana</td></tr>`}</tbody>
 </table>
 </body></html>`;
   const w=window.open('','_blank');
