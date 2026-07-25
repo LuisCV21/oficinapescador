@@ -1270,6 +1270,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       </div>
     </div>
     <div class="f-row"><label>Salario diario</label><input type="number" step="0.01" id="ef-salario" placeholder="316.00"/></div>
+    <div class="f-row"><label>Domicilio</label><input type="text" id="ef-domicilio" placeholder="Calle, número, colonia, C.P., ciudad"/></div>
     <div class="modal-sec">Datos fiscales / IMSS</div>
     <div class="f-grid">
       <div class="f-row"><label>CURP</label><input type="text" id="ef-curp" placeholder="18 caracteres" style="font-family:var(--mono);font-size:12px"/></div>
@@ -1693,8 +1694,18 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
     <div class="f-row"><label>Beneficiario (nombre completo)</label>
       <input type="text" id="cf-beneficiario" placeholder="Nombre del beneficiario designado"/>
     </div>
-    <div class="f-row"><label>Porcentaje del beneficiario</label>
-      <input type="text" id="cf-beneficiario-pct" placeholder="100%" value="100%"/>
+    <div class="f-grid">
+      <div class="f-row"><label>Parentesco del beneficiario</label>
+        <select id="cf-parentesco">
+          <option value="Esposa(o)">Esposa(o)</option>
+          <option value="Hijo(a)">Hijo(a)</option>
+          <option value="Padre">Padre</option>
+          <option value="Madre">Madre</option>
+        </select>
+      </div>
+      <div class="f-row"><label>Porcentaje del beneficiario</label>
+        <input type="text" id="cf-beneficiario-pct" placeholder="100%" value="100%"/>
+      </div>
     </div>
   </div>
   <div class="modal-ftr">
@@ -3201,6 +3212,7 @@ function openEmpModal(id){
   document.getElementById('ef-rfc').value=e?e.rfc||'':'';
   document.getElementById('ef-nss').value=e?e.nss||'':'';
   document.getElementById('ef-salario').value=e&&e.salario_diario!=null?e.salario_diario:'';
+  document.getElementById('ef-domicilio').value=e?e.domicilio||'':'';
   resetFileZones([['fz-ine','fl-ine','🪪','Adjuntar INE','ff-ine'],['fz-csf','fl-csf','📋','Adjuntar CSF','ff-csf'],['fz-nss-doc','fl-nss-doc','📄','Comprobante NSS','ff-nss-doc']]);
   openModal('m-emp');
 }
@@ -3220,7 +3232,7 @@ async function saveEmp(){
   const tipo_contrato=document.getElementById('ef-contrato').value;
   const fin_prueba=tipo_contrato==='prueba'?(()=>{const d=new Date(fecha_ingreso+'T12:00:00');d.setDate(d.getDate()+30);return d.toISOString().slice(0,10);})():null;
   const salarioVal=document.getElementById('ef-salario').value;
-  const obj={nombre,entidad:document.getElementById('ef-ent').value,puesto_id:document.getElementById('ef-puesto').value||null,fecha_ingreso,tipo_contrato,fecha_fin_prueba:fin_prueba,curp:document.getElementById('ef-curp').value||null,rfc:document.getElementById('ef-rfc').value||null,nss:document.getElementById('ef-nss').value||null,salario_diario:salarioVal?Number(salarioVal):null,activo:true};
+  const obj={nombre,entidad:document.getElementById('ef-ent').value,puesto_id:document.getElementById('ef-puesto').value||null,fecha_ingreso,tipo_contrato,fecha_fin_prueba:fin_prueba,curp:document.getElementById('ef-curp').value||null,rfc:document.getElementById('ef-rfc').value||null,nss:document.getElementById('ef-nss').value||null,domicilio:document.getElementById('ef-domicilio').value||null,salario_diario:salarioVal?Number(salarioVal):null,activo:true};
   setLoading('emp-save-btn',true);
   let empId=editEmpId;
   if(editEmpId){
@@ -4337,6 +4349,7 @@ function openContratoModal(empId){
   document.getElementById('cf-salario').value=e&&e.salario_diario!=null?e.salario_diario:'';
   document.getElementById('cf-beneficiario').value='';
   document.getElementById('cf-beneficiario-pct').value='100%';
+  document.getElementById('cf-parentesco').value='Esposa(o)';
   // Calculate 30 days
   const fin=new Date();fin.setDate(fin.getDate()+30);
   document.getElementById('cf-fecha-fin').value=fin.toISOString().slice(0,10);
@@ -4384,7 +4397,9 @@ function generarContrato(){
   const jornada=document.getElementById('cf-jornada').value;
   const beneficiario=document.getElementById('cf-beneficiario').value||'___________________________';
   const beneficiarioPct=document.getElementById('cf-beneficiario-pct').value||'100%';
+  const parentesco=document.getElementById('cf-parentesco').value||'Esposa(o)';
   if(!salario||!fechaFirma){toast('Salario y fecha de firma son obligatorios',true);return;}
+  const benefLinea=(label)=>parentesco===label?`${label}: <strong>${beneficiario}</strong> en <strong>${beneficiarioPct}</strong>`:`${label}: ___________________________`;
   const PATRON={
     HOT:{nombre:'ANA KATERYN CLEMENTE VAQUIER',rfc:'CEVA010525IH3',regPatronal:'F7947138101',domicilio:'Avenida Puebla número 505, Colonia Palma Sola, C.P. 93320, Poza Rica de Hidalgo, Veracruz'},
     PUE:{nombre:'ANA KATERYN CLEMENTE VAQUIER',rfc:'CEVA010525IH3',regPatronal:'F7944304102',domicilio:'Avenida Puebla número 505, Colonia Palma Sola, C.P. 93320, Poza Rica de Hidalgo, Veracruz'},
@@ -4432,7 +4447,7 @@ li{margin:6px 0;text-align:justify}
 <h3>EL TRABAJADOR declara por su propio derecho:</h3>
 <ul>
 <li>Que se llama como ha quedado escrito, con RFC: <strong>${e.rfc||'_____________'}</strong> CURP: <strong>${e.curp||'_____________'}</strong></li>
-<li>Tiene su domicilio en <strong>______________________________________________________________________</strong>, mismo que proporciona a EL PATRÓN para los efectos legales a que haya lugar y lo señala para oír y recibir notificaciones o avisos. Asimismo, en caso de cambiar el domicilio señalado o la información que aquí se proporciona, está de acuerdo en que, si no notifica el cambio por escrito a EL PATRÓN, subsistirá el que aquí se señala para cualquier notificación o efecto posterior.</li>
+<li>Tiene su domicilio en <strong>${e.domicilio||'______________________________________________________________________'}</strong>, mismo que proporciona a EL PATRÓN para los efectos legales a que haya lugar y lo señala para oír y recibir notificaciones o avisos. Asimismo, en caso de cambiar el domicilio señalado o la información que aquí se proporciona, está de acuerdo en que, si no notifica el cambio por escrito a EL PATRÓN, subsistirá el que aquí se señala para cualquier notificación o efecto posterior.</li>
 <li>Que tiene la capacidad, aptitudes y facultades para desempeñar el trabajo para el que se le contrata.</li>
 <li>Que, al momento de celebrar el presente contrato, no padece ninguna enfermedad física, ni mental que le impida o le pueda impedir desarrollar en forma eficiente y constante el trabajo que se le encomienda.</li>
 <li>Que bajo protesta de decir verdad declara que toda la información que ha proporcionado de manera oral o escrita a EL PATRÓN es correcta y fidedigna.</li>
@@ -4489,10 +4504,10 @@ li{margin:6px 0;text-align:justify}
 
 <p class="clausula"><strong>DÉCIMA CUARTA:</strong> EL TRABAJADOR designará para el pago de salarios y prestaciones devengadas, dando cumplimiento con lo establecido en el artículo 25 fracción X a los siguientes beneficiarios y sus porcentajes:</p>
 <p style="margin-left:30px">
-  Esposa(o)/Beneficiario: <strong>${beneficiario}</strong> en <strong>${beneficiarioPct}</strong><br>
-  Hijo(a): ___________________________<br>
-  Padre: ___________________________<br>
-  Madre: ___________________________
+  ${benefLinea('Esposa(o)')}<br>
+  ${benefLinea('Hijo(a)')}<br>
+  ${benefLinea('Padre')}<br>
+  ${benefLinea('Madre')}
 </p>
 
 <p class="clausula"><strong>DÉCIMA QUINTA:</strong> EL TRABAJADOR declara conocer y recibir el Reglamento Interior de Trabajo vigente que rige en el establecimiento, comprometiéndose a observarlo y haciéndose sabedor de las normas de seguridad y medidas disciplinarias a aplicarse en el desempeño de sus labores.</p>
@@ -4537,7 +4552,18 @@ li{margin:6px 0;text-align:justify}
   const w=window.open('','_blank');
   w.document.write(html);
   w.document.close();
+  descargarWord(html,'Contrato - '+e.nombre+'.doc');
+  toast('Contrato generado — se descargó en Word y se abrió para imprimir');
   closeModal('m-contrato');
+}
+function descargarWord(htmlStr,filename){
+  const wordHtml=htmlStr.replace('<html>','<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">');
+  const blob=new Blob(['﻿',wordHtml],{type:'application/msword'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=filename;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
 }
 // ─── FLOTILLA (functions) ────────────────────────────────────────────────
 
