@@ -3746,9 +3746,9 @@ function imprimirNominaSemanal(){
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${emp.titulo}</title>
 <style>
 @page{size:landscape;margin:1cm}
-*{box-sizing:border-box}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
 body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:16px;color:#000}
-table{border-collapse:collapse;width:100%}
+table{border-collapse:collapse;width:100%;table-layout:fixed}
 .nom-wrap{border:2px solid #000}
 .nom-title td{background:#f6c9dd;text-align:center;font-size:24px;font-weight:700;letter-spacing:1px;padding:10px 0;border-bottom:2px solid #000}
 .nom-head td{border:1px solid #000;vertical-align:middle;padding:8px 12px;font-size:12px}
@@ -3771,6 +3771,11 @@ table{border-collapse:collapse;width:100%}
 </style></head><body>
 <button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
 <table class="nom-wrap">
+  <colgroup>
+    <col style="width:3%"><col style="width:18%"><col style="width:10%"><col style="width:8%">
+    <col style="width:6%"><col style="width:5%"><col style="width:5%"><col style="width:8%">
+    <col style="width:7%"><col style="width:8%"><col style="width:7%"><col style="width:7%"><col style="width:8%">
+  </colgroup>
   <tr class="nom-title"><td colspan="13">${emp.titulo}</td></tr>
   <tr class="nom-head">
     <td class="box-izq" rowspan="2">
