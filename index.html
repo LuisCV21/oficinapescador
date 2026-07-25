@@ -959,6 +959,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             <button class="btn-icon" onclick="goNominaWeek(-1)" title="Semana anterior">◀</button>
             <button class="btn btn-sm" onclick="goNominaToday()">Esta semana</button>
             <button class="btn-icon" onclick="goNominaWeek(1)" title="Semana siguiente">▶</button>
+            <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir nómina</button>
             <button class="btn btn-sm" onclick="printNomina()" id="nomina-print-btn" style="display:none">🖨️ Recibos</button>
             <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🗑️ Borrar</button>
           </div>
@@ -2151,6 +2152,7 @@ let repoPath=[];
 // ─── UTILS ───────────────────────────────────────────────────
 function fmt(s){if(!s)return'';const d=new Date(s+'T12:00:00');return d.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})}
 function fmxn(n){if(!n&&n!==0)return'';return'$'+Number(n).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function fmxnPlain(n){return Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function daysUntil(s){if(!s)return 999;return Math.round((new Date(s+'T12:00:00')-TODAY)/86400000)}
 function oblStatus(o){const d=daysUntil(o.fecha_limite);if(d<0)return'overdue';if(d<=7)return'urgent';if(d<=15)return'soon';return'ok'}
 function oblIcon(o){return o.icono||catInfo(o.categoria).icono}
@@ -3530,9 +3532,11 @@ function renderNomina(){
   document.getElementById('nomina-week-label').textContent='Semana del '+fmtFechaCorta(days[0])+' al '+fmtFechaCorta(days[6]);
   const el=document.getElementById('nomina-content');
   const printBtn=document.getElementById('nomina-print-btn');
+  const printTablaBtn=document.getElementById('nomina-print-tabla-btn');
   const delBtn=document.getElementById('nomina-del-btn');
   if(!nominaPeriodo){
     printBtn.style.display='none';
+    printTablaBtn.style.display='none';
     delBtn.style.display='none';
     el.innerHTML=`<div class="nomina-banner">
       <div class="nomina-banner-txt">📋 Todavía no se ha generado la nómina de esta semana para ${(ENTS[nominaActiveEnt]||{label:nominaActiveEnt}).label}.</div>
@@ -3541,6 +3545,7 @@ function renderNomina(){
     return;
   }
   printBtn.style.display='inline-flex';
+  printTablaBtn.style.display='inline-flex';
   delBtn.style.display=isAdmin()?'inline-flex':'none';
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
   const sorted=[...nominaLineas].sort((a,b)=>{
@@ -3684,6 +3689,122 @@ function printNomina(){
   }).join('');
   document.getElementById('print-nomina').innerHTML=`<div class="recibo-grid">${cards}</div>`;
   window.print();
+}
+
+const NOMINA_EMPRESA={
+  HOT:{titulo:'NOMINA HOTEL REAL DE POZA',patron:'ANA KATERYN CLEMENTE VAQUIER',empresa:'HOTEL REAL DE POZA',ciudad:'POZA RICA, VER.'},
+  PUE:{titulo:'NOMINA EL PESCADOR VERACRUZANO — PUEBLA',patron:'ANA KATERYN CLEMENTE VAQUIER',empresa:'EL PESCADOR VERACRUZANO',ciudad:'POZA RICA, VER.'},
+  FLO:{titulo:'NOMINA EL PESCADOR VERACRUZANO — FLORIDA',patron:'LUIS ANTONIO CLEMENTE VAQUIER',empresa:'EL PESCADOR VERACRUZANO',ciudad:'PAPANTLA, VER.'},
+  OBR:{titulo:'NOMINA EL PESCADOR VERACRUZANO — OBRA',patron:'ANA KATERYN CLEMENTE VAQUIER',empresa:'EL PESCADOR VERACRUZANO',ciudad:'POZA RICA, VER.'},
+};
+const NOMINA_MESES=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+function fmtNominaRango(iniIso,finIso){
+  const d0=new Date(iniIso+'T12:00:00'),d6=new Date(finIso+'T12:00:00');
+  if(d0.getMonth()===d6.getMonth())return`${d0.getDate()} AL ${d6.getDate()} DE ${NOMINA_MESES[d0.getMonth()]} DEL ${d6.getFullYear()}`;
+  return`${d0.getDate()} DE ${NOMINA_MESES[d0.getMonth()]} AL ${d6.getDate()} DE ${NOMINA_MESES[d6.getMonth()]} DEL ${d6.getFullYear()}`;
+}
+function fmtNominaFecha(iso){
+  const d=new Date(iso+'T12:00:00');
+  return`${d.getDate()} DE ${NOMINA_MESES[d.getMonth()]} DEL ${d.getFullYear()}`;
+}
+function imprimirNominaSemanal(){
+  if(!nominaPeriodo){toast('No hay nómina generada para esta semana',true);return;}
+  const empById={};empData.forEach(e=>{empById[e.id]=e;});
+  const days=asistWeekDays(nominaWeekStart);
+  const emp=NOMINA_EMPRESA[nominaActiveEnt]||NOMINA_EMPRESA.PUE;
+  const sorted=[...nominaLineas].sort((a,b)=>{
+    const ea=empById[a.empleado_id],eb=empById[b.empleado_id];
+    return(ea?ea.nombre:'').localeCompare(eb?eb.nombre:'');
+  }).filter(l=>empById[l.empleado_id]);
+  const rows=sorted.map((l,i)=>{
+    const e=empById[l.empleado_id];
+    const c=nominaCalc(l);
+    return`<tr>
+      <td class="nc">${i+1}</td>
+      <td class="nl">${e.nombre.toUpperCase()}</td>
+      <td class="nl">${(puestoNombre(e.puesto_id)||'').toUpperCase()}</td>
+      <td class="nl">${(l.dia_descanso||'').toUpperCase()}</td>
+      <td class="nr">$ ${fmxnPlain(l.salario_diario)}</td>
+      <td class="nc">${l.dias_trabajados}</td>
+      <td class="nc">${l.dias_pagados}</td>
+      <td class="nr">$ ${fmxnPlain(c.nominaFiscal)}</td>
+      <td class="nr">$ ${fmxnPlain(c.primaDominical)}</td>
+      <td class="nr">$ ${fmxnPlain(c.subtotal)}</td>
+      <td class="nr">$ ${fmxnPlain(l.retencion_isr)}</td>
+      <td class="nr">$ ${fmxnPlain(l.retencion_imss)}</td>
+      <td class="nr nb">$ ${fmxnPlain(c.total)}</td>
+    </tr>`;
+  }).join('');
+  const totals=sorted.reduce((acc,l)=>{
+    const c=nominaCalc(l);
+    acc.trabajados+=Number(l.dias_trabajados)||0;
+    acc.pagados+=Number(l.dias_pagados)||0;
+    acc.fiscal+=c.nominaFiscal;acc.prima+=c.primaDominical;acc.subtotal+=c.subtotal;
+    acc.isr+=Number(l.retencion_isr)||0;acc.imss+=Number(l.retencion_imss)||0;acc.total+=c.total;
+    return acc;
+  },{trabajados:0,pagados:0,fiscal:0,prima:0,subtotal:0,isr:0,imss:0,total:0});
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${emp.titulo}</title>
+<style>
+@page{size:landscape;margin:1cm}
+*{box-sizing:border-box}
+body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:16px;color:#000}
+table{border-collapse:collapse;width:100%}
+.nom-wrap{border:2px solid #000}
+.nom-title td{background:#f6c9dd;text-align:center;font-size:24px;font-weight:700;letter-spacing:1px;padding:10px 0;border-bottom:2px solid #000}
+.nom-head td{border:1px solid #000;vertical-align:middle;padding:8px 12px;font-size:12px}
+.nom-head .box-izq{width:40%}
+.nom-head .box-izq .patron{font-weight:700;text-decoration:underline;font-size:13px}
+.nom-head .box-izq .empresa{font-weight:700;margin-top:2px}
+.nom-head .box-der{background:#f6c9dd;text-align:center;font-weight:700;font-size:12px}
+.nom-fiscal-hdr td{background:#f6c9dd;text-align:center;font-weight:700;font-size:14px;letter-spacing:2px;border:1px solid #000;padding:6px 0}
+.nom-cols th{border:1px solid #000;background:#fff;font-size:10.5px;font-weight:700;text-align:center;padding:6px 4px;vertical-align:bottom}
+.nom-data td{border:1px solid #000;font-size:11.5px;padding:5px 6px;white-space:nowrap}
+.nom-data td.nl{text-align:left;white-space:normal}
+.nom-data td.nc{text-align:center}
+.nom-data td.nr{text-align:right;font-family:Consolas,'Courier New',monospace}
+.nom-data td.nb{font-weight:700}
+.nom-tot td{border:1px solid #000;font-weight:700;font-size:11.5px;padding:6px}
+.nom-tot td.nr{text-align:right;font-family:Consolas,'Courier New',monospace}
+.nom-tot .u{text-decoration:underline}
+.print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a73e8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:Arial,sans-serif}
+@media print{.print-btn{display:none}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
+<table class="nom-wrap">
+  <tr class="nom-title"><td colspan="13">${emp.titulo}</td></tr>
+  <tr class="nom-head">
+    <td class="box-izq" rowspan="2">
+      <div class="patron">${emp.patron}</div>
+      <div class="empresa">${emp.empresa}</div>
+      <div>${emp.ciudad}</div>
+    </td>
+    <td class="box-der" colspan="12">SEMANA CORRESPONDIENTE:<br>${fmtNominaRango(days[0],days[6])}</td>
+  </tr>
+  <tr class="nom-head">
+    <td class="box-der" colspan="12">FECHA: ${fmtNominaFecha(days[6])}</td>
+  </tr>
+  <tr class="nom-fiscal-hdr"><td colspan="7"></td><td colspan="6">NOMINA FISCAL</td></tr>
+  <tr class="nom-cols">
+    <th>No</th><th>NOMBRE</th><th>PUESTO</th><th>DESCANSO</th><th>SALARIO</th><th>DIAS<br>TRABAJADOS</th><th>D PAG</th>
+    <th>SALARIO<br>SEMANAL</th><th>PRIMA<br>DOMINICAL</th><th>SUBTOTAL</th><th>RETENCION<br>ISR</th><th>RETENCION<br>IMSS</th><th>TOTAL</th>
+  </tr>
+  <tbody class="nom-data">${rows||'<tr><td colspan="13" style="text-align:center;padding:16px">Sin empleados en esta nómina</td></tr>'}</tbody>
+  <tr class="nom-tot">
+    <td colspan="5" style="text-align:right">TOTALES</td>
+    <td style="text-align:center" class="u">${totals.trabajados}</td>
+    <td style="text-align:center" class="u">${totals.pagados}</td>
+    <td class="nr">$ ${fmxnPlain(totals.fiscal)}</td>
+    <td class="nr">$ ${fmxnPlain(totals.prima)}</td>
+    <td class="nr">$ ${fmxnPlain(totals.subtotal)}</td>
+    <td class="nr">$ ${fmxnPlain(totals.isr)}</td>
+    <td class="nr">$ ${fmxnPlain(totals.imss)}</td>
+    <td class="nr">$ ${fmxnPlain(totals.total)}</td>
+  </tr>
+</table>
+</body></html>`;
+  const w=window.open('','_blank');
+  w.document.write(html);
+  w.document.close();
 }
 
 // ─── ACCESOS ─────────────────────────────────────────────────
