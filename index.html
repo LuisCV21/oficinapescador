@@ -856,11 +856,13 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             <div class="tab active" onclick="configTab('cats',this)">🏷️ Categorías</div>
             <div class="tab" onclick="configTab('cuentas',this)">💳 Métodos de pago</div>
             <div class="tab" onclick="configTab('puestos',this)">🧑‍💼 Puestos</div>
+            <div class="tab" onclick="configTab('usuarios',this)" id="tab-usuarios" style="display:none">👤 Usuarios</div>
           </div>
           <div style="padding:14px 16px 16px">
             <div id="config-cats-list"></div>
             <div id="config-cuentas-list" style="display:none"></div>
             <div id="config-puestos-list" style="display:none"></div>
+            <div id="config-usuarios-list" style="display:none"></div>
           </div>
         </div>
       </div>
@@ -1167,6 +1169,19 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
     <div class="f-row"><label>Salario diario sugerido</label><input type="number" step="0.01" id="puf-salario" placeholder="316.00"/></div>
   </div>
   <div class="modal-ftr"><button class="btn" onclick="closeModal('m-puesto')">Cancelar</button><button class="btn btn-filled" id="puesto-save-btn" onclick="savePuesto()">Guardar</button></div>
+</div>
+</div>
+
+<div class="modal-overlay" id="m-usuario">
+<div class="modal">
+  <div class="modal-hdr"><div class="modal-title" id="m-usuario-title">Nuevo usuario</div><button class="btn-icon" onclick="closeModal('m-usuario')">✕</button></div>
+  <div class="modal-body">
+    <div class="f-row"><label>Nombre <span class="req">*</span></label><input type="text" id="uf-nombre" placeholder="Nombre y apellido"/></div>
+    <div class="f-row"><label>Correo <span class="req">*</span></label><input type="email" id="uf-correo" placeholder="correo@ejemplo.com" autocomplete="off"/></div>
+    <div class="f-row" id="uf-pass-row"><label>Contraseña <span class="req">*</span></label><input type="password" id="uf-pass" placeholder="Mínimo 6 caracteres" autocomplete="new-password"/></div>
+    <div class="f-row"><label>Rol</label><select id="uf-rol" class="fsel" style="width:100%"><option value="oficinista">Oficinista</option><option value="admin">Admin</option></select></div>
+  </div>
+  <div class="modal-ftr"><button class="btn" onclick="closeModal('m-usuario')">Cancelar</button><button class="btn btn-filled" id="usuario-save-btn" onclick="saveUsuario()">Guardar</button></div>
 </div>
 </div>
 
@@ -2115,8 +2130,9 @@ function canDelete(){return isAdmin();}
 function showIfAdmin(html){return isAdmin()?html:'';}
 let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[];
 let currentEnt=localStorage.getItem('ep_obl_ent')||null,currentRhEnt=null;
-let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null,editCatId=null,editCuentaId=null,editPuestoId=null;
-let cuentasPagoData=[],puestosData=[];
+let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null,editCatId=null,editCuentaId=null,editPuestoId=null,editUsuarioId=null;
+let cuentasPagoData=[],puestosData=[],usuariosData=[];
+const EDGE_FN_URL=SUPA_URL+'/functions/v1/crear-usuario';
 let selIconObl='',selIconAcc='';
 let pendingFiles={};
 let repoPath=[];
@@ -2171,14 +2187,21 @@ async function doLogout(){
 document.getElementById('l-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 
 async function initApp(user){
+  // Load perfil primero para poder rechazar cuentas desactivadas antes de mostrar la app
+  const {data:p}=await sb.from('perfiles').select('*').eq('id',user.id).single();
+  if(p&&p.activo===false){
+    await sb.auth.signOut();
+    document.getElementById('l-err').textContent='Esta cuenta está desactivada. Contacta al administrador.';
+    document.getElementById('l-btn').disabled=false;
+    document.getElementById('l-btn').textContent='Entrar';
+    return;
+  }
   currentUser=user;
+  currentPerfil=p;
   document.getElementById('login-wrap').style.display='none';
   document.getElementById('app').style.display='block';
   document.getElementById('gas-fab').style.display='flex';
   document.getElementById('tb-date').textContent=TODAY.toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  // Load perfil
-  const {data:p}=await sb.from('perfiles').select('*').eq('id',user.id).single();
-  currentPerfil=p;
   const nombre=p?p.nombre:user.email.split('@')[0];
   document.getElementById('tb-name').textContent=nombre;
   document.getElementById('tb-avatar').textContent=initials(nombre);
@@ -2187,13 +2210,15 @@ async function initApp(user){
   else{rolEl.textContent='Oficinista';}
   const siConfig=document.getElementById('si-config');
   if(siConfig)siConfig.style.display=isAdmin()?'flex':'none';
+  const tabUsuarios=document.getElementById('tab-usuarios');
+  if(tabUsuarios)tabUsuarios.style.display=isAdmin()?'block':'none';
   await loadAll();
   setupRealtime();
 }
 
 // ─── LOAD DATA ────────────────────────────────────────────────
 async function loadAll(){
-  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger()]);
+  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadUsuarios(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger()]);
   renderAll();
 }
 async function loadBalances(){
@@ -2229,6 +2254,11 @@ async function loadPuestos(){
   const {data}=await sb.from('puestos').select('*').order('orden');
   puestosData=data||[];
   populatePuestoSelects();
+}
+async function loadUsuarios(){
+  if(!isAdmin())return;
+  const {data}=await sb.from('perfiles').select('*').order('nombre');
+  usuariosData=data||[];
 }
 async function loadPagos(){
   const {data}=await sb.from('pagos').select('*').order('created_at',{ascending:false});
@@ -2622,23 +2652,33 @@ function configTab(tab,el){
   document.getElementById('config-cats-list').style.display=tab==='cats'?'block':'none';
   document.getElementById('config-cuentas-list').style.display=tab==='cuentas'?'block':'none';
   document.getElementById('config-puestos-list').style.display=tab==='puestos'?'block':'none';
+  document.getElementById('config-usuarios-list').style.display=tab==='usuarios'?'block':'none';
   const sub=document.getElementById('config-sub');
   const addBtn=document.getElementById('config-add-btn');
   if(tab==='cats'){
     sub.textContent='Categorías de obligaciones — colores, íconos y a qué grupo pertenecen';
     addBtn.textContent='+ Nueva categoría';
     addBtn.setAttribute('onclick','openCatModal()');
+    addBtn.style.display='inline-flex';
     renderConfigCats();
   }else if(tab==='cuentas'){
     sub.textContent='Cuentas y métodos de pago — se usan al registrar un pago en Obligaciones';
     addBtn.textContent='+ Nueva cuenta';
     addBtn.setAttribute('onclick','openCuentaModal()');
+    addBtn.style.display='inline-flex';
     renderConfigCuentas();
-  }else{
+  }else if(tab==='puestos'){
     sub.textContent='Puestos de Recursos Humanos — se usan al dar de alta empleados y para filtrarlos';
     addBtn.textContent='+ Nuevo puesto';
     addBtn.setAttribute('onclick','openPuestoModal()');
+    addBtn.style.display='inline-flex';
     renderConfigPuestos();
+  }else{
+    sub.textContent='Usuarios con acceso al sistema — quién puede entrar y con qué rol';
+    addBtn.textContent='+ Nuevo usuario';
+    addBtn.setAttribute('onclick','openUsuarioModal()');
+    addBtn.style.display=isAdmin()?'inline-flex':'none';
+    renderConfigUsuarios();
   }
 }
 
@@ -2734,6 +2774,77 @@ async function togglePuesto(id,activar){
   if(!isAdmin())return;
   await sb.from('puestos').update({activa:activar}).eq('id',id);
   await loadPuestos();renderConfigPuestos();
+}
+
+// ─── USUARIOS (tabla perfiles + Edge Function crear-usuario) ────
+function renderConfigUsuarios(){
+  const el=document.getElementById('config-usuarios-list');
+  if(!el)return;
+  if(!isAdmin()){el.innerHTML=`<div class="empty">Solo el administrador puede ver esta sección</div>`;return;}
+  if(!usuariosData.length){el.innerHTML=`<div class="empty"><div class="empty-ico">👤</div>Sin usuarios aún</div>`;return;}
+  el.innerHTML=usuariosData.map(u=>{
+    const esYo=currentUser&&u.id===currentUser.id;
+    return `<div class="cfgcat-row ${u.activo===false?'inactive':''}">
+      <div class="cfgcat-swatch" style="background:var(--slate-light)">${u.rol==='admin'?'🛡️':'👤'}</div>
+      <div class="cfgcat-info">
+        <div class="cfgcat-label">${u.nombre||'(sin nombre)'}${esYo?' · tú':''}</div>
+        <div class="cfgcat-meta">${u.correo||''} · ${u.rol==='admin'?'Admin':'Oficinista'}${u.activo===false?' · desactivado':''}</div>
+      </div>
+      ${!esYo?`<button class="btn-text" onclick="editUsuario('${u.id}')">Editar</button><button class="btn-text ${u.activo===false?'':'red'}" onclick="toggleUsuarioActivo('${u.id}',${u.activo===false})">${u.activo===false?'Reactivar':'Desactivar'}</button>`:''}
+    </div>`;
+  }).join('');
+}
+function openUsuarioModal(id){
+  if(!isAdmin())return;
+  editUsuarioId=id||null;
+  const u=id?usuariosData.find(x=>x.id===id):null;
+  document.getElementById('m-usuario-title').textContent=id?'Editar usuario':'Nuevo usuario';
+  document.getElementById('uf-nombre').value=u?u.nombre||'':'';
+  document.getElementById('uf-correo').value=u?u.correo||'':'';
+  document.getElementById('uf-correo').disabled=!!id;
+  document.getElementById('uf-pass-row').style.display=id?'none':'block';
+  document.getElementById('uf-pass').value='';
+  document.getElementById('uf-rol').value=u?u.rol||'oficinista':'oficinista';
+  openModal('m-usuario');
+}
+function editUsuario(id){openUsuarioModal(id);}
+async function saveUsuario(){
+  const nombre=document.getElementById('uf-nombre').value.trim();
+  const correo=document.getElementById('uf-correo').value.trim();
+  const rol=document.getElementById('uf-rol').value;
+  if(!nombre||!correo){toast('Nombre y correo son obligatorios',true);return;}
+  setLoading('usuario-save-btn',true);
+  if(editUsuarioId){
+    const {error:err}=await sb.from('perfiles').update({nombre,rol,updated_at:new Date().toISOString()}).eq('id',editUsuarioId);
+    setLoading('usuario-save-btn',false);
+    if(err){toast('Error al guardar: '+err.message,true);return;}
+    toast('Usuario actualizado');
+    closeModal('m-usuario');await loadUsuarios();renderConfigUsuarios();
+    return;
+  }
+  const password=document.getElementById('uf-pass').value;
+  if(!password||password.length<6){setLoading('usuario-save-btn',false);toast('La contraseña debe tener al menos 6 caracteres',true);return;}
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const resp=await fetch(EDGE_FN_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+      body:JSON.stringify({nombre,correo,password,rol})
+    });
+    const out=await resp.json();
+    setLoading('usuario-save-btn',false);
+    if(!resp.ok){toast('Error al crear usuario: '+(out.error||resp.statusText),true);return;}
+    toast('Usuario creado');
+    closeModal('m-usuario');await loadUsuarios();renderConfigUsuarios();
+  }catch(e){
+    setLoading('usuario-save-btn',false);
+    toast('Error de red al crear usuario',true);
+  }
+}
+async function toggleUsuarioActivo(id,activar){
+  if(!isAdmin())return;
+  await sb.from('perfiles').update({activo:activar}).eq('id',id);
+  await loadUsuarios();renderConfigUsuarios();
 }
 
 // ─── PAY ─────────────────────────────────────────────────────
@@ -5838,6 +5949,7 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'obl_categorias'},async()=>{await loadOblCategorias();populateCatSelects();renderAll();if(document.getElementById('page-config')&&document.getElementById('page-config').classList.contains('active')&&configTabCurrent==='cats')renderConfigCats();})
     .on('postgres_changes',{event:'*',schema:'public',table:'cuentas_pago'},async()=>{await loadCuentasPago();if(document.getElementById('page-config')&&document.getElementById('page-config').classList.contains('active')&&configTabCurrent==='cuentas')renderConfigCuentas();})
     .on('postgres_changes',{event:'*',schema:'public',table:'puestos'},async()=>{await loadPuestos();if(document.getElementById('page-config')&&document.getElementById('page-config').classList.contains('active')&&configTabCurrent==='puestos')renderConfigPuestos();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'perfiles'},async()=>{await loadUsuarios();if(document.getElementById('page-config')&&document.getElementById('page-config').classList.contains('active')&&configTabCurrent==='usuarios')renderConfigUsuarios();})
     .on('postgres_changes',{event:'*',schema:'public',table:'pagos'},async()=>{await loadPagos();renderAll();})
     .on('postgres_changes',{event:'*',schema:'public',table:'archivos_pago'},async()=>{await loadArchivos();renderAll();})
     .on('postgres_changes',{event:'*',schema:'public',table:'empleados'},async()=>{await loadEmpleados();if(document.getElementById('page-rh').classList.contains('active'))renderEmps();if(document.getElementById('page-asistencia').classList.contains('active'))renderAsistGrid();})
