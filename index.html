@@ -3745,29 +3745,31 @@ function imprimirNominaSemanal(){
   },{trabajados:0,pagados:0,fiscal:0,prima:0,subtotal:0,isr:0,imss:0,total:0});
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${emp.titulo}</title>
 <style>
-@page{size:landscape;margin:1cm}
+@page{size:letter landscape;margin:0.6cm}
 *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
-body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:16px;color:#000}
+html,body{width:100%;height:100%}
+body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:8px;color:#000}
 table{border-collapse:collapse;width:100%;table-layout:fixed}
 .nom-wrap{border:2px solid #000}
-.nom-title td{background:#f6c9dd;text-align:center;font-size:24px;font-weight:700;letter-spacing:1px;padding:10px 0;border-bottom:2px solid #000}
-.nom-head td{border:1px solid #000;vertical-align:middle;padding:8px 12px;font-size:12px}
+.nom-title td{background:#f6c9dd;text-align:center;font-size:19px;font-weight:700;letter-spacing:1px;padding:7px 0;border-bottom:2px solid #000}
+.nom-head td{border:1px solid #000;vertical-align:middle;padding:5px 10px;font-size:10.5px}
 .nom-head .box-izq{width:40%}
-.nom-head .box-izq .patron{font-weight:700;text-decoration:underline;font-size:13px}
+.nom-head .box-izq .patron{font-weight:700;text-decoration:underline;font-size:11.5px}
 .nom-head .box-izq .empresa{font-weight:700;margin-top:2px}
-.nom-head .box-der{background:#f6c9dd;text-align:center;font-weight:700;font-size:12px}
-.nom-fiscal-hdr td{background:#f6c9dd;text-align:center;font-weight:700;font-size:14px;letter-spacing:2px;border:1px solid #000;padding:6px 0}
-.nom-cols th{border:1px solid #000;background:#fff;font-size:10.5px;font-weight:700;text-align:center;padding:6px 4px;vertical-align:bottom}
-.nom-data td{border:1px solid #000;font-size:11.5px;padding:5px 6px;white-space:nowrap}
-.nom-data td.nl{text-align:left;white-space:normal}
+.nom-head .box-der{background:#f6c9dd;text-align:center;font-weight:700;font-size:10.5px}
+.nom-fiscal-hdr td{background:#f6c9dd;text-align:center;font-weight:700;font-size:12px;letter-spacing:2px;border:1px solid #000;padding:4px 0}
+.nom-cols th{border:1px solid #000;background:#fff;font-size:9px;font-weight:700;text-align:center;padding:4px 3px;vertical-align:bottom;line-height:1.2}
+.nom-data td{border:1px solid #000;font-size:10px;padding:3px 5px;white-space:nowrap}
+.nom-data td.nl{text-align:left;white-space:normal;word-break:break-word}
 .nom-data td.nc{text-align:center}
 .nom-data td.nr{text-align:right;font-family:Consolas,'Courier New',monospace}
 .nom-data td.nb{font-weight:700}
-.nom-tot td{border:1px solid #000;font-weight:700;font-size:11.5px;padding:6px}
+.nom-tot td{border:1px solid #000;font-weight:700;font-size:10px;padding:4px}
 .nom-tot td.nr{text-align:right;font-family:Consolas,'Courier New',monospace}
 .nom-tot .u{text-decoration:underline}
+.nom-data tr,.nom-tot{page-break-inside:avoid}
 .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a73e8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:Arial,sans-serif}
-@media print{.print-btn{display:none}}
+@media print{.print-btn{display:none}body{padding:0}}
 </style></head><body>
 <button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
 <table class="nom-wrap">
