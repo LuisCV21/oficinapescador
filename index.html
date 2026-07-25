@@ -3570,11 +3570,9 @@ function renderNomina(){
   const days=asistWeekDays(nominaWeekStart);
   document.getElementById('nomina-week-label').textContent='Semana del '+fmtFechaCorta(days[0])+' al '+fmtFechaCorta(days[6]);
   const el=document.getElementById('nomina-content');
-  const printBtn=document.getElementById('nomina-print-btn');
   const printTablaBtn=document.getElementById('nomina-print-tabla-btn');
   const delBtn=document.getElementById('nomina-del-btn');
   if(!nominaPeriodo){
-    printBtn.style.display='none';
     printTablaBtn.style.display='none';
     delBtn.style.display='none';
     el.innerHTML=`<div class="nomina-banner">
@@ -3583,7 +3581,6 @@ function renderNomina(){
     </div>`;
     return;
   }
-  printBtn.style.display='inline-flex';
   printTablaBtn.style.display='inline-flex';
   delBtn.style.display=isAdmin()?'inline-flex':'none';
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
