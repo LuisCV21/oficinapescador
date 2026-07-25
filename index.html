@@ -688,6 +688,11 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   .recibo-card .rc-total{font-weight:700;font-size:12px;border-top:1px solid #000;padding-top:4px;margin-top:4px}
   .recibo-card .rc-firma{margin-top:22px;border-top:1px solid #000;padding-top:3px;font-size:9px;text-align:center}
 }
+#print-horasextra{display:none}
+@media print{
+  #print-horasextra,#print-horasextra *{visibility:visible}
+  #print-horasextra{display:block;position:absolute;left:0;top:0;width:100%;padding:0}
+}
 .asist-estatus-opt{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--r);
   border:1.5px solid var(--border2);cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
 .asist-estatus-opt:hover{border-color:var(--copper)}
@@ -765,17 +770,9 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <span class="sb-item-icon">👥</span>
         <span class="sb-item-label">Recursos Humanos</span>
       </div>
-      <div class="sb-item" onclick="showPage('asistencia')" id="si-asistencia">
-        <span class="sb-item-icon">🗓️</span>
-        <span class="sb-item-label">Asistencia</span>
-      </div>
-      <div class="sb-item" onclick="showPage('nomina')" id="si-nomina">
+      <div class="sb-item" onclick="showPage('nominayasist')" id="si-nominayasist">
         <span class="sb-item-icon">💵</span>
-        <span class="sb-item-label">Nómina</span>
-      </div>
-      <div class="sb-item" onclick="showPage('horasextra')" id="si-horasextra">
-        <span class="sb-item-icon">⏱️</span>
-        <span class="sb-item-label">Horas extra</span>
+        <span class="sb-item-label">Nómina y asistencia</span>
       </div>
       <div class="sb-item" onclick="showPage('flotilla')" id="si-flotilla">
         <span class="sb-item-icon">🚗</span>
@@ -942,77 +939,70 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         </div>
       </div>
 
-      <!-- ASISTENCIA -->
-      <div class="page" id="page-asistencia">
+      <!-- ASISTENCIA + HORAS EXTRA + NÓMINA -->
+      <div class="page" id="page-nominayasist">
         <div class="page-hdr">
           <div>
-            <div class="page-title">Asistencia semanal</div>
+            <div class="page-title">Nómina y asistencia</div>
+            <div class="page-sub">Asistencia, horas extra/retardos y nómina fiscal de la semana</div>
+          </div>
+        </div>
+        <div class="tabs-bar" id="nya-ent-tabs">
+          <div class="tab active" data-ent="PUE" onclick="switchModuloEnt('PUE')">Puebla</div>
+          <div class="tab" data-ent="HOT" onclick="switchModuloEnt('HOT')">Hotel</div>
+          <div class="tab" data-ent="FLO" onclick="switchModuloEnt('FLO')">Florida</div>
+        </div>
+        <div class="tabs-bar" id="nya-sub-tabs" style="margin-top:8px">
+          <div class="tab active" data-sub="asistencia" onclick="switchModuloTab('asistencia')">📅 Asistencia</div>
+          <div class="tab" data-sub="horasextra" onclick="switchModuloTab('horasextra')">⏱️ Horas extra</div>
+          <div class="tab" data-sub="nomina" onclick="switchModuloTab('nomina')">💵 Nómina</div>
+        </div>
+
+        <div class="modulo-sub" id="sub-asistencia">
+          <div class="page-hdr" style="margin-top:16px">
             <div class="page-sub" id="asist-week-label"></div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="btn-icon" onclick="goAsistWeek(-1)" title="Semana anterior">◀</button>
+              <button class="btn btn-sm" onclick="goAsistToday()">Esta semana</button>
+              <button class="btn-icon" onclick="goAsistWeek(1)" title="Semana siguiente">▶</button>
+              <button class="btn btn-sm" onclick="printAsistencia()">🖨️ Imprimir</button>
+            </div>
           </div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <button class="btn-icon" onclick="goAsistWeek(-1)" title="Semana anterior">◀</button>
-            <button class="btn btn-sm" onclick="goAsistToday()">Esta semana</button>
-            <button class="btn-icon" onclick="goAsistWeek(1)" title="Semana siguiente">▶</button>
-            <button class="btn btn-sm" onclick="printAsistencia()">🖨️ Imprimir</button>
+          <div style="overflow-x:auto;margin:14px 0" id="asist-grid-wrap"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+          <div style="font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin:22px 0 10px">Incidencias de la semana</div>
+          <div id="asist-incidencias" style="display:flex;flex-direction:column;gap:8px;padding-bottom:30px"></div>
+        </div>
+
+        <div class="modulo-sub" id="sub-horasextra" style="display:none">
+          <div class="page-hdr" style="margin-top:16px">
+            <div class="page-sub" id="horasextra-week-label"></div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="btn-icon" onclick="goHorasExtraWeek(-1)" title="Semana anterior">◀</button>
+              <button class="btn btn-sm" onclick="goHorasExtraToday()">Esta semana</button>
+              <button class="btn-icon" onclick="goHorasExtraWeek(1)" title="Semana siguiente">▶</button>
+              <button class="btn btn-sm" onclick="imprimirHorasExtra()">📊 Imprimir</button>
+              <button class="btn btn-sm" onclick="imprimirRecibosHorasExtra()">🖨️ Recibos</button>
+            </div>
           </div>
+          <div style="overflow-x:auto;margin:14px 0" id="horasextra-grid-wrap"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
-        <div class="tabs-bar" id="asist-tabs-bar">
-          <div class="tab active" data-ent="PUE" onclick="switchAsistEnt('PUE')">Puebla</div>
-          <div class="tab" data-ent="HOT" onclick="switchAsistEnt('HOT')">Hotel</div>
-          <div class="tab" data-ent="FLO" onclick="switchAsistEnt('FLO')">Florida</div>
+
+        <div class="modulo-sub" id="sub-nomina" style="display:none">
+          <div class="page-hdr" style="margin-top:16px">
+            <div class="page-sub" id="nomina-week-label"></div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="btn-icon" onclick="goNominaWeek(-1)" title="Semana anterior">◀</button>
+              <button class="btn btn-sm" onclick="goNominaToday()">Esta semana</button>
+              <button class="btn-icon" onclick="goNominaWeek(1)" title="Semana siguiente">▶</button>
+              <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir nómina</button>
+              <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🗑️ Borrar</button>
+            </div>
+          </div>
+          <div id="nomina-content" style="margin:14px 0"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
-        <div style="overflow-x:auto;margin:14px 0" id="asist-grid-wrap"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
-        <div style="font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin:22px 0 10px">Incidencias de la semana</div>
-        <div id="asist-incidencias" style="display:flex;flex-direction:column;gap:8px;padding-bottom:70px"></div>
       </div>
       <div id="print-asist"></div>
-
-      <!-- NÓMINA -->
-      <div class="page" id="page-nomina">
-        <div class="page-hdr">
-          <div>
-            <div class="page-title">Nómina semanal</div>
-            <div class="page-sub" id="nomina-week-label"></div>
-          </div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <button class="btn-icon" onclick="goNominaWeek(-1)" title="Semana anterior">◀</button>
-            <button class="btn btn-sm" onclick="goNominaToday()">Esta semana</button>
-            <button class="btn-icon" onclick="goNominaWeek(1)" title="Semana siguiente">▶</button>
-            <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir nómina</button>
-            <button class="btn btn-sm" onclick="printNomina()" id="nomina-print-btn" style="display:none">🖨️ Recibos</button>
-            <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🗑️ Borrar</button>
-          </div>
-        </div>
-        <div class="tabs-bar" id="nomina-tabs-bar">
-          <div class="tab active" data-ent="PUE" onclick="switchNomSemEnt('PUE')">Puebla</div>
-          <div class="tab" data-ent="HOT" onclick="switchNomSemEnt('HOT')">Hotel</div>
-          <div class="tab" data-ent="FLO" onclick="switchNomSemEnt('FLO')">Florida</div>
-        </div>
-        <div id="nomina-content" style="margin:14px 0"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
-      </div>
       <div id="print-nomina"></div>
-
-      <!-- HORAS EXTRA -->
-      <div class="page" id="page-horasextra">
-        <div class="page-hdr">
-          <div>
-            <div class="page-title">Horas extra y retardos</div>
-            <div class="page-sub" id="horasextra-week-label"></div>
-          </div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <button class="btn-icon" onclick="goHorasExtraWeek(-1)" title="Semana anterior">◀</button>
-            <button class="btn btn-sm" onclick="goHorasExtraToday()">Esta semana</button>
-            <button class="btn-icon" onclick="goHorasExtraWeek(1)" title="Semana siguiente">▶</button>
-            <button class="btn btn-sm" onclick="imprimirHorasExtra()">📊 Imprimir</button>
-          </div>
-        </div>
-        <div class="tabs-bar" id="horasextra-tabs-bar">
-          <div class="tab active" data-ent="PUE" onclick="switchHorasExtraEnt('PUE')">Puebla</div>
-          <div class="tab" data-ent="HOT" onclick="switchHorasExtraEnt('HOT')">Hotel</div>
-          <div class="tab" data-ent="FLO" onclick="switchHorasExtraEnt('FLO')">Florida</div>
-        </div>
-        <div style="overflow-x:auto;margin:14px 0" id="horasextra-grid-wrap"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
-      </div>
       <div id="print-horasextra"></div>
 
       <!-- ACCESOS -->
@@ -2354,9 +2344,7 @@ function showPage(id){
   else if(id==='directorio')renderDirectorio();
   else if(id==='flotilla')renderFlotilla();
   else if(id==='balance')switchBalTab(balActiveTab);
-  else if(id==='asistencia')loadAsistencia().then(renderAsistGrid);
-  else if(id==='nomina')loadNomina().then(renderNomina);
-  else if(id==='horasextra')loadHorasExtra().then(renderHorasExtraGrid);
+  else if(id==='nominayasist')reloadModuloActivo();
   else if(id==='config'){
     if(configTabCurrent==='cuentas')renderConfigCuentas();
     else if(configTabCurrent==='puestos')renderConfigPuestos();
@@ -3372,10 +3360,23 @@ async function loadAsistencia(){
   asistData=data||[];
 }
 
-function switchAsistEnt(ent){
-  asistActiveEnt=ent;
-  document.querySelectorAll('#asist-tabs-bar .tab').forEach(t=>t.classList.toggle('active',t.dataset.ent===ent));
-  loadAsistencia().then(renderAsistGrid);
+let moduloActivoTab='asistencia',moduloActivoEnt='PUE';
+function switchModuloEnt(ent){
+  moduloActivoEnt=ent;
+  document.querySelectorAll('#nya-ent-tabs .tab').forEach(t=>t.classList.toggle('active',t.dataset.ent===ent));
+  asistActiveEnt=ent;nominaActiveEnt=ent;horasExtraActiveEnt=ent;
+  reloadModuloActivo();
+}
+function switchModuloTab(tab){
+  moduloActivoTab=tab;
+  document.querySelectorAll('#nya-sub-tabs .tab').forEach(t=>t.classList.toggle('active',t.dataset.sub===tab));
+  document.querySelectorAll('.modulo-sub').forEach(el=>{el.style.display=el.id==='sub-'+tab?'block':'none';});
+  reloadModuloActivo();
+}
+function reloadModuloActivo(){
+  if(moduloActivoTab==='asistencia')loadAsistencia().then(renderAsistGrid);
+  else if(moduloActivoTab==='horasextra')loadHorasExtra().then(renderHorasExtraGrid);
+  else if(moduloActivoTab==='nomina')loadNomina().then(renderNomina);
 }
 function goAsistWeek(delta){
   const d=new Date(asistWeekStart+'T12:00:00');
@@ -3530,11 +3531,6 @@ async function clearAsistDia(){
 let nominaActiveEnt='PUE',nominaWeekStart=null,nominaPeriodo=null,nominaLineas=[];
 const NOMINA_DESCANSOS=['DOMINGO','LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO','VARIADOS'];
 
-function switchNomSemEnt(ent){
-  nominaActiveEnt=ent;
-  document.querySelectorAll('#nomina-tabs-bar .tab').forEach(t=>t.classList.toggle('active',t.dataset.ent===ent));
-  loadNomina().then(renderNomina);
-}
 function goNominaWeek(delta){
   const d=new Date(nominaWeekStart+'T12:00:00');
   d.setDate(d.getDate()+delta*7);
@@ -3706,31 +3702,39 @@ async function eliminarLineaNomina(lineaId){
   await loadNomina();renderNomina();
 }
 
-function printNomina(){
+function imprimirRecibosHorasExtra(){
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
-  const days=asistWeekDays(nominaWeekStart);
-  const entLabel=(ENTS[nominaActiveEnt]||{label:nominaActiveEnt}).label;
-  const cards=nominaLineas.map(l=>{
-    const e=empById[l.empleado_id];if(!e)return'';
-    const c=nominaCalc(l);
+  const days=asistWeekDays(horasExtraWeekStart);
+  const entLabel=(ENTS[horasExtraActiveEnt]||{label:horasExtraActiveEnt}).label;
+  const activeIds=new Set(empData.filter(e=>e.entidad===horasExtraActiveEnt&&e.activo).map(e=>e.id));
+  const weekEmpIds=new Set(horasExtraData.map(h=>h.empleado_id));
+  const emps=empData.filter(e=>activeIds.has(e.id)||weekEmpIds.has(e.id)).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  const byEmpFecha={};
+  horasExtraData.forEach(h=>{byEmpFecha[h.empleado_id+'_'+h.fecha]=h;});
+  const cards=emps.map(e=>{
+    const rate=horasExtraRate(e);
+    let totalHE=0,totalRT=0;
+    days.forEach(fecha=>{
+      const h=byEmpFecha[e.id+'_'+fecha];
+      if(h){totalHE+=h.he||0;totalRT+=h.rt||0;}
+    });
+    if(!totalHE&&!totalRT)return''; // nada que liquidar esta semana, no genera recibo
+    const neto=(totalHE-totalRT)*rate;
     return`<div class="recibo-card">
-      <h4>🐟 El Pescador — Recibo de nómina</h4>
+      <h4>🐟 El Pescador — Recibo de horas extra</h4>
       <div class="rc-sub">${entLabel} · Semana del ${fmtFechaCorta(days[0])} al ${fmtFechaCorta(days[6])}</div>
       <table>
         <tr><td><strong>Nombre:</strong></td><td>${e.nombre}</td></tr>
         <tr><td><strong>Puesto:</strong></td><td>${puestoNombre(e.puesto_id)||''}</td></tr>
-        <tr><td>Días pagados</td><td>${l.dias_pagados}</td></tr>
-        <tr><td>Salario diario</td><td>${fmxn(l.salario_diario)}</td></tr>
-        <tr><td>Prima dominical</td><td>${fmxn(c.primaDominical)}</td></tr>
-        <tr><td>Subtotal</td><td>${fmxn(c.subtotal)}</td></tr>
-        <tr><td>Retención ISR</td><td>-${fmxn(l.retencion_isr)}</td></tr>
-        <tr><td>Retención IMSS</td><td>-${fmxn(l.retencion_imss)}</td></tr>
+        <tr><td>Total horas extra</td><td>${totalHE}</td></tr>
+        <tr><td>Total retardos</td><td>${totalRT}</td></tr>
+        <tr><td>Tarifa por hora</td><td>${fmxn(rate)}</td></tr>
       </table>
-      <div class="rc-total">TOTAL A PAGAR: ${fmxn(c.total)}</div>
+      <div class="rc-total">TOTAL A ${neto<0?'DESCONTAR':'PAGAR'}: ${fmxn(Math.abs(neto))}</div>
       <div class="rc-firma">RECIBÍ — FIRMA DEL EMPLEADO</div>
     </div>`;
   }).join('');
-  document.getElementById('print-nomina').innerHTML=`<div class="recibo-grid">${cards}</div>`;
+  document.getElementById('print-horasextra').innerHTML=`<div class="recibo-grid">${cards||'<div class="empty">Nadie tiene horas extra ni retardos que liquidar esta semana</div>'}</div>`;
   window.print();
 }
 
@@ -3875,11 +3879,6 @@ async function loadHorasExtra(){
   const{data}=await sb.from('horas_extra').select('*').eq('entidad',ent).gte('fecha',days[0]).lte('fecha',days[6]);
   if(ent!==horasExtraActiveEnt||week!==horasExtraWeekStart)return;
   horasExtraData=data||[];
-}
-function switchHorasExtraEnt(ent){
-  horasExtraActiveEnt=ent;
-  document.querySelectorAll('#horasextra-tabs-bar .tab').forEach(t=>t.classList.toggle('active',t.dataset.ent===ent));
-  loadHorasExtra().then(renderHorasExtraGrid);
 }
 function goHorasExtraWeek(delta){
   const d=new Date(horasExtraWeekStart+'T12:00:00');
@@ -6224,10 +6223,10 @@ async function renderNominaStatusWidget(){
     const ok=done.has(ek);
     return`<div class="nomsem-row">
       <div style="display:flex;align-items:center;gap:8px"><span class="ent-dot" style="background:${e.color}"></span><span style="font-size:12.5px;font-weight:600">${e.label}</span></div>
-      <div class="nomsem-badge ${ok?'ok':'pend'}" style="cursor:pointer" onclick="showPage('nomina');switchNomSemEnt('${ek}')">${ok?'✓ Generada':'Pendiente'}</div>
+      <div class="nomsem-badge ${ok?'ok':'pend'}" style="cursor:pointer" onclick="showPage('nominayasist');switchModuloTab('nomina');switchModuloEnt('${ek}')">${ok?'✓ Generada':'Pendiente'}</div>
     </div>`;
   }).join('');
-  el.innerHTML=`<div class="home-card"><div class="home-card-title">💵 Nómina de esta semana<button class="btn-text" onclick="showPage('nomina')">Ir</button></div>${rows}</div>`;
+  el.innerHTML=`<div class="home-card"><div class="home-card-title">💵 Nómina de esta semana<button class="btn-text" onclick="showPage('nominayasist');switchModuloTab('nomina')">Ir</button></div>${rows}</div>`;
 }
 
 // ─── NOTA RÁPIDA ──────────────────────────────────────────────
@@ -6304,7 +6303,7 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'perfiles'},async()=>{await loadUsuarios();if(document.getElementById('page-config')&&document.getElementById('page-config').classList.contains('active')&&configTabCurrent==='usuarios')renderConfigUsuarios();})
     .on('postgres_changes',{event:'*',schema:'public',table:'pagos'},async()=>{await loadPagos();renderAll();})
     .on('postgres_changes',{event:'*',schema:'public',table:'archivos_pago'},async()=>{await loadArchivos();renderAll();})
-    .on('postgres_changes',{event:'*',schema:'public',table:'empleados'},async()=>{await loadEmpleados();if(document.getElementById('page-rh').classList.contains('active'))renderEmps();if(document.getElementById('page-asistencia').classList.contains('active'))renderAsistGrid();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'empleados'},async()=>{await loadEmpleados();if(document.getElementById('page-rh').classList.contains('active'))renderEmps();if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='asistencia')renderAsistGrid();})
     .on('postgres_changes',{event:'*',schema:'public',table:'documentos_empleado'},async()=>{await loadEmpleados();if(document.getElementById('page-rh').classList.contains('active'))renderEmps();})
     .on('postgres_changes',{event:'*',schema:'public',table:'accesos'},async()=>{await loadAccesos();if(document.getElementById('page-accesos').classList.contains('active'))renderAccesos();})
     .on('postgres_changes',{event:'*',schema:'public',table:'vehiculos'},async()=>{await loadVehiculos();if(document.getElementById('page-flotilla').classList.contains('active'))renderFlotilla();})
@@ -6317,9 +6316,10 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'ado_ledger'},async()=>{await loadAdoLedger();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='ado')renderAdoLedgerList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'bitacora_tareas'},async()=>{await loadBitacora();if(document.getElementById('page-bitacora').classList.contains('active'))renderBitacora();})
     .on('postgres_changes',{event:'*',schema:'public',table:'bitacora_registros'},async()=>{const hoy=new Date().toISOString().slice(0,10);const{data:regs}=await sb.from('bitacora_registros').select('*').eq('fecha',hoy);bitRegistros=regs||[];if(document.getElementById('page-bitacora').classList.contains('active'))renderBitacora();})
-    .on('postgres_changes',{event:'*',schema:'public',table:'asistencia'},async()=>{if(document.getElementById('page-asistencia').classList.contains('active'))await loadAsistencia().then(renderAsistGrid);})
-    .on('postgres_changes',{event:'*',schema:'public',table:'nomina_periodos'},async()=>{if(document.getElementById('page-nomina').classList.contains('active'))await loadNomina().then(renderNomina);})
-    .on('postgres_changes',{event:'*',schema:'public',table:'nomina_lineas'},async()=>{if(document.getElementById('page-nomina').classList.contains('active'))await loadNomina().then(renderNomina);})
+    .on('postgres_changes',{event:'*',schema:'public',table:'asistencia'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='asistencia')await loadAsistencia().then(renderAsistGrid);})
+    .on('postgres_changes',{event:'*',schema:'public',table:'nomina_periodos'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='nomina')await loadNomina().then(renderNomina);})
+    .on('postgres_changes',{event:'*',schema:'public',table:'nomina_lineas'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='nomina')await loadNomina().then(renderNomina);})
+    .on('postgres_changes',{event:'*',schema:'public',table:'horas_extra'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='horasextra')await loadHorasExtra().then(renderHorasExtraGrid);})
     .subscribe((status)=>{
       if(status==='SUBSCRIBED'){console.log('Realtime conectado ✓');showRealtimeIndicator(true);}
       else if(status==='CLOSED'||status==='CHANNEL_ERROR'){showRealtimeIndicator(false);setTimeout(setupRealtime,3000);}
