@@ -3260,10 +3260,10 @@ async function openEmpDetail(id){
   ftr.innerHTML=`<button class="btn" onclick="closeModal('m-emp-detail')">Cerrar</button>
     <button class="btn" onclick="closeModal('m-emp-detail');openFiniquitoModal('${e.id}')">🧮 Finiquito</button>
     ${e.activo?`
-    <button class="btn" onclick="closeModal('m-emp-detail');editEmp('${e.id}')">Editar</button>
     <button class="btn" onclick="openUniformeModal('${e.id}')">👕 Uniforme</button>
     <button class="btn" onclick="imprimirUniforme('${e.id}')">🖨 Imprimir uniformes</button>
     <button class="btn" onclick="openContratoModal('${e.id}')">📄 Generar contrato</button>
+    <button class="btn" onclick="closeModal('m-emp-detail');editEmp('${e.id}')">Editar</button>
     <button class="btn" style="background:var(--red-light);color:var(--red);border-color:#f7c1c1" onclick="closeModal('m-emp-detail');openBajaModal('${e.id}')">Dar de baja</button>`:''}`;
   openModal('m-emp-detail');
 }
