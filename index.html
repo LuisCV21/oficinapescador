@@ -664,7 +664,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   .pa-table th,.pa-table td{border:1px solid #c9d8da;padding:var(--pa-pad) 4px;text-align:center}
   .pa-table th{font-weight:700;background:#e2f0f1;color:#0f3d52}
   .pa-table col.pa-col-no{width:22px}
-  .pa-table col.pa-col-name{width:23%}
+  .pa-table col.pa-col-name{width:26%}
   .pa-table col.pa-col-tot{width:6.5%}
   .pa-table th.pa-th-fixed,.pa-table td.pa-td-fixed{background:#e9f4f4}
   .pa-table tbody tr:nth-child(even) td.pa-td-fixed{background:#dbecec}
@@ -3528,13 +3528,12 @@ function printAsistencia(){
     :`SEMANA CORRESPONDIENTE DEL ${dStart.getDate()} DE ${mesesLargos[dStart.getMonth()]} AL ${dEnd.getDate()} DE ${mesesLargos[dEnd.getMonth()]} ${dEnd.getFullYear()}`;
 
   // Escala la tabla para llenar la hoja carta horizontal sin importar cuántos empleados haya
-  // (conservador a propósito: mejor que sobre un poco de margen a que se corra a una 2a hoja)
-  const usableH=750,chromeFixed=150,bodyRows=Math.max(emps.length,1);
-  const rawRowH=(usableH-chromeFixed)/(bodyRows+3);
-  const rowH=Math.max(15,Math.min(34,rawRowH));
-  const paFs=Math.max(9,Math.min(15,Math.round(rowH*0.38)));
-  const paPad=Math.max(2,Math.min(7,Math.round(rowH*0.16)));
-  const paBadgeFs=Math.max(7,Math.min(12,Math.round(paFs*0.72)));
+  const usableH=770,chromeFixed=120,bodyRows=Math.max(emps.length,1);
+  const rawRowH=(usableH-chromeFixed)/(bodyRows+2.5);
+  const rowH=Math.max(15,Math.min(40,rawRowH));
+  const paFs=Math.max(9,Math.min(18,Math.round(rowH*0.40)));
+  const paPad=Math.max(2,Math.min(8,Math.round(rowH*0.18)));
+  const paBadgeFs=Math.max(7,Math.min(13,Math.round(paFs*0.72)));
 
   document.getElementById('print-asist').innerHTML=`<div class="pa-sheet" style="--pa-fs:${paFs}px;--pa-pad:${paPad}px;--pa-badge-fs:${paBadgeFs}px">
     <div class="pa-header"><img class="pa-logo" src="${PA_LOGO}" alt="El Pescador"><span class="pa-header-title">LISTA DE ASISTENCIA<br><span class="pa-header-sub2">${title}</span></span></div>
