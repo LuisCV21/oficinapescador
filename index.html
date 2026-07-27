@@ -640,13 +640,16 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .he-tot-row td{background:var(--copper-light);border-top:2px solid var(--copper);border-bottom:none;font-weight:700}
 .he-tot-row td.he-name{color:var(--copper-dark);text-transform:uppercase;font-size:11px;letter-spacing:.04em}
 
+/* ── IMPRESIÓN: base compartida ── */
+@media print{
+  #app,#login-wrap,.modal-overlay,#gas-fab,#viewer-ov,#toast{display:none !important}
+}
+
 /* ── IMPRESIÓN ASISTENCIA ── */
 #print-asist{display:none}
 @media print{
-  @page{size:letter landscape;margin:8mm}
-  body *{visibility:hidden}
-  #print-asist,#print-asist *{visibility:visible}
-  #print-asist{display:block;position:absolute;left:0;top:0;width:100%;padding:0}
+  @page{size:11in 8.5in;margin:5mm}
+  #print-asist{display:block !important;width:100%;padding:0}
   .pa-sheet{font-family:'DM Sans',Arial,sans-serif;color:#16323c;border:1.5px solid #c9dde0;border-radius:10px;overflow:hidden}
   .pa-header{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;
     display:flex;align-items:center;gap:13px;padding:8px 18px}
@@ -700,8 +703,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 
 #print-nomina{display:none}
 @media print{
-  #print-nomina,#print-nomina *{visibility:visible}
-  #print-nomina{display:block;position:absolute;left:0;top:0;width:100%;padding:0}
+  #print-nomina{display:block !important;width:100%;padding:0}
   .recibo-grid{display:grid;grid-template-columns:1fr 1fr;gap:0}
   .recibo-card{border:1px solid #999;padding:12px 14px;font-size:11px;color:#000;break-inside:avoid}
   .recibo-card h4{margin:0 0 2px;font-size:12px}
@@ -713,8 +715,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 }
 #print-horasextra{display:none}
 @media print{
-  #print-horasextra,#print-horasextra *{visibility:visible}
-  #print-horasextra{display:block;position:absolute;left:0;top:0;width:100%;padding:0}
+  #print-horasextra{display:block !important;width:100%;padding:0}
 }
 .asist-estatus-opt{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--r);
   border:1.5px solid var(--border2);cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
@@ -1024,9 +1025,6 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
           <div id="nomina-content" style="margin:14px 0"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
       </div>
-      <div id="print-asist"></div>
-      <div id="print-nomina"></div>
-      <div id="print-horasextra"></div>
 
       <!-- ACCESOS -->
       <div class="page" id="page-accesos">
@@ -6392,5 +6390,8 @@ sb.auth.getSession().then(({data:{session}})=>{
   if(session)initApp(session.user);
 });
 </script>
+<div id="print-asist"></div>
+<div id="print-nomina"></div>
+<div id="print-horasextra"></div>
 </body>
 </html>
