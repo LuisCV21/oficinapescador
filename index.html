@@ -642,6 +642,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 
 /* ── IMPRESIÓN: base compartida ── */
 @media print{
+  html,body{margin:0 !important;padding:0 !important;height:auto !important}
   #app,#login-wrap,.modal-overlay,#gas-fab,#viewer-ov,#toast{display:none !important}
 }
 
@@ -650,7 +651,8 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 @media print{
   @page{size:11in 8.5in;margin:5mm}
   #print-asist{display:block !important;width:100%;padding:0}
-  .pa-sheet{font-family:'DM Sans',Arial,sans-serif;color:#16323c;border:1.5px solid #c9dde0;border-radius:10px;overflow:hidden}
+  .pa-sheet{--pa-fs:10px;--pa-pad:3px;--pa-badge-fs:7.5px;--pa-name-fs:1em;
+    font-family:'DM Sans',Arial,sans-serif;color:#16323c;border:1.5px solid #c9dde0;border-radius:10px;overflow:hidden}
   .pa-header{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;
     display:flex;align-items:center;gap:13px;padding:8px 18px}
   .pa-logo{height:46px;width:46px;object-fit:contain;flex-shrink:0;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
@@ -658,23 +660,23 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   .pa-header-sub2{font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;letter-spacing:.1em;color:#f4a259;text-transform:uppercase}
   .pa-subbar{background:#eaf4f5;color:#0f3d52;text-align:center;font-size:11px;font-weight:700;
     padding:5px;letter-spacing:.05em;border-bottom:1.5px solid #c9e2e5}
-  .pa-table{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed}
-  .pa-table th,.pa-table td{border:1px solid #c9d8da;padding:3px 4px;text-align:center}
+  .pa-table{width:100%;border-collapse:collapse;font-size:var(--pa-fs);table-layout:fixed}
+  .pa-table th,.pa-table td{border:1px solid #c9d8da;padding:var(--pa-pad) 4px;text-align:center}
   .pa-table th{font-weight:700;background:#e2f0f1;color:#0f3d52}
   .pa-table col.pa-col-no{width:22px}
   .pa-table col.pa-col-name{width:19%}
   .pa-table col.pa-col-tot{width:6.5%}
   .pa-table th.pa-th-fixed,.pa-table td.pa-td-fixed{background:#e9f4f4}
   .pa-table tbody tr:nth-child(even) td.pa-td-fixed{background:#dbecec}
-  .pa-name{font-family:'DM Sans',sans-serif;text-align:left !important;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .pa-day-date{font-family:'DM Mono',monospace;font-size:10.5px;font-weight:700;display:block}
-  .pa-day-name{font-size:7.5px;font-weight:700;text-transform:uppercase;display:block;color:#1a5f7a;letter-spacing:.03em}
-  .pa-day-lbl{font-size:6.5px;color:#5a8a95;text-transform:uppercase;display:block;font-weight:600;letter-spacing:.04em}
-  .pa-cell-ok{font-family:'DM Mono',monospace;font-weight:700;color:#1a7a34;font-size:11px}
-  .pa-cell-badge{display:inline-block;padding:2px 4px;border-radius:4px;font-size:7.5px;font-weight:800;
+  .pa-name{font-family:'DM Sans',sans-serif;font-size:var(--pa-name-fs);text-align:left !important;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pa-day-date{font-family:'DM Mono',monospace;font-size:1.05em;font-weight:700;display:block}
+  .pa-day-name{font-size:.75em;font-weight:700;text-transform:uppercase;display:block;color:#1a5f7a;letter-spacing:.03em}
+  .pa-day-lbl{font-size:.65em;color:#5a8a95;text-transform:uppercase;display:block;font-weight:600;letter-spacing:.04em}
+  .pa-cell-ok{font-family:'DM Mono',monospace;font-weight:700;color:#1a7a34;font-size:1.1em}
+  .pa-cell-badge{display:inline-block;padding:2px 4px;border-radius:4px;font-size:var(--pa-badge-fs);font-weight:800;
     border:1.3px solid #0f3d52;background:#fff;color:#0f3d52;white-space:nowrap;letter-spacing:.02em}
-  .pa-cell-falta{background:#c0392f;color:#fff;font-weight:800;font-size:8px;letter-spacing:.03em}
-  .pa-cell-merge{font-size:9.5px;font-weight:800;letter-spacing:.03em}
+  .pa-cell-falta{background:#c0392f;color:#fff;font-weight:800;font-size:.85em;letter-spacing:.03em}
+  .pa-cell-merge{font-size:.95em;font-weight:800;letter-spacing:.03em}
   .pa-foot td{font-family:'DM Mono',monospace;font-weight:800;background:#e2f0f1;color:#0f3d52;border-top:2px solid #e8823e}
   .pa-empty{color:#b9cdd0}
   .pa-footer{display:flex;justify-content:space-between;align-items:center;padding:5px 14px;
@@ -3490,7 +3492,7 @@ function printAsistencia(){
   const thead=`<tr><th>No.</th><th>NOMBRE</th>${days.map((d,i)=>{
     const dt=new Date(d+'T12:00:00');
     return`<th style="background:${PA_COL_COLORS[i]}"><span class="pa-day-date">${dt.getDate()}-${mesesCortos[dt.getMonth()]}</span><span class="pa-day-name">${diaNombres[i]}</span><span class="pa-day-lbl">Asistencia</span></th>`;
-  }).join('')}<th>TOTAL<br><span style="font-size:7px;font-weight:600">ASISTENCIA</span></th></tr>`;
+  }).join('')}<th>TOTAL<br><span style="font-size:.7em;font-weight:600">ASISTENCIA</span></th></tr>`;
 
   const dayTotals=days.map(()=>0);
   const rows=emps.map((e,idx)=>{
@@ -3525,7 +3527,15 @@ function printAsistencia(){
     ?`SEMANA CORRESPONDIENTE DEL ${dStart.getDate()} AL ${dEnd.getDate()} DE ${mesesLargos[dEnd.getMonth()]} ${dEnd.getFullYear()}`
     :`SEMANA CORRESPONDIENTE DEL ${dStart.getDate()} DE ${mesesLargos[dStart.getMonth()]} AL ${dEnd.getDate()} DE ${mesesLargos[dEnd.getMonth()]} ${dEnd.getFullYear()}`;
 
-  document.getElementById('print-asist').innerHTML=`<div class="pa-sheet">
+  // Escala la tabla para llenar la hoja carta horizontal sin importar cuántos empleados haya
+  const usableH=778,chromeFixed=130,bodyRows=Math.max(emps.length,1);
+  const rawRowH=(usableH-chromeFixed)/(bodyRows+2.5);
+  const rowH=Math.max(16,Math.min(44,rawRowH));
+  const paFs=Math.max(9,Math.min(21,Math.round(rowH*0.42)));
+  const paPad=Math.max(2,Math.min(10,Math.round(rowH*0.20)));
+  const paBadgeFs=Math.max(7,Math.min(14,Math.round(paFs*0.72)));
+
+  document.getElementById('print-asist').innerHTML=`<div class="pa-sheet" style="--pa-fs:${paFs}px;--pa-pad:${paPad}px;--pa-badge-fs:${paBadgeFs}px">
     <div class="pa-header"><img class="pa-logo" src="${PA_LOGO}" alt="El Pescador"><span class="pa-header-title">LISTA DE ASISTENCIA<br><span class="pa-header-sub2">${title}</span></span></div>
     <div class="pa-subbar">${semanaTxt}</div>
     <table class="pa-table">
