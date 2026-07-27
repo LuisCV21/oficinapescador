@@ -415,6 +415,8 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   letter-spacing:.08em;margin:16px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--copper-light)}
 .modal-ftr{padding:12px 24px 20px;display:flex;justify-content:flex-end;gap:8px;
   border-top:1px solid var(--border);background:var(--surface2)}
+#m-emp-detail-ftr{flex-wrap:wrap;gap:6px}
+#m-emp-detail-ftr .btn{font-size:11px;padding:5px 11px}
 .f-row{margin-bottom:12px}
 .f-row label{font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600;
   text-transform:uppercase;letter-spacing:.05em}
@@ -1412,7 +1414,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   </div>
   <div class="modal-ftr">
     <button class="btn" onclick="closeModal('m-baja')">Cancelar</button>
-    <button class="btn" onclick="openFiniquitoModal(bajaEmpId,document.getElementById('bf-fecha').value)">🧮 Calcular finiquito</button>
+    <button class="btn" onclick="closeModal('m-baja');openFiniquitoModal(bajaEmpId,document.getElementById('bf-fecha').value)">🧮 Calcular finiquito</button>
     <button class="btn btn-filled" style="background:var(--red);border-color:var(--red)" id="baja-save-btn" onclick="saveBaja()">Confirmar baja</button>
   </div>
 </div>
@@ -3256,7 +3258,7 @@ async function openEmpDetail(id){
   document.getElementById('m-emp-detail-body').innerHTML=html;
   const ftr=document.getElementById('m-emp-detail-ftr');
   ftr.innerHTML=`<button class="btn" onclick="closeModal('m-emp-detail')">Cerrar</button>
-    <button class="btn" onclick="openFiniquitoModal('${e.id}')">🧮 Finiquito</button>
+    <button class="btn" onclick="closeModal('m-emp-detail');openFiniquitoModal('${e.id}')">🧮 Finiquito</button>
     ${e.activo?`
     <button class="btn" onclick="closeModal('m-emp-detail');editEmp('${e.id}')">Editar</button>
     <button class="btn" onclick="openUniformeModal('${e.id}')">👕 Uniforme</button>
