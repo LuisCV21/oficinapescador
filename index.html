@@ -3528,7 +3528,7 @@ function printAsistencia(){
     :`SEMANA CORRESPONDIENTE DEL ${dStart.getDate()} DE ${mesesLargos[dStart.getMonth()]} AL ${dEnd.getDate()} DE ${mesesLargos[dEnd.getMonth()]} ${dEnd.getFullYear()}`;
 
   // Escala la tabla para llenar la hoja carta horizontal sin importar cuántos empleados haya
-  const usableH=770,chromeFixed=120,bodyRows=Math.max(emps.length,1);
+  const usableH=770,chromeFixed=155,bodyRows=Math.max(emps.length,1);
   const rawRowH=(usableH-chromeFixed)/(bodyRows+2.5);
   const rowH=Math.max(15,Math.min(40,rawRowH));
   const paFs=Math.max(9,Math.min(18,Math.round(rowH*0.40)));
