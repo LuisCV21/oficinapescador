@@ -643,16 +643,31 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 /* ── IMPRESIÓN ASISTENCIA ── */
 #print-asist{display:none}
 @media print{
+  @page{size:letter landscape;margin:9mm}
   body *{visibility:hidden}
   #print-asist,#print-asist *{visibility:visible}
   #print-asist{display:block;position:absolute;left:0;top:0;width:100%;padding:0}
-  .print-asist-title{font-size:16px;font-weight:700;color:#000}
-  .print-asist-sub{font-size:11px;color:#333;margin-bottom:12px}
-  .print-asist-table{width:100%;border-collapse:collapse;font-size:11px;color:#000}
-  .print-asist-table th,.print-asist-table td{border:1px solid #999;padding:5px 6px;text-align:center}
-  .print-asist-table td:first-child,.print-asist-table th:first-child{text-align:left}
-  .print-asist-table tfoot td{font-weight:700;background:#f0f0f0}
-  .print-legend{margin-top:10px;font-size:9px;color:#333}
+  .pa-sheet{font-family:Arial,Helvetica,sans-serif;color:#111}
+  .pa-header{background:#B5541A;color:#fff;text-align:center;padding:9px 8px 8px;border-radius:6px 6px 0 0}
+  .pa-header-title{font-size:19px;font-weight:800;letter-spacing:.02em}
+  .pa-subbar{background:#8A3E12;color:#fff;text-align:center;font-size:11.5px;font-weight:700;padding:5px;letter-spacing:.03em}
+  .pa-table{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed}
+  .pa-table th,.pa-table td{border:1px solid #888;padding:3px 4px;text-align:center}
+  .pa-table th{font-weight:700;background:#f2ede2}
+  .pa-table col.pa-col-no{width:22px}
+  .pa-table col.pa-col-name{width:19%}
+  .pa-table col.pa-col-tot{width:6.5%}
+  .pa-name{text-align:left !important;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pa-day-date{font-size:10.5px;font-weight:800;display:block}
+  .pa-day-name{font-size:7.5px;font-weight:700;text-transform:uppercase;display:block;color:#333}
+  .pa-day-lbl{font-size:7px;color:#555;text-transform:uppercase;display:block;font-weight:600}
+  .pa-cell-ok{font-weight:800;color:#1a7a34;font-size:11px}
+  .pa-cell-badge{display:inline-block;padding:2px 3px;border-radius:3px;font-size:7.5px;font-weight:800;
+    border:1.3px solid #333;background:#fff;color:#111;white-space:nowrap}
+  .pa-cell-falta{background:#e5393f;color:#fff;font-weight:800;font-size:8px}
+  .pa-cell-merge{font-size:9.5px;font-weight:800;letter-spacing:.02em}
+  .pa-foot td{font-weight:800;background:#f2ede2}
+  .pa-empty{color:#bbb}
 }
 
 /* ── NÓMINA ── */
@@ -3448,37 +3463,71 @@ function renderAsistIncidencias(emps){
 }
 
 // ─── IMPRESIÓN SEMANAL ──────────────────────────────────────────
+const PA_TITLES={PUE:'RESTAURANT AV. PUEBLA',HOT:'HOTEL REAL DE POZA',FLO:'RESTAURANT LA FLORIDA'};
+const PA_COL_COLORS=['#D9F2D9','#E2DFF7','#D6EFF5','#FCE1E8','#FFF6C9','#FBE6D4','#E4F5D6'];
 function printAsistencia(){
   const days=asistWeekDays(asistWeekStart);
-  const diaLabels=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const diaNombres=['DOMINGO','LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO'];
+  const mesesCortos=['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
   const activeIds=new Set(empData.filter(e=>e.entidad===asistActiveEnt&&e.activo).map(e=>e.id));
   const weekEmpIds=new Set(asistData.map(a=>a.empleado_id));
   const emps=empData.filter(e=>activeIds.has(e.id)||weekEmpIds.has(e.id)).sort((a,b)=>a.nombre.localeCompare(b.nombre));
   const byEmpFecha={};
   asistData.forEach(a=>{byEmpFecha[a.empleado_id+'_'+a.fecha]=a;});
-  const CODES={asistio:'A',descanso:'D',falta:'F',vacaciones:'V',incapacidad:'I',baja:'B',cambio_sucursal:'C'};
 
-  const thead=`<tr><th>Empleado</th>${days.map((d,i)=>`<th>${diaLabels[i]}<br>${Number(d.slice(8,10))}</th>`).join('')}<th>Total</th></tr>`;
+  const badgeLabel=a=>{
+    if(a.estatus==='cambio_sucursal'&&a.sucursal_destino)return(ENTS[a.sucursal_destino]||{label:a.sucursal_destino}).label.toUpperCase();
+    return(ASIST_ESTATUS[a.estatus]||{label:a.estatus}).label.toUpperCase();
+  };
+
+  const thead=`<tr><th>No.</th><th>NOMBRE</th>${days.map((d,i)=>{
+    const dt=new Date(d+'T12:00:00');
+    return`<th style="background:${PA_COL_COLORS[i]}"><span class="pa-day-date">${dt.getDate()}-${mesesCortos[dt.getMonth()]}</span><span class="pa-day-name">${diaNombres[i]}</span><span class="pa-day-lbl">Asistencia</span></th>`;
+  }).join('')}<th>TOTAL<br><span style="font-size:7px;font-weight:600">ASISTENCIA</span></th></tr>`;
+
   const dayTotals=days.map(()=>0);
-  const rows=emps.map(e=>{
+  const rows=emps.map((e,idx)=>{
     let total=0;
-    const cells=days.map((fecha,i)=>{
-      const a=byEmpFecha[e.id+'_'+fecha];
-      if(a&&a.estatus==='asistio'){total++;dayTotals[i]++;}
-      return`<td>${a?(CODES[a.estatus]||'?'):'—'}</td>`;
-    }).join('');
-    return`<tr><td>${e.nombre}</td>${cells}<td>${total}</td></tr>`;
+    const regs=days.map(fecha=>byEmpFecha[e.id+'_'+fecha]);
+    const allSame=regs.every(r=>r&&r.estatus===regs[0]?.estatus)&&regs[0]&&regs[0].estatus!=='asistio';
+    let cellsHtml;
+    if(allSame){
+      const a=regs[0];
+      const label=badgeLabel(a);
+      const bg=a.estatus==='falta'?'#e5393f':a.estatus==='cambio_sucursal'?'#7FD8EA':a.estatus==='incapacidad'?'#d9d9d9':'#e6e6e6';
+      const color=a.estatus==='falta'?'#fff':'#222';
+      cellsHtml=`<td colspan="7" class="pa-cell-merge" style="background:${bg};color:${color}">${label}</td>`;
+    }else{
+      cellsHtml=days.map((fecha,i)=>{
+        const a=byEmpFecha[e.id+'_'+fecha];
+        const bg=PA_COL_COLORS[i];
+        if(!a)return`<td style="background:${bg}" class="pa-empty">—</td>`;
+        if(a.estatus==='asistio'){total++;dayTotals[i]++;return`<td style="background:${bg}" class="pa-cell-ok">1</td>`;}
+        if(a.estatus==='falta')return`<td class="pa-cell-falta">FALTA</td>`;
+        return`<td style="background:${bg}"><span class="pa-cell-badge">${badgeLabel(a)}</span></td>`;
+      }).join('');
+    }
+    return`<tr><td>${idx+1}</td><td class="pa-name">${e.nombre}</td>${cellsHtml}<td class="pa-cell-ok">${total}</td></tr>`;
   }).join('');
   const grandTotal=dayTotals.reduce((s,n)=>s+n,0);
-  const tfoot=`<tr><td>Asistieron</td>${dayTotals.map(n=>`<td>${n}</td>`).join('')}<td>${grandTotal}</td></tr>`;
-  const entLabel=(ENTS[asistActiveEnt]||{label:asistActiveEnt}).label;
+  const tfoot=`<tr class="pa-foot"><td colspan="2"></td>${dayTotals.map(n=>`<td>${n}</td>`).join('')}<td>${grandTotal}</td></tr>`;
+  const title=PA_TITLES[asistActiveEnt]||(ENTS[asistActiveEnt]||{label:asistActiveEnt}).label;
+  const mesesLargos=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  const dStart=new Date(days[0]+'T12:00:00'),dEnd=new Date(days[6]+'T12:00:00');
+  const semanaTxt=dStart.getMonth()===dEnd.getMonth()
+    ?`SEMANA CORRESPONDIENTE DEL ${dStart.getDate()} AL ${dEnd.getDate()} DE ${mesesLargos[dEnd.getMonth()]} ${dEnd.getFullYear()}`
+    :`SEMANA CORRESPONDIENTE DEL ${dStart.getDate()} DE ${mesesLargos[dStart.getMonth()]} AL ${dEnd.getDate()} DE ${mesesLargos[dEnd.getMonth()]} ${dEnd.getFullYear()}`;
 
-  document.getElementById('print-asist').innerHTML=`
-    <div class="print-asist-title">🐟 El Pescador — Asistencia semanal</div>
-    <div class="print-asist-sub">${entLabel} · Semana del ${fmtFechaCorta(days[0])} al ${fmtFechaCorta(days[6])}${emps.length?'':' · Sin empleados activos'}</div>
-    <table class="print-asist-table"><thead>${thead}</thead><tbody>${rows}</tbody><tfoot>${tfoot}</tfoot></table>
-    <div class="print-legend">A = Asistió · D = Descanso · F = Falta · V = Vacaciones · I = Incapacidad · B = Baja/Retiro · C = Cambió de sucursal · — = Sin registrar</div>
-  `;
+  document.getElementById('print-asist').innerHTML=`<div class="pa-sheet">
+    <div class="pa-header"><span class="pa-header-title">🐟 LISTA DE ASISTENCIA — ${title}</span></div>
+    <div class="pa-subbar">${semanaTxt}</div>
+    <table class="pa-table">
+      <colgroup><col class="pa-col-no"><col class="pa-col-name">${days.map(()=>'<col>').join('')}<col class="pa-col-tot"></colgroup>
+      <thead>${thead}</thead>
+      <tbody>${rows||'<tr><td colspan="10" style="padding:16px">Sin empleados activos</td></tr>'}</tbody>
+      <tfoot>${tfoot}</tfoot>
+    </table>
+  </div>`;
   window.print();
 }
 
