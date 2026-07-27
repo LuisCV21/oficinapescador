@@ -5846,29 +5846,38 @@ function pctEgresosVsIngresos(ingresosSinIva,egresosSinIva){
   if(!ingresosSinIva)return null;
   return(ingresosSinIva-egresosSinIva)/ingresosSinIva*100;
 }
+function metaEgresosRange(ingresosSinIva){
+  if(!ingresosSinIva)return null;
+  return{min:ingresosSinIva*0.90,max:ingresosSinIva*0.95};
+}
 function miBalanceEstado(pct){
   if(pct===null)return{label:'Sin datos',color:'var(--text3)',bg:'var(--surface2)'};
   if(pct<0)return{label:'Egresos por ARRIBA de ingresos',color:'var(--red)',bg:'var(--red-light)'};
   if(pct>=5&&pct<=10)return{label:'Dentro del rango esperado (5–10%)',color:'var(--green)',bg:'var(--green-light)'};
   return{label:pct<5?'Margen más bajo de lo esperado':'Margen más alto de lo esperado',color:'var(--amber)',bg:'var(--amber-light)'};
 }
+function miBalanceFilas(){
+  return[
+    ...balancesData.map(b=>({tipo:'luis',fuente:'Luis — Florida',fecha:b.fecha_corte,b,c:calcBalance(b)})),
+    ...balancesKatData.map(b=>({tipo:'kat',fuente:'Kateryn — Puebla + Hotel',fecha:b.fecha_corte,b,c:calcBalanceKat(b)})),
+  ].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+}
 function renderMiBalance(){
   const el=document.getElementById('mi-balance-list');
   if(!el)return;
-  const filas=[
-    ...balancesData.map(b=>({fuente:'Luis — Florida',fecha:b.fecha_corte,...calcBalance(b)})),
-    ...balancesKatData.map(b=>({fuente:'Kateryn — Puebla + Hotel',fecha:b.fecha_corte,...calcBalanceKat(b)})),
-  ].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const filas=miBalanceFilas();
   if(!filas.length){el.innerHTML='<div class="empty"><div class="empty-ico">🔒</div>Sin balances registrados aún</div>';return;}
   el.innerHTML=filas.map(f=>{
-    const pct=pctEgresosVsIngresos(f.ingresosSinIva,f.egresosSinIva);
+    const pct=pctEgresosVsIngresos(f.c.ingresosSinIva,f.c.egresosSinIva);
     const est=miBalanceEstado(pct);
     const pctTxt=pct===null?'—':(pct>=0?pct.toFixed(1)+'% abajo':Math.abs(pct).toFixed(1)+'% arriba');
+    const meta=metaEgresosRange(f.c.ingresosSinIva);
     return`<div class="acc-card" style="padding:14px 16px">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
         <div>
           <div style="font-weight:600;font-size:14px">${f.fuente}</div>
-          <div style="font-size:11px;color:var(--text2);margin-top:2px">Corte al ${fmtFechaCorta(f.fecha)} · Ingresos s/IVA ${fmxn(f.ingresosSinIva)} · Egresos s/IVA ${fmxn(f.egresosSinIva)}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">Corte al ${fmtFechaCorta(f.fecha)} · Ingresos s/IVA ${fmxn(f.c.ingresosSinIva)} · Egresos s/IVA ${fmxn(f.c.egresosSinIva)}</div>
+          ${meta?`<div style="font-size:11px;color:var(--text3);margin-top:2px">Meta de egresos (5–10% abajo de ingresos): ${fmxn(meta.min)} – ${fmxn(meta.max)}</div>`:''}
         </div>
         <div style="text-align:right">
           <div style="font-size:18px;font-weight:700;color:${est.color}">${pctTxt}</div>
@@ -5878,23 +5887,96 @@ function renderMiBalance(){
     </div>`;
   }).join('');
 }
+function miBalanceLuisTablas(b,c){
+  return`<div class="bal-col">
+    <table class="bal-tbl">
+      <tr><th>INGRESOS</th><th class="num">IVA</th><th class="num">TOTAL</th></tr>
+      <tr><td>FLORIDA</td><td class="num">${fmxn(c.ingFloridaIva)}</td><td class="num">${fmxn(b.ingresos_florida_total)}</td></tr>
+      <tr><td>FACT. NEXTEL</td><td class="num">${fmxn(b.ingresos_nextel_iva)}</td><td class="num">${fmxn(b.ingresos_nextel_total)}</td></tr>
+      <tr class="tot-row"><td>TOTAL</td><td class="num">${fmxn(c.ingTotalIva)}</td><td class="num">${fmxn(c.ingTotalTotal)}</td></tr>
+    </table>
+    <table class="bal-tbl">
+      <tr><th>ISR</th><th class="num">&nbsp;</th></tr>
+      <tr><td>INGRESOS</td><td class="num">${fmxn(c.ingTotalTotal)}</td></tr>
+      <tr><td>EGRESOS</td><td class="num">${fmxn(c.egrTotalTotal)}</td></tr>
+      <tr class="green-row"><td>TOTAL</td><td class="num">${fmxnSigned(c.isrTotal)}</td></tr>
+    </table>
+  </div>
+  <div class="bal-col">
+    <table class="bal-tbl">
+      <tr><th>EGRESOS</th><th class="num">IVA</th><th class="num">TOTAL</th></tr>
+      <tr><td>GASTOS</td><td class="num">${fmxn(c.egrGastosIva)}</td><td class="num">${fmxn(b.egresos_gastos_total)}</td></tr>
+      <tr><td>CAMIONETA COLORADO</td><td class="num">-</td><td class="num">${fmxn(b.egresos_camioneta_total)}</td></tr>
+      <tr><td>IMSS KM</td><td class="num">&nbsp;</td><td class="num">${fmxn(b.egresos_imss_total)}</td></tr>
+      <tr><td>NÓMINA FLORIDA</td><td class="num">&nbsp;</td><td class="num">${fmxn(b.egresos_nomina_total)}</td></tr>
+      <tr class="tot-row"><td>TOTAL</td><td class="num">${fmxn(c.egrTotalIva)}</td><td class="num">${fmxn(c.egrTotalTotal)}</td></tr>
+    </table>
+    <table class="bal-tbl">
+      <tr><th>IVA</th><th class="num">&nbsp;</th></tr>
+      <tr><td>INGRESOS</td><td class="num">${fmxn(c.ingTotalIva)}</td></tr>
+      <tr><td>EGRESOS</td><td class="num">${fmxn(c.egrTotalIva)}</td></tr>
+      <tr><td>IVA RETENIDO NEXTEL</td><td class="num" style="color:#b00">${fmxnSigned(b.iva_retenido_nextel)}</td></tr>
+      <tr class="green-row"><td>TOTAL</td><td class="num">${fmxnSigned(c.ivaAPagar)}</td></tr>
+    </table>
+  </div>`;
+}
+function miBalanceKatTablas(b,c){
+  return`<div class="bal-col">
+    <table class="bal-tbl">
+      <tr><th>INGRESOS</th><th class="num">IVA</th><th class="num">TOTAL</th></tr>
+      <tr><td>AV. PUEBLA</td><td class="num">${fmxn(c.ivaPuebla)}</td><td class="num">${fmxn(b.ingresos_puebla_total)}</td></tr>
+      <tr><td>HOTEL</td><td class="num">${fmxn(c.ivaHotel)}</td><td class="num">${fmxn(b.ingresos_hotel_total)}</td></tr>
+      <tr><td>FACT. ADO PAGADAS</td><td class="num">${fmxn(c.ivaAdoPagadas)}</td><td class="num">${fmxn(b.ado_pagadas_total)}</td></tr>
+      <tr><td>FACT. ADO DE CRÉDITO</td><td class="num">${fmxn(c.ivaAdoCredito)}</td><td class="num">${fmxn(b.ado_credito_total)}</td></tr>
+      <tr class="tot-row"><td>TOTAL</td><td class="num">${fmxn(c.ingTotalIva)}</td><td class="num">${fmxn(c.ingTotalTotal)}</td></tr>
+    </table>
+    <table class="bal-tbl">
+      <tr><th>ISR</th><th class="num">&nbsp;</th></tr>
+      <tr><td>INGRESOS</td><td class="num">${fmxn(c.ingTotalTotal)}</td></tr>
+      <tr><td>EGRESOS</td><td class="num">${fmxn(c.egrTotalTotal)}</td></tr>
+      <tr class="green-row"><td>TOTAL</td><td class="num">${fmxnSigned(c.isrTotal)}</td></tr>
+    </table>
+  </div>
+  <div class="bal-col">
+    <table class="bal-tbl">
+      <tr><th>EGRESOS</th><th class="num">IVA</th><th class="num">TOTAL</th></tr>
+      <tr><td>GASTOS</td><td class="num">${fmxn(c.egrGastosIva)}</td><td class="num">${fmxn(b.egresos_gastos_total)}</td></tr>
+      <tr><td>CAMTA NISSAN NP300</td><td class="num">-</td><td class="num">${fmxn(b.egresos_camioneta_total)}</td></tr>
+      <tr><td>IMSS PUEBLA</td><td class="num">&nbsp;</td><td class="num">${fmxn(b.egresos_imss_puebla_total)}</td></tr>
+      <tr><td>NÓMINA PUEBLA</td><td class="num">&nbsp;</td><td class="num">${fmxn(b.egresos_nomina_puebla_total)}</td></tr>
+      <tr><td>IMSS HOTEL</td><td class="num">&nbsp;</td><td class="num">${fmxn(b.egresos_imss_hotel_total)}</td></tr>
+      <tr><td>NÓMINA HOTEL</td><td class="num">&nbsp;</td><td class="num">${fmxn(b.egresos_nomina_hotel_total)}</td></tr>
+      <tr class="tot-row"><td>TOTAL</td><td class="num">${fmxn(c.egrTotalIva)}</td><td class="num">${fmxn(c.egrTotalTotal)}</td></tr>
+    </table>
+    <table class="bal-tbl">
+      <tr><th>IVA</th><th class="num">&nbsp;</th></tr>
+      <tr><td>INGRESOS</td><td class="num">${fmxn(c.ingTotalIva)}</td></tr>
+      <tr><td>EGRESOS</td><td class="num">${fmxn(c.egrTotalIva)}</td></tr>
+      <tr class="green-row"><td>TOTAL</td><td class="num">${fmxnSigned(c.ivaAPagar)}</td></tr>
+    </table>
+  </div>`;
+}
 function imprimirMiBalance(){
-  const filas=[
-    ...balancesData.map(b=>({fuente:'Luis — Florida',fecha:b.fecha_corte,...calcBalance(b)})),
-    ...balancesKatData.map(b=>({fuente:'Kateryn — Puebla + Hotel',fecha:b.fecha_corte,...calcBalanceKat(b)})),
-  ].sort((a,b)=>b.fecha.localeCompare(a.fecha));
-  const rows=filas.map(f=>{
-    const pct=pctEgresosVsIngresos(f.ingresosSinIva,f.egresosSinIva);
+  const filas=miBalanceFilas();
+  const periodos=filas.map((f,i)=>{
+    const pct=pctEgresosVsIngresos(f.c.ingresosSinIva,f.c.egresosSinIva);
     const est=miBalanceEstado(pct);
     const pctTxt=pct===null?'—':(pct>=0?pct.toFixed(1)+'% abajo':Math.abs(pct).toFixed(1)+'% arriba');
-    return`<tr>
-      <td>${fmtFechaCorta(f.fecha)}</td>
-      <td>${f.fuente}</td>
-      <td class="num">${fmxn(f.ingresosSinIva)}</td>
-      <td class="num">${fmxn(f.egresosSinIva)}</td>
-      <td class="num" style="color:${est.color};font-weight:700">${pctTxt}</td>
-      <td style="color:${est.color}">${est.label}</td>
-    </tr>`;
+    const meta=metaEgresosRange(f.c.ingresosSinIva);
+    return`<div class="mb-period"${i<filas.length-1?' style="page-break-after:always"':''}>
+      <div class="mb-period-title">${f.fuente} — Corte al ${fmtFechaLarga(f.fecha)}</div>
+      <div class="bal-cols">${f.tipo==='luis'?miBalanceLuisTablas(f.b,f.c):miBalanceKatTablas(f.b,f.c)}</div>
+      <div class="mb-analysis">
+        <table class="bal-tbl">
+          <tr><th colspan="2">Análisis privado — sin IVA</th></tr>
+          <tr><td>Ingresos sin IVA</td><td class="num">${fmxn(f.c.ingresosSinIva)}</td></tr>
+          <tr><td>Egresos sin IVA</td><td class="num">${fmxn(f.c.egresosSinIva)}</td></tr>
+          <tr><td>Margen actual (egresos vs ingresos)</td><td class="num" style="color:${est.color};font-weight:700">${pctTxt}</td></tr>
+          <tr><td>Meta de egresos (5%–10% abajo de ingresos)</td><td class="num">${meta?fmxn(meta.min)+' – '+fmxn(meta.max):'—'}</td></tr>
+          <tr class="tot-row"><td>Estado</td><td class="num" style="color:${est.color}">${est.label}</td></tr>
+        </table>
+      </div>
+    </div>`;
   }).join('');
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Mi Balance — privado</title>
   <style>
@@ -5908,21 +5990,24 @@ function imprimirMiBalance(){
     .mb-hdr-text{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;letter-spacing:.02em}
     .mb-hdr-sub{font-size:11.5px;opacity:.9;margin-top:2px}
     .mb-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:18px 22px}
-    table{width:100%;border-collapse:collapse;font-size:12px}
-    th{background:#e2f0f1;color:#0f3d52;text-align:left;padding:8px;border:1px solid #c9dde0;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em}
-    td{padding:8px;border:1px solid #e2eef0}
+    .mb-period-title{text-align:center;font-size:12.5px;font-weight:700;color:#0f3d52;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #e2eef0}
+    .bal-cols{display:flex;gap:22px;flex-wrap:wrap}
+    .bal-col{flex:1;min-width:300px}
+    .mb-analysis{margin-top:8px;max-width:480px}
+    table.bal-tbl{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11.5px}
+    table.bal-tbl th{background:#e2f0f1;color:#0f3d52;text-align:left;padding:7px 8px;border:1px solid #c9dde0;font-size:10px;text-transform:uppercase;letter-spacing:.03em}
+    table.bal-tbl td{padding:6px 8px;border:1px solid #e2eef0}
     .num{text-align:right;font-family:'Courier New',monospace}
+    .tot-row td{background:#d7ecee;font-weight:700;color:#0f3d52}
+    .green-row td{background:#dcefd9;font-weight:700;color:#1f6b3a}
     .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
     @media print{.print-btn{display:none}body{padding:0;background:#fff}}
   </style></head><body>
   <button class="print-btn" onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
   <div class="mb-wrap">
-    <div class="mb-hdr"><img src="${PA_LOGO}" alt="El Pescador"><div><div class="mb-hdr-text">MI BALANCE — PRIVADO</div><div class="mb-hdr-sub">Comparativo de ingresos vs egresos sin IVA · Luis Antonio Clemente Vaquier</div></div></div>
+    <div class="mb-hdr"><img src="${PA_LOGO}" alt="El Pescador"><div><div class="mb-hdr-text">MI BALANCE — PRIVADO</div><div class="mb-hdr-sub">Detalle de cada balance + análisis de ingresos vs egresos sin IVA · Luis Antonio Clemente Vaquier</div></div></div>
     <div class="mb-body">
-      <table>
-        <tr><th>Corte</th><th>Fuente</th><th class="num">Ingresos s/IVA</th><th class="num">Egresos s/IVA</th><th class="num">Margen</th><th>Estado</th></tr>
-        ${rows||'<tr><td colspan="6" style="text-align:center;padding:16px">Sin balances registrados</td></tr>'}
-      </table>
+      ${periodos||'<div style="text-align:center;padding:16px">Sin balances registrados</div>'}
     </div>
   </div>
   </body></html>`;
