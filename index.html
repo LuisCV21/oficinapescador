@@ -1098,9 +1098,16 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
           <div class="bal-tab" id="bal-tab-kat" onclick="switchBalTab('kat')">👤 Balance Kateryn</div>
           <div class="bal-tab" id="bal-tab-nomina" onclick="switchBalTab('nomina')">📋 Bitácora Nómina</div>
           <div class="bal-tab" id="bal-tab-ado" onclick="switchBalTab('ado')">🚌 Bitácora ADO</div>
+          <div class="bal-tab" id="bal-tab-mio" onclick="switchBalTab('mio')" style="display:none">🔒 Mi Balance</div>
         </div>
         <div id="balance-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         <div id="balance-kat-list" style="display:none"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+        <div id="mi-balance-view" style="display:none">
+          <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+            <button class="btn btn-filled" onclick="imprimirMiBalance()">🖨 Descargar</button>
+          </div>
+          <div id="mi-balance-list"></div>
+        </div>
 
         <div id="nomina-ledger-view" style="display:none">
           <div class="ledger-subtabs" id="nom-subtabs">
@@ -1452,6 +1459,48 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   <div class="modal-ftr">
     <button class="btn" onclick="closeModal('m-finiquito')">Cerrar</button>
     <button class="btn btn-filled" onclick="imprimirFiniquito()">🖨 Imprimir finiquito</button>
+  </div>
+</div>
+</div>
+
+<div class="modal-overlay" id="m-vacaciones">
+<div class="modal" style="max-width:640px">
+  <div class="modal-hdr"><div class="modal-title">Recibo de vacaciones</div><button class="btn-icon" onclick="closeModal('m-vacaciones')">✕</button></div>
+  <div class="modal-body">
+    <div id="vc-emp-ref" style="font-size:12px;color:var(--text2);padding:9px 12px;background:var(--surface2);border-radius:var(--r);margin-bottom:14px;border-left:3px solid var(--copper)"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
+      <div class="f-row"><label>Fecha de inicio de vacaciones <span class="req">*</span></label><input type="date" id="vc-fecha" oninput="calcVacaciones()"/></div>
+      <div class="f-row"><label>Salario diario</label><input type="number" step="0.01" id="vc-salario" oninput="calcVacaciones()"/></div>
+      <div class="f-row"><label>Días que tomará</label><input type="number" step="0.5" id="vc-dias" oninput="vcDiasManual=true;calcVacaciones()"/></div>
+      <div class="f-row"><label style="display:flex;align-items:center;justify-content:space-between">Días que le corresponden <button class="btn-text" style="font-size:10px" onclick="vcDiasManual=false;calcVacaciones()">usar sugerido</button></label></div>
+    </div>
+    <div class="modal-sec" style="margin-top:14px">Desglose</div>
+    <div id="vc-breakdown"></div>
+  </div>
+  <div class="modal-ftr">
+    <button class="btn" onclick="closeModal('m-vacaciones')">Cerrar</button>
+    <button class="btn btn-filled" onclick="imprimirVacaciones()">🖨 Imprimir recibo</button>
+  </div>
+</div>
+</div>
+
+<div class="modal-overlay" id="m-festivo">
+<div class="modal" style="max-width:640px">
+  <div class="modal-hdr"><div class="modal-title">Día festivo trabajado</div><button class="btn-icon" onclick="closeModal('m-festivo')">✕</button></div>
+  <div class="modal-body">
+    <div id="fes-emp-ref" style="font-size:12px;color:var(--text2);padding:9px 12px;background:var(--surface2);border-radius:var(--r);margin-bottom:14px;border-left:3px solid var(--copper)"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
+      <div class="f-row"><label>Año</label><input type="number" id="fes-anio" oninput="renderFestivoOpts();calcFestivo()"/></div>
+      <div class="f-row"><label>Salario diario</label><input type="number" step="0.01" id="fes-salario" oninput="calcFestivo()"/></div>
+    </div>
+    <div class="f-row"><label>Día festivo</label><select class="fsel" id="fes-select" style="width:100%" onchange="onFestivoSelect()"></select></div>
+    <div class="f-row" id="fes-otra-fecha-row" style="display:none"><label>Fecha</label><input type="date" id="fes-otra-fecha" oninput="calcFestivo()"/></div>
+    <div class="modal-sec" style="margin-top:14px">Desglose</div>
+    <div id="fes-breakdown"></div>
+  </div>
+  <div class="modal-ftr">
+    <button class="btn" onclick="closeModal('m-festivo')">Cerrar</button>
+    <button class="btn btn-filled" onclick="imprimirFestivo()">🖨 Imprimir recibo</button>
   </div>
 </div>
 </div>
@@ -2310,6 +2359,8 @@ async function initApp(user){
   }
   currentUser=user;
   currentPerfil=p;
+  const balTabMio=document.getElementById('bal-tab-mio');
+  if(balTabMio)balTabMio.style.display=user.email==='luiacvc@gmail.com'?'block':'none';
   document.getElementById('login-wrap').style.display='none';
   document.getElementById('app').style.display='block';
   document.getElementById('gas-fab').style.display='flex';
@@ -3269,6 +3320,8 @@ async function openEmpDetail(id){
   ftr.innerHTML=`<button class="btn" onclick="closeModal('m-emp-detail')">Cerrar</button>
     <button class="btn" onclick="closeModal('m-emp-detail');openFiniquitoModal('${e.id}')">🧮 Finiquito</button>
     ${e.activo?`
+    <button class="btn" onclick="closeModal('m-emp-detail');openVacacionesModal('${e.id}')">🏖️ Vacaciones</button>
+    <button class="btn" onclick="closeModal('m-emp-detail');openFestivoModal('${e.id}')">🎉 Día festivo</button>
     <button class="btn" onclick="openUniformeModal('${e.id}')">👕 Uniforme</button>
     <button class="btn" onclick="imprimirUniforme('${e.id}')">🖨 Imprimir uniformes</button>
     <button class="btn" onclick="openContratoModal('${e.id}')">📄 Generar contrato</button>
@@ -3535,6 +3588,246 @@ table.fq-tbl td:last-child{text-align:right;font-family:'Courier New',monospace}
       <tr class="fq-total"><td>TOTAL FINIQUITO</td><td>${fmxn(r.subtotal)}</td></tr>
     </table>
     <div class="fq-legal">El trabajador manifiesta que recibe de conformidad la cantidad señalada en este documento por concepto de finiquito, comprendiendo el pago de vacaciones proporcionales, prima vacacional, aguinaldo proporcional y demás percepciones pendientes derivadas de la relación laboral que sostuvo con la empresa, sin tener nada más que reclamar por ningún concepto.</div>
+    <div class="fq-firmas">
+      <div class="fq-firma"><div class="fq-firma-line">Firma del trabajador</div>${e.nombre}</div>
+      <div class="fq-firma"><div class="fq-firma-line">Firma de la empresa</div>${entLabel}</div>
+    </div>
+  </div>
+</div>
+</body></html>`;
+  const w=window.open('','_blank');
+  w.document.write(html);
+  w.document.close();
+}
+
+// ─── VACACIONES ──────────────────────────────────────────────
+let vcEmpId=null,vcDiasManual=false;
+function openVacacionesModal(empId){
+  vcEmpId=empId;vcDiasManual=false;
+  const e=empData.find(x=>x.id===empId);if(!e)return;
+  document.getElementById('vc-emp-ref').textContent='👤 '+e.nombre+' — '+((ENTS[e.entidad]||{label:e.entidad}).label)+' · Ingreso: '+fmt(e.fecha_ingreso);
+  document.getElementById('vc-fecha').value=new Date().toISOString().slice(0,10);
+  document.getElementById('vc-salario').value=e.salario_diario||0;
+  document.getElementById('vc-dias').value='';
+  openModal('m-vacaciones');
+  calcVacaciones();
+}
+function calcVacaciones(){
+  const e=empData.find(x=>x.id===vcEmpId);
+  const out=document.getElementById('vc-breakdown');
+  if(!e||!out)return null;
+  const fIngStr=e.fecha_ingreso;
+  const fCalcStr=document.getElementById('vc-fecha').value;
+  if(!fIngStr){out.innerHTML='<div class="empty" style="padding:16px">Este empleado no tiene fecha de ingreso registrada</div>';return null;}
+  if(!fCalcStr){out.innerHTML='<div class="empty" style="padding:16px">Indica la fecha de inicio de vacaciones</div>';return null;}
+  const fIng=new Date(fIngStr+'T12:00:00');
+  const fCalc=new Date(fCalcStr+'T12:00:00');
+  if(fCalc<fIng){out.innerHTML='<div class="empty" style="padding:16px">La fecha no puede ser anterior al ingreso</div>';return null;}
+  const salario=Number(document.getElementById('vc-salario').value)||0;
+
+  let añosCompletos=fCalc.getFullYear()-fIng.getFullYear();
+  const aniversarioEsteAño=new Date(fCalc.getFullYear(),fIng.getMonth(),fIng.getDate(),12);
+  if(fCalc<aniversarioEsteAño)añosCompletos--;
+  if(añosCompletos<0)añosCompletos=0;
+  const añoServicioActual=añosCompletos+1;
+  const diasTablaVac=vacDiasPorServicioAnio(añoServicioActual);
+  const antiguedadTxt=`${añosCompletos} año${añosCompletos!==1?'s':''}`;
+
+  if(!vcDiasManual)document.getElementById('vc-dias').value=diasTablaVac;
+  const diasTomados=Number(document.getElementById('vc-dias').value)||0;
+
+  const montoDias=diasTomados*salario;
+  const primaVac=montoDias*0.25;
+  const total=montoDias+primaVac;
+
+  out.innerHTML=`
+    <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6">Antigüedad: <strong>${antiguedadTxt}</strong> · Año de servicio en curso: <strong>${añoServicioActual}°</strong> · Le corresponden <strong>${diasTablaVac} días</strong> de vacaciones por tabla LFT (vacaciones dignas)</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <tr><td style="padding:7px 4px;border-bottom:1px solid var(--border)">Pago de ${diasTomados} día${diasTomados!==1?'s':''} de vacaciones</td><td style="padding:7px 4px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--mono)">${fmxn(montoDias)}</td></tr>
+      <tr><td style="padding:7px 4px;border-bottom:1px solid var(--border)">Prima vacacional (25%)</td><td style="padding:7px 4px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--mono)">${fmxn(primaVac)}</td></tr>
+      <tr><td style="padding:10px 4px;font-weight:700">TOTAL A PAGAR</td><td style="padding:10px 4px;text-align:right;font-weight:700;font-size:15px;font-family:var(--mono);color:var(--green)">${fmxn(total)}</td></tr>
+    </table>
+  `;
+  return{e,fCalcStr,salario,añosCompletos,añoServicioActual,diasTablaVac,diasTomados,montoDias,primaVac,total,antiguedadTxt};
+}
+function imprimirVacaciones(){
+  const r=calcVacaciones();
+  if(!r)return;
+  const e=r.e;
+  const entLabel=(ENTS[e.entidad]||{label:e.entidad}).label;
+  const puesto=puestoNombre(e.puesto_id)||'';
+  const fechaInicio=new Date(r.fCalcStr+'T12:00:00');
+  const fechaFin=new Date(fechaInicio);fechaFin.setDate(fechaFin.getDate()+Math.max(0,r.diasTomados-1));
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Vacaciones — ${e.nombre}</title>
+<style>
+@page{size:8.5in 11in;margin:1.2cm}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+html,body{width:100%;height:100%}
+body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#16323c;background:#eaf4f5}
+.fq-wrap{max-width:720px;margin:0 auto}
+.fq-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:14px 20px;border-radius:8px 8px 0 0}
+.fq-hdr img{height:42px;width:42px;object-fit:contain;flex-shrink:0}
+.fq-hdr-text{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;letter-spacing:.02em}
+.fq-hdr-sub{font-size:11px;opacity:.85;margin-top:2px}
+.fq-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:18px 20px}
+.fq-info{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid #e2eef0}
+.fq-info b{color:#0f3d52}
+table.fq-tbl{width:100%;border-collapse:collapse;margin-bottom:16px}
+table.fq-tbl td{padding:8px 6px;border-bottom:1px solid #e2eef0;font-size:12.5px}
+table.fq-tbl td:last-child{text-align:right;font-family:'Courier New',monospace}
+.fq-total td{font-weight:700;font-size:15px;border-top:2px solid #0f3d52;border-bottom:none;padding-top:12px}
+.fq-legal{font-size:10.5px;color:#3a5a63;line-height:1.55;margin:18px 0;text-align:justify}
+.fq-firmas{display:flex;justify-content:space-between;margin-top:50px;gap:30px}
+.fq-firma{flex:1;text-align:center;font-size:11px;color:#3a5a63}
+.fq-firma-line{border-top:1px solid #16323c;margin-bottom:6px;padding-top:6px}
+.print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+@media print{.print-btn{display:none}body{padding:0;background:#fff}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
+<div class="fq-wrap">
+  <div class="fq-hdr"><img src="${PA_LOGO}" alt="El Pescador"><div><div class="fq-hdr-text">RECIBO DE VACACIONES</div><div class="fq-hdr-sub">${entLabel} — El Pescador</div></div></div>
+  <div class="fq-body">
+    <div class="fq-info">
+      <div><b>Trabajador:</b> ${e.nombre}</div>
+      <div><b>Puesto:</b> ${puesto}</div>
+      <div><b>Antigüedad:</b> ${r.antiguedadTxt}</div>
+      <div><b>Salario diario:</b> ${fmxn(r.salario)}</div>
+      <div><b>Periodo de vacaciones:</b> ${fmt(r.fCalcStr)} al ${fmt(dateToISO(fechaFin))}</div>
+      <div><b>Días tomados:</b> ${r.diasTomados}</div>
+    </div>
+    <table class="fq-tbl">
+      <tr><td>Pago de ${r.diasTomados} día${r.diasTomados!==1?'s':''} de vacaciones</td><td>${fmxn(r.montoDias)}</td></tr>
+      <tr><td>Prima vacacional (25%)</td><td>${fmxn(r.primaVac)}</td></tr>
+      <tr class="fq-total"><td>TOTAL A PAGAR</td><td>${fmxn(r.total)}</td></tr>
+    </table>
+    <div class="fq-legal">El trabajador manifiesta que recibe de conformidad la cantidad señalada en este documento por concepto de pago de vacaciones y prima vacacional correspondientes al periodo indicado, conforme a los artículos 76 y 80 de la Ley Federal del Trabajo.</div>
+    <div class="fq-firmas">
+      <div class="fq-firma"><div class="fq-firma-line">Firma del trabajador</div>${e.nombre}</div>
+      <div class="fq-firma"><div class="fq-firma-line">Firma de la empresa</div>${entLabel}</div>
+    </div>
+  </div>
+</div>
+</body></html>`;
+  const w=window.open('','_blank');
+  w.document.write(html);
+  w.document.close();
+}
+
+// ─── DÍA FESTIVO TRABAJADO ───────────────────────────────────
+let fesEmpId=null;
+function nthWeekdayOfMonth(year,month,weekday,n){
+  const d=new Date(year,month-1,1);
+  let count=0;
+  while(true){
+    if(d.getDay()===weekday){count++;if(count===n)return new Date(d);}
+    d.setDate(d.getDate()+1);
+  }
+}
+function diasFestivosLFT(year){
+  return[
+    {fecha:dateToISO(new Date(year,0,1)),label:'1 de enero — Año Nuevo'},
+    {fecha:dateToISO(nthWeekdayOfMonth(year,2,1,1)),label:'Primer lunes de febrero — Día de la Constitución'},
+    {fecha:dateToISO(nthWeekdayOfMonth(year,3,1,3)),label:'Tercer lunes de marzo — Natalicio de Benito Juárez'},
+    {fecha:dateToISO(new Date(year,4,1)),label:'1 de mayo — Día del Trabajo'},
+    {fecha:dateToISO(new Date(year,8,16)),label:'16 de septiembre — Día de la Independencia'},
+    {fecha:dateToISO(nthWeekdayOfMonth(year,11,1,3)),label:'Tercer lunes de noviembre — Revolución Mexicana'},
+    {fecha:dateToISO(new Date(year,11,25)),label:'25 de diciembre — Navidad'},
+  ];
+}
+function openFestivoModal(empId){
+  fesEmpId=empId;
+  const e=empData.find(x=>x.id===empId);if(!e)return;
+  document.getElementById('fes-emp-ref').textContent='👤 '+e.nombre+' — '+((ENTS[e.entidad]||{label:e.entidad}).label);
+  document.getElementById('fes-anio').value=new Date().getFullYear();
+  document.getElementById('fes-salario').value=e.salario_diario||0;
+  document.getElementById('fes-otra-fecha').value='';
+  renderFestivoOpts();
+  openModal('m-festivo');
+}
+function renderFestivoOpts(){
+  const year=Number(document.getElementById('fes-anio').value)||new Date().getFullYear();
+  const dias=diasFestivosLFT(year);
+  const sel=document.getElementById('fes-select');
+  const prevVal=sel.value;
+  sel.innerHTML=dias.map(d=>`<option value="${d.fecha}">${fmt(d.fecha)} — ${d.label}</option>`).join('')+'<option value="otro">Otro (especificar fecha)</option>';
+  if(prevVal&&[...sel.options].some(o=>o.value===prevVal))sel.value=prevVal;
+  onFestivoSelect();
+}
+function onFestivoSelect(){
+  const sel=document.getElementById('fes-select');
+  document.getElementById('fes-otra-fecha-row').style.display=sel.value==='otro'?'block':'none';
+  calcFestivo();
+}
+function calcFestivo(){
+  const e=empData.find(x=>x.id===fesEmpId);
+  const out=document.getElementById('fes-breakdown');
+  if(!e||!out)return null;
+  const sel=document.getElementById('fes-select');
+  if(!sel.value)return null;
+  const fecha=sel.value==='otro'?document.getElementById('fes-otra-fecha').value:sel.value;
+  const label=sel.value==='otro'?'Día festivo (fecha manual)':sel.options[sel.selectedIndex].textContent;
+  const salario=Number(document.getElementById('fes-salario').value)||0;
+  if(!fecha){out.innerHTML='<div class="empty" style="padding:16px">Indica la fecha del día festivo</div>';return null;}
+  const extra=salario*2;
+  const total=salario*3;
+  out.innerHTML=`
+    <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.5">Conforme al artículo 75 de la LFT: quien trabaja un día de descanso obligatorio recibe su salario normal del día <strong>más el doble</strong> por el servicio prestado — pago triple en total.</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <tr><td style="padding:7px 4px;border-bottom:1px solid var(--border)">Salario normal del día (ya incluido en su pago habitual)</td><td style="padding:7px 4px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--mono)">${fmxn(salario)}</td></tr>
+      <tr><td style="padding:7px 4px;border-bottom:1px solid var(--border)">Pago extra por trabajar día festivo (2 días)</td><td style="padding:7px 4px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--mono)">${fmxn(extra)}</td></tr>
+      <tr><td style="padding:10px 4px;font-weight:700">TOTAL DEL DÍA (TRIPLE)</td><td style="padding:10px 4px;text-align:right;font-weight:700;font-size:15px;font-family:var(--mono);color:var(--green)">${fmxn(total)}</td></tr>
+    </table>
+  `;
+  return{e,fecha,label,salario,extra,total};
+}
+function imprimirFestivo(){
+  const r=calcFestivo();
+  if(!r)return;
+  const e=r.e;
+  const entLabel=(ENTS[e.entidad]||{label:e.entidad}).label;
+  const puesto=puestoNombre(e.puesto_id)||'';
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Día festivo — ${e.nombre}</title>
+<style>
+@page{size:8.5in 11in;margin:1.2cm}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+html,body{width:100%;height:100%}
+body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#16323c;background:#eaf4f5}
+.fq-wrap{max-width:720px;margin:0 auto}
+.fq-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:14px 20px;border-radius:8px 8px 0 0}
+.fq-hdr img{height:42px;width:42px;object-fit:contain;flex-shrink:0}
+.fq-hdr-text{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;letter-spacing:.02em}
+.fq-hdr-sub{font-size:11px;opacity:.85;margin-top:2px}
+.fq-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:18px 20px}
+.fq-info{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid #e2eef0}
+.fq-info b{color:#0f3d52}
+table.fq-tbl{width:100%;border-collapse:collapse;margin-bottom:16px}
+table.fq-tbl td{padding:8px 6px;border-bottom:1px solid #e2eef0;font-size:12.5px}
+table.fq-tbl td:last-child{text-align:right;font-family:'Courier New',monospace}
+.fq-total td{font-weight:700;font-size:15px;border-top:2px solid #0f3d52;border-bottom:none;padding-top:12px}
+.fq-legal{font-size:10.5px;color:#3a5a63;line-height:1.55;margin:18px 0;text-align:justify}
+.fq-firmas{display:flex;justify-content:space-between;margin-top:50px;gap:30px}
+.fq-firma{flex:1;text-align:center;font-size:11px;color:#3a5a63}
+.fq-firma-line{border-top:1px solid #16323c;margin-bottom:6px;padding-top:6px}
+.print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+@media print{.print-btn{display:none}body{padding:0;background:#fff}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
+<div class="fq-wrap">
+  <div class="fq-hdr"><img src="${PA_LOGO}" alt="El Pescador"><div><div class="fq-hdr-text">RECIBO — DÍA FESTIVO TRABAJADO</div><div class="fq-hdr-sub">${entLabel} — El Pescador</div></div></div>
+  <div class="fq-body">
+    <div class="fq-info">
+      <div><b>Trabajador:</b> ${e.nombre}</div>
+      <div><b>Puesto:</b> ${puesto}</div>
+      <div><b>Día festivo:</b> ${r.label}</div>
+      <div><b>Fecha:</b> ${fmt(r.fecha)}</div>
+      <div><b>Salario diario:</b> ${fmxn(r.salario)}</div>
+    </div>
+    <table class="fq-tbl">
+      <tr><td>Salario normal del día (ya incluido en su pago habitual)</td><td>${fmxn(r.salario)}</td></tr>
+      <tr><td>Pago extra por trabajar día festivo (2 días)</td><td>${fmxn(r.extra)}</td></tr>
+      <tr class="fq-total"><td>TOTAL DEL DÍA (TRIPLE)</td><td>${fmxn(r.total)}</td></tr>
+    </table>
+    <div class="fq-legal">El trabajador manifiesta que recibe de conformidad la cantidad señalada en este documento por haber prestado sus servicios en el día de descanso obligatorio indicado, conforme al artículo 75 de la Ley Federal del Trabajo.</div>
     <div class="fq-firmas">
       <div class="fq-firma"><div class="fq-firma-line">Firma del trabajador</div>${e.nombre}</div>
       <div class="fq-firma"><div class="fq-firma-line">Firma de la empresa</div>${entLabel}</div>
@@ -5540,12 +5833,100 @@ function switchBalTab(tab){
   document.getElementById('balance-kat-list').style.display=tab==='kat'?'block':'none';
   document.getElementById('nomina-ledger-view').style.display=tab==='nomina'?'block':'none';
   document.getElementById('ado-ledger-view').style.display=tab==='ado'?'block':'none';
+  document.getElementById('mi-balance-view').style.display=tab==='mio'?'block':'none';
   const newBtn=document.getElementById('balance-new-btn');
   const sub=document.getElementById('balance-page-sub');
   if(tab==='luis'){newBtn.style.display='inline-flex';newBtn.textContent='+ Nuevo balance';newBtn.onclick=openBalanceModal;sub.textContent='Ingresos, egresos, ISR e IVA — Luis Antonio Clemente Vaquier (Florida)';renderBalanceList();}
   else if(tab==='kat'){newBtn.style.display='inline-flex';newBtn.textContent='+ Nuevo balance';newBtn.onclick=openBalanceKatModal;sub.textContent='Ingresos, egresos, ISR e IVA — Ana Kateryn Clemente Vaquier (Puebla + Hotel)';renderBalanceKatList();}
   else if(tab==='nomina'){newBtn.style.display='none';sub.textContent='Registra cada semana pagada — el balance la jala sola y la marca como usada';renderNominaLedgerList();}
   else if(tab==='ado'){newBtn.style.display='none';sub.textContent='Registra cada vale de ADO (pagado o de crédito) — el balance de Kateryn los jala solo';renderAdoLedgerList();}
+  else if(tab==='mio'){newBtn.style.display='none';sub.textContent='Privado — comparativo de ingresos vs egresos sin IVA de todos los balances';renderMiBalance();}
+}
+function pctEgresosVsIngresos(ingresosSinIva,egresosSinIva){
+  if(!ingresosSinIva)return null;
+  return(ingresosSinIva-egresosSinIva)/ingresosSinIva*100;
+}
+function miBalanceEstado(pct){
+  if(pct===null)return{label:'Sin datos',color:'var(--text3)',bg:'var(--surface2)'};
+  if(pct<0)return{label:'Egresos por ARRIBA de ingresos',color:'var(--red)',bg:'var(--red-light)'};
+  if(pct>=5&&pct<=10)return{label:'Dentro del rango esperado (5–10%)',color:'var(--green)',bg:'var(--green-light)'};
+  return{label:pct<5?'Margen más bajo de lo esperado':'Margen más alto de lo esperado',color:'var(--amber)',bg:'var(--amber-light)'};
+}
+function renderMiBalance(){
+  const el=document.getElementById('mi-balance-list');
+  if(!el)return;
+  const filas=[
+    ...balancesData.map(b=>({fuente:'Luis — Florida',fecha:b.fecha_corte,...calcBalance(b)})),
+    ...balancesKatData.map(b=>({fuente:'Kateryn — Puebla + Hotel',fecha:b.fecha_corte,...calcBalanceKat(b)})),
+  ].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  if(!filas.length){el.innerHTML='<div class="empty"><div class="empty-ico">🔒</div>Sin balances registrados aún</div>';return;}
+  el.innerHTML=filas.map(f=>{
+    const pct=pctEgresosVsIngresos(f.ingresosSinIva,f.egresosSinIva);
+    const est=miBalanceEstado(pct);
+    const pctTxt=pct===null?'—':(pct>=0?pct.toFixed(1)+'% abajo':Math.abs(pct).toFixed(1)+'% arriba');
+    return`<div class="acc-card" style="padding:14px 16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-weight:600;font-size:14px">${f.fuente}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">Corte al ${fmtFechaCorta(f.fecha)} · Ingresos s/IVA ${fmxn(f.ingresosSinIva)} · Egresos s/IVA ${fmxn(f.egresosSinIva)}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:18px;font-weight:700;color:${est.color}">${pctTxt}</div>
+          <span class="pill" style="background:${est.bg};color:${est.color};font-size:10px">${est.label}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function imprimirMiBalance(){
+  const filas=[
+    ...balancesData.map(b=>({fuente:'Luis — Florida',fecha:b.fecha_corte,...calcBalance(b)})),
+    ...balancesKatData.map(b=>({fuente:'Kateryn — Puebla + Hotel',fecha:b.fecha_corte,...calcBalanceKat(b)})),
+  ].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const rows=filas.map(f=>{
+    const pct=pctEgresosVsIngresos(f.ingresosSinIva,f.egresosSinIva);
+    const est=miBalanceEstado(pct);
+    const pctTxt=pct===null?'—':(pct>=0?pct.toFixed(1)+'% abajo':Math.abs(pct).toFixed(1)+'% arriba');
+    return`<tr>
+      <td>${fmtFechaCorta(f.fecha)}</td>
+      <td>${f.fuente}</td>
+      <td class="num">${fmxn(f.ingresosSinIva)}</td>
+      <td class="num">${fmxn(f.egresosSinIva)}</td>
+      <td class="num" style="color:${est.color};font-weight:700">${pctTxt}</td>
+      <td style="color:${est.color}">${est.label}</td>
+    </tr>`;
+  }).join('');
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Mi Balance — privado</title>
+  <style>
+    @page{size:11in 8.5in;margin:1cm}
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+    html,body{width:100%;height:100%}
+    body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#16323c;background:#eaf4f5}
+    .mb-wrap{max-width:1000px;margin:0 auto}
+    .mb-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:14px 22px;border-radius:8px 8px 0 0}
+    .mb-hdr img{height:42px;width:42px;object-fit:contain;flex-shrink:0}
+    .mb-hdr-text{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;letter-spacing:.02em}
+    .mb-hdr-sub{font-size:11.5px;opacity:.9;margin-top:2px}
+    .mb-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:18px 22px}
+    table{width:100%;border-collapse:collapse;font-size:12px}
+    th{background:#e2f0f1;color:#0f3d52;text-align:left;padding:8px;border:1px solid #c9dde0;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em}
+    td{padding:8px;border:1px solid #e2eef0}
+    .num{text-align:right;font-family:'Courier New',monospace}
+    .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+    @media print{.print-btn{display:none}body{padding:0;background:#fff}}
+  </style></head><body>
+  <button class="print-btn" onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
+  <div class="mb-wrap">
+    <div class="mb-hdr"><img src="${PA_LOGO}" alt="El Pescador"><div><div class="mb-hdr-text">MI BALANCE — PRIVADO</div><div class="mb-hdr-sub">Comparativo de ingresos vs egresos sin IVA · Luis Antonio Clemente Vaquier</div></div></div>
+    <div class="mb-body">
+      <table>
+        <tr><th>Corte</th><th>Fuente</th><th class="num">Ingresos s/IVA</th><th class="num">Egresos s/IVA</th><th class="num">Margen</th><th>Estado</th></tr>
+        ${rows||'<tr><td colspan="6" style="text-align:center;padding:16px">Sin balances registrados</td></tr>'}
+      </table>
+    </div>
+  </div>
+  </body></html>`;
+  const w=window.open('','_blank');w.document.write(html);w.document.close();
 }
 
 // ─── BITÁCORA DE NÓMINA (continua) ──────────────────────────────
