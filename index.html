@@ -5850,6 +5850,12 @@ function metaEgresosRange(ingresosSinIva){
   if(!ingresosSinIva)return null;
   return{min:ingresosSinIva*0.90,max:ingresosSinIva*0.95};
 }
+function egresosAjuste(egresosSinIva,meta){
+  if(!meta)return null;
+  if(egresosSinIva<meta.min)return{dir:'subir',monto:meta.min-egresosSinIva};
+  if(egresosSinIva>meta.max)return{dir:'bajar',monto:egresosSinIva-meta.max};
+  return{dir:'ok',monto:0};
+}
 function miBalanceEstado(pct){
   if(pct===null)return{label:'Sin datos',color:'var(--text3)',bg:'var(--surface2)'};
   if(pct<0)return{label:'Egresos por ARRIBA de ingresos',color:'var(--red)',bg:'var(--red-light)'};
@@ -5857,10 +5863,9 @@ function miBalanceEstado(pct){
   return{label:pct<5?'Margen más bajo de lo esperado':'Margen más alto de lo esperado',color:'var(--amber)',bg:'var(--amber-light)'};
 }
 function miBalanceFilas(){
-  return[
-    ...balancesData.map(b=>({tipo:'luis',fuente:'Luis — Florida',fecha:b.fecha_corte,b,c:calcBalance(b)})),
-    ...balancesKatData.map(b=>({tipo:'kat',fuente:'Kateryn — Puebla + Hotel',fecha:b.fecha_corte,b,c:calcBalanceKat(b)})),
-  ].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const luis=balancesData.map(b=>({tipo:'luis',fuente:'Luis — Florida',fecha:b.fecha_corte,b,c:calcBalance(b)})).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const kat=balancesKatData.map(b=>({tipo:'kat',fuente:'Kateryn — Puebla + Hotel',fecha:b.fecha_corte,b,c:calcBalanceKat(b)})).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  return[...luis,...kat];
 }
 function renderMiBalance(){
   const el=document.getElementById('mi-balance-list');
@@ -5872,12 +5877,15 @@ function renderMiBalance(){
     const est=miBalanceEstado(pct);
     const pctTxt=pct===null?'—':(pct>=0?pct.toFixed(1)+'% abajo':Math.abs(pct).toFixed(1)+'% arriba');
     const meta=metaEgresosRange(f.c.ingresosSinIva);
+    const ajuste=egresosAjuste(f.c.egresosSinIva,meta);
+    const ajusteTxt=ajuste?(ajuste.dir==='ok'?'Dentro del rango, sin ajuste necesario':(ajuste.dir==='subir'?'Te faltan al menos '+fmxn(ajuste.monto)+' en egresos para entrar al rango meta':'Baja egresos al menos '+fmxn(ajuste.monto)+' para entrar al rango meta')):'';
     return`<div class="acc-card" style="padding:14px 16px">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
         <div>
           <div style="font-weight:600;font-size:14px">${f.fuente}</div>
           <div style="font-size:11px;color:var(--text2);margin-top:2px">Corte al ${fmtFechaCorta(f.fecha)} · Ingresos s/IVA ${fmxn(f.c.ingresosSinIva)} · Egresos s/IVA ${fmxn(f.c.egresosSinIva)}</div>
           ${meta?`<div style="font-size:11px;color:var(--text3);margin-top:2px">Meta de egresos (5–10% abajo de ingresos): ${fmxn(meta.min)} – ${fmxn(meta.max)}</div>`:''}
+          ${ajusteTxt?`<div style="font-size:11px;color:${ajuste.dir==='ok'?'var(--green)':'var(--copper)'};margin-top:2px;font-weight:600">${ajusteTxt}</div>`:''}
         </div>
         <div style="text-align:right">
           <div style="font-size:18px;font-weight:700;color:${est.color}">${pctTxt}</div>
@@ -5963,6 +5971,8 @@ function imprimirMiBalance(){
     const est=miBalanceEstado(pct);
     const pctTxt=pct===null?'—':(pct>=0?pct.toFixed(1)+'% abajo':Math.abs(pct).toFixed(1)+'% arriba');
     const meta=metaEgresosRange(f.c.ingresosSinIva);
+    const ajuste=egresosAjuste(f.c.egresosSinIva,meta);
+    const ajusteTxt=ajuste?(ajuste.dir==='ok'?'Sin ajuste necesario':(ajuste.dir==='subir'?'Subir al menos '+fmxn(ajuste.monto):'Bajar al menos '+fmxn(ajuste.monto))):'—';
     return`<div class="mb-period"${i<filas.length-1?' style="page-break-after:always"':''}>
       <div class="mb-period-title">${f.fuente} — Corte al ${fmtFechaLarga(f.fecha)}</div>
       <div class="bal-cols">${f.tipo==='luis'?miBalanceLuisTablas(f.b,f.c):miBalanceKatTablas(f.b,f.c)}</div>
@@ -5973,6 +5983,7 @@ function imprimirMiBalance(){
           <tr><td>Egresos sin IVA</td><td class="num">${fmxn(f.c.egresosSinIva)}</td></tr>
           <tr><td>Margen actual (egresos vs ingresos)</td><td class="num" style="color:${est.color};font-weight:700">${pctTxt}</td></tr>
           <tr><td>Meta de egresos (5%–10% abajo de ingresos)</td><td class="num">${meta?fmxn(meta.min)+' – '+fmxn(meta.max):'—'}</td></tr>
+          <tr><td>Ajuste necesario en egresos</td><td class="num" style="color:${ajuste&&ajuste.dir==='ok'?'#1f6b3a':'#8A3E12'}">${ajusteTxt}</td></tr>
           <tr class="tot-row"><td>Estado</td><td class="num" style="color:${est.color}">${est.label}</td></tr>
         </table>
       </div>
@@ -5980,27 +5991,28 @@ function imprimirMiBalance(){
   }).join('');
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Mi Balance — privado</title>
   <style>
+    :root{--green:#276B3A;--red:#9B1C1C;--amber:#8A5A00;--text3:#A08070}
     @page{size:11in 8.5in;margin:1cm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
     html,body{width:100%;height:100%}
     body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#16323c;background:#eaf4f5}
     .mb-wrap{max-width:1000px;margin:0 auto}
-    .mb-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:14px 22px;border-radius:8px 8px 0 0}
+    .mb-hdr{background:linear-gradient(120deg,#B5541A 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:14px 22px;border-radius:8px 8px 0 0}
     .mb-hdr img{height:42px;width:42px;object-fit:contain;flex-shrink:0}
     .mb-hdr-text{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;letter-spacing:.02em}
     .mb-hdr-sub{font-size:11.5px;opacity:.9;margin-top:2px}
-    .mb-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:18px 22px}
-    .mb-period-title{text-align:center;font-size:12.5px;font-weight:700;color:#0f3d52;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #e2eef0}
+    .mb-body{background:#fff;border:1.5px solid #ecd9c5;border-top:none;border-radius:0 0 8px 8px;padding:18px 22px}
+    .mb-period-title{text-align:center;font-size:12.5px;font-weight:700;color:#8A3E12;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #f0ddc8}
     .bal-cols{display:flex;gap:22px;flex-wrap:wrap}
     .bal-col{flex:1;min-width:300px}
     .mb-analysis{margin-top:8px;max-width:480px}
     table.bal-tbl{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11.5px}
-    table.bal-tbl th{background:#e2f0f1;color:#0f3d52;text-align:left;padding:7px 8px;border:1px solid #c9dde0;font-size:10px;text-transform:uppercase;letter-spacing:.03em}
-    table.bal-tbl td{padding:6px 8px;border:1px solid #e2eef0}
-    .num{text-align:right;font-family:'Courier New',monospace}
-    .tot-row td{background:#d7ecee;font-weight:700;color:#0f3d52}
+    table.bal-tbl th{background:#F5E6DC;color:#8A3E12;text-align:left;padding:7px 8px;border:1px solid #ecd9c5;font-size:10px;text-transform:uppercase;letter-spacing:.03em}
+    table.bal-tbl td{padding:6px 8px;border:1px solid #f0ddc8}
+    .num{text-align:right;font-family:Consolas,'SF Mono',Menlo,monospace;font-weight:700;letter-spacing:.01em}
+    .tot-row td{background:#F0D9C0;font-weight:700;color:#8A3E12}
     .green-row td{background:#dcefd9;font-weight:700;color:#1f6b3a}
-    .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+    .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#B5541A;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
     @media print{.print-btn{display:none}body{padding:0;background:#fff}}
   </style></head><body>
   <button class="print-btn" onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
@@ -6526,22 +6538,22 @@ function viewBalance(id){
     html,body{width:100%;height:100%}
     body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#16323c;background:#eaf4f5}
     .bal-wrap{max-width:920px;margin:0 auto}
-    .bal-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:14px 22px;border-radius:8px 8px 0 0}
+    .bal-hdr{background:linear-gradient(120deg,#B5541A 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:14px 22px;border-radius:8px 8px 0 0}
     .bal-hdr img{height:42px;width:42px;object-fit:contain;flex-shrink:0}
     .bal-hdr-text{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;letter-spacing:.02em}
     .bal-hdr-sub{font-size:11.5px;opacity:.9;margin-top:2px}
-    .bal-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:18px 22px}
-    .bal-subtitle{text-align:center;font-size:12.5px;font-weight:700;color:#0f3d52;letter-spacing:.08em;text-transform:uppercase;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #e2eef0}
+    .bal-body{background:#fff;border:1.5px solid #ecd9c5;border-top:none;border-radius:0 0 8px 8px;padding:18px 22px}
+    .bal-subtitle{text-align:center;font-size:12.5px;font-weight:700;color:#8A3E12;letter-spacing:.08em;text-transform:uppercase;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #f0ddc8}
     .proy-box{border:1.5px dashed #c78a2e;background:#fff6e0;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11.5px;color:#5a4420}
     .bal-cols{display:flex;gap:22px;flex-wrap:wrap}
     .bal-col{flex:1;min-width:300px}
     table.bal-tbl{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11.5px}
-    table.bal-tbl th{background:#e2f0f1;color:#0f3d52;text-align:left;padding:7px 8px;border:1px solid #c9dde0;font-size:10px;text-transform:uppercase;letter-spacing:.03em}
-    table.bal-tbl td{padding:6px 8px;border:1px solid #e2eef0}
-    .num{text-align:right;font-family:'Courier New',monospace}
-    .tot-row td{background:#d7ecee;font-weight:700;color:#0f3d52}
+    table.bal-tbl th{background:#F5E6DC;color:#8A3E12;text-align:left;padding:7px 8px;border:1px solid #ecd9c5;font-size:10px;text-transform:uppercase;letter-spacing:.03em}
+    table.bal-tbl td{padding:6px 8px;border:1px solid #f0ddc8}
+    .num{text-align:right;font-family:Consolas,'SF Mono',Menlo,monospace;font-weight:700;letter-spacing:.01em}
+    .tot-row td{background:#F0D9C0;font-weight:700;color:#8A3E12}
     .green-row td{background:#dcefd9;font-weight:700;color:#1f6b3a}
-    .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+    .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#B5541A;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
     @media print{.print-btn{display:none}body{padding:0;background:#fff}}
   </style></head><body>
   <button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
@@ -6892,21 +6904,21 @@ function viewBalanceKat(id){
     html,body{width:100%;height:100%}
     body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#16323c;background:#eaf4f5}
     .bal-wrap{max-width:920px;margin:0 auto}
-    .bal-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:14px 22px;border-radius:8px 8px 0 0}
+    .bal-hdr{background:linear-gradient(120deg,#B5541A 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:14px 22px;border-radius:8px 8px 0 0}
     .bal-hdr img{height:42px;width:42px;object-fit:contain;flex-shrink:0}
     .bal-hdr-text{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;letter-spacing:.02em}
     .bal-hdr-sub{font-size:11.5px;opacity:.9;margin-top:2px}
-    .bal-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:18px 22px}
-    .bal-subtitle{text-align:center;font-size:12.5px;font-weight:700;color:#0f3d52;letter-spacing:.08em;text-transform:uppercase;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #e2eef0}
+    .bal-body{background:#fff;border:1.5px solid #ecd9c5;border-top:none;border-radius:0 0 8px 8px;padding:18px 22px}
+    .bal-subtitle{text-align:center;font-size:12.5px;font-weight:700;color:#8A3E12;letter-spacing:.08em;text-transform:uppercase;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #f0ddc8}
     .bal-cols{display:flex;gap:22px;flex-wrap:wrap}
     .bal-col{flex:1;min-width:300px}
     table.bal-tbl{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11.5px}
-    table.bal-tbl th{background:#e2f0f1;color:#0f3d52;text-align:left;padding:7px 8px;border:1px solid #c9dde0;font-size:10px;text-transform:uppercase;letter-spacing:.03em}
-    table.bal-tbl td{padding:6px 8px;border:1px solid #e2eef0}
-    .num{text-align:right;font-family:'Courier New',monospace}
-    .tot-row td{background:#d7ecee;font-weight:700;color:#0f3d52}
+    table.bal-tbl th{background:#F5E6DC;color:#8A3E12;text-align:left;padding:7px 8px;border:1px solid #ecd9c5;font-size:10px;text-transform:uppercase;letter-spacing:.03em}
+    table.bal-tbl td{padding:6px 8px;border:1px solid #f0ddc8}
+    .num{text-align:right;font-family:Consolas,'SF Mono',Menlo,monospace;font-weight:700;letter-spacing:.01em}
+    .tot-row td{background:#F0D9C0;font-weight:700;color:#8A3E12}
     .green-row td{background:#dcefd9;font-weight:700;color:#1f6b3a}
-    .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+    .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#B5541A;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
     @media print{.print-btn{display:none}body{padding:0;background:#fff}}
   </style></head><body>
   <button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
