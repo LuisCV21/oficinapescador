@@ -1064,7 +1064,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             <button class="btn btn-filled" onclick="openVehiculoModal()">+ Vehículo</button>
           </div>
         </div>
-        <div id="flo-widgets"></div>
+        <div id="flo-widgets" class="widgets"></div>
         <div class="tabs-wrap">
           <div class="tabs-bar" id="flo-tabs-bar">
             <div class="tab active" onclick="flotTab('vehiculos',this)">🚗 Vehículos y documentos</div>
@@ -4305,7 +4305,8 @@ function renderVehCard(v){
   const hasVencido=docs.some(d=>d.fecha_vencimiento&&Math.round((new Date(d.fecha_vencimiento+'T12:00:00')-hoy)/86400000)<0);
   const hasProximo=docs.some(d=>{if(!d.fecha_vencimiento)return false;const di=Math.round((new Date(d.fecha_vencimiento+'T12:00:00')-hoy)/86400000);return di>=0&&di<=30;});
   const borderColor=hasVencido?'var(--red)':hasProximo?'var(--amber)':'var(--green)';
-  const ent=ENTS[v.entidad]||{label:v.entidad};
+  const ent=ENTS[v.entidad]||{label:v.entidad,color:'#5f6368'};
+  const entColor=ent.color;
 
   // Build docs section
   let docsHtml='';
@@ -4351,9 +4352,9 @@ function renderVehCard(v){
   const vnom=v.nombre.replace(/"/g,'&quot;');
   let delBtn=isAdmin()?`<button class="btn-text red veh-del-btn" data-id="${vid}" style="font-size:11px">Eliminar</button>`:'';
 
-  return `<div class="obl-card" style="border-top:3px solid ${borderColor}">
+  return `<div class="obl-card" style="border-top:3px solid ${borderColor};border-left:4px solid ${entColor};background:${entBg(v.entidad,6)}">
     <div class="obl-card-body">
-      <div class="obl-icon" style="background:var(--slate-light);font-size:24px">${VEH_ICONS[v.tipo]||'🚗'}</div>
+      <div class="obl-icon" style="background:${entBg(v.entidad,38)};font-size:24px">${VEH_ICONS[v.tipo]||'🚗'}</div>
       <div class="obl-info">
         <div class="obl-title">${v.nombre}</div>
         <div class="obl-meta">
