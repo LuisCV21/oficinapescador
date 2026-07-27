@@ -1404,13 +1404,44 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         </label>
       </div>
     </div>
-    <div class="f-row"><label>Comprobante de baja ante IMSS <span class="req">* obligatorio</span></label>
-      <div class="fzone" id="fz-baja"><input type="file" id="ff-baja" accept="image/*,.pdf" onchange="handleFile(this,'fz-baja','fl-baja','baja_imss')">
-        <span class="fzone-ico">📄</span><div class="fzone-lbl" id="fl-baja">Adjuntar acuse de baja IMSS<br><span style="font-size:10px;color:var(--text3)">Obligatorio para proceder</span></div>
+    <div class="f-row"><label>Formato de finiquito firmado <span class="req">* obligatorio</span></label>
+      <div class="fzone" id="fz-baja"><input type="file" id="ff-baja" accept="image/*,.pdf" onchange="handleFile(this,'fz-baja','fl-baja','finiquito')">
+        <span class="fzone-ico">📝</span><div class="fzone-lbl" id="fl-baja">Adjuntar finiquito firmado<br><span style="font-size:10px;color:var(--text3)">Obligatorio para proceder</span></div>
       </div>
     </div>
   </div>
-  <div class="modal-ftr"><button class="btn" onclick="closeModal('m-baja')">Cancelar</button><button class="btn btn-filled" style="background:var(--red);border-color:var(--red)" id="baja-save-btn" onclick="saveBaja()">Confirmar baja</button></div>
+  <div class="modal-ftr">
+    <button class="btn" onclick="closeModal('m-baja')">Cancelar</button>
+    <button class="btn" onclick="openFiniquitoModal(bajaEmpId,document.getElementById('bf-fecha').value)">🧮 Calcular finiquito</button>
+    <button class="btn btn-filled" style="background:var(--red);border-color:var(--red)" id="baja-save-btn" onclick="saveBaja()">Confirmar baja</button>
+  </div>
+</div>
+</div>
+
+<div class="modal-overlay" id="m-finiquito">
+<div class="modal" style="max-width:700px">
+  <div class="modal-hdr"><div class="modal-title">Finiquito y vacaciones</div><button class="btn-icon" onclick="closeModal('m-finiquito')">✕</button></div>
+  <div class="modal-body">
+    <div id="fq-emp-ref" style="font-size:12px;color:var(--text2);padding:9px 12px;background:var(--surface2);border-radius:var(--r);margin-bottom:14px;border-left:3px solid var(--copper)"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
+      <div class="f-row"><label>Fecha de baja / cálculo <span class="req">*</span></label><input type="date" id="fq-fecha" oninput="calcFiniquito()"/></div>
+      <div class="f-row"><label>Salario diario</label><input type="number" step="0.01" id="fq-salario" oninput="calcFiniquito()"/></div>
+      <div class="f-row"><label>Días de salario pendientes de pago</label><input type="number" step="0.5" id="fq-dias-pend" value="0" oninput="calcFiniquito()"/></div>
+      <div class="f-row"><label>Días de vacaciones ya gozados en el periodo</label><input type="number" step="0.5" id="fq-vac-tomadas" value="0" oninput="calcFiniquito()"/></div>
+    </div>
+    <div class="f-row"><label>Otro concepto (opcional — bono, préstamo pendiente, etc.)</label>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="fq-otro-label" placeholder="Descripción" style="flex:2" oninput="calcFiniquito()"/>
+        <input type="number" step="0.01" id="fq-otro-monto" placeholder="Monto (usa negativo para descontar)" style="flex:1" oninput="calcFiniquito()"/>
+      </div>
+    </div>
+    <div class="modal-sec" style="margin-top:14px">Desglose</div>
+    <div id="fq-breakdown"></div>
+  </div>
+  <div class="modal-ftr">
+    <button class="btn" onclick="closeModal('m-finiquito')">Cerrar</button>
+    <button class="btn btn-filled" onclick="imprimirFiniquito()">🖨 Imprimir finiquito</button>
+  </div>
 </div>
 </div>
 
@@ -2176,11 +2207,11 @@ const ENTS={
 const ENT_ORDER=['HOT','PUE','FLO','OBR','OFI','PER','CEN'];
 const RECUR={none:'—',weekly:'Semanal',monthly:'Mensual',bimonthly:'Bimestral',annual:'Anual'};
 const ICONS=['👥','🏛️','💡','🛡️','📋','🏦','📦','🚗','🔧','📱','💻','🏢','📊','💰','🧾','📄','🔑','⚡','💧','🌐','📝','🔒','🏗️','🍽️','🏨','📡','🖨️','📞'];
-const FILE_LABELS={pago:'Comprobante',cotizacion:'Cotización',factura_pdf:'Factura PDF',factura_xml:'XML SAT',ine:'INE',csf:'CSF',nss_doc:'NSS',contrato_prueba:'Contrato prueba',contrato_indeterminado:'Contrato',baja_imss:'Baja IMSS',otro:'Documento'};
+const FILE_LABELS={pago:'Comprobante',cotizacion:'Cotización',factura_pdf:'Factura PDF',factura_xml:'XML SAT',ine:'INE',csf:'CSF',nss_doc:'NSS',contrato_prueba:'Contrato prueba',contrato_indeterminado:'Contrato',baja_imss:'Baja IMSS',finiquito:'Finiquito firmado',otro:'Documento'};
 const DOC_TIPOS_VEH={tarjeta_circulacion:'Tarjeta de circulación',seguro:'Seguro',tenencia:'Tenencia',verificacion:'Verificación',factura:'Factura',otro:'Otro'};
 const DOC_ICONS_VEH={tarjeta_circulacion:'📋',seguro:'🛡️',tenencia:'🏛️',verificacion:'✅',factura:'🧾',otro:'📄'};
 const VEH_ICONS={moto:'🏍️',camioneta:'🚚',auto:'🚗',otro:'🚙'};
-const FILE_ICONS={pago:'📄',cotizacion:'📋',factura_pdf:'🧾',factura_xml:'📁',ine:'🪪',csf:'📋',nss_doc:'📄',contrato_prueba:'📝',contrato_indeterminado:'📝',baja_imss:'📄',otro:'📄'};
+const FILE_ICONS={pago:'📄',cotizacion:'📋',factura_pdf:'🧾',factura_xml:'📁',ine:'🪪',csf:'📋',nss_doc:'📄',contrato_prueba:'📝',contrato_indeterminado:'📝',baja_imss:'📄',finiquito:'📝',otro:'📄'};
 
 // ─── CATEGORÍAS DE OBLIGACIONES (configurables, tabla obl_categorias) ──
 let catData=[];
@@ -3178,7 +3209,8 @@ async function openEmpDetail(id){
   const e=empData.find(x=>x.id===id);if(!e)return;
   document.getElementById('m-emp-detail-title').textContent=e.nombre;
   const docs=e.documentos_empleado||[];
-  const DOC_TYPES=['ine','csf','nss_doc','contrato_prueba','contrato_indeterminado','baja_imss'];
+  const DOC_TYPES=['ine','csf','nss_doc','contrato_prueba','contrato_indeterminado','finiquito'];
+  if(docs.some(d=>d.tipo==='baja_imss'))DOC_TYPES.push('baja_imss');
   let html=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
     ${e.puesto_id?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">Puesto</div><div style="font-size:13px">${puestoNombre(e.puesto_id)}</div></div>`:''}
     <div><div style="font-size:10px;color:var(--text3);font-weight:500">Ingreso</div><div style="font-size:13px">${fmt(e.fecha_ingreso)}</div></div>
@@ -3224,6 +3256,7 @@ async function openEmpDetail(id){
   document.getElementById('m-emp-detail-body').innerHTML=html;
   const ftr=document.getElementById('m-emp-detail-ftr');
   ftr.innerHTML=`<button class="btn" onclick="closeModal('m-emp-detail')">Cerrar</button>
+    <button class="btn" onclick="openFiniquitoModal('${e.id}')">🧮 Finiquito</button>
     ${e.activo?`
     <button class="btn" onclick="closeModal('m-emp-detail');editEmp('${e.id}')">Editar</button>
     <button class="btn" onclick="openUniformeModal('${e.id}')">👕 Uniforme</button>
@@ -3324,25 +3357,183 @@ function openBajaModal(id){
   document.getElementById('bf-motivo').value='';
   // Reset ASPEL/SUA checklist
   ['chk-aspel','chk-sua','chk-imss'].forEach(id=>{const el=document.getElementById(id);if(el)el.checked=false;});
-  resetFileZones([['fz-baja','fl-baja','📄','Adjuntar acuse de baja IMSS\nObligatorio para proceder','ff-baja']]);
+  resetFileZones([['fz-baja','fl-baja','📝','Adjuntar finiquito firmado\nObligatorio para proceder','ff-baja']]);
   openModal('m-baja');
 }
 async function saveBaja(){
   const fecha_baja=document.getElementById('bf-fecha').value;
   if(!fecha_baja){toast('La fecha de baja es obligatoria',true);return;}
-  if(!pendingFiles.baja_imss){toast('El comprobante de baja ante IMSS es obligatorio',true);return;}
+  if(!pendingFiles.finiquito){toast('El formato de finiquito firmado es obligatorio',true);return;}
   setLoading('baja-save-btn',true);
-  // Upload baja doc
-  const f=pendingFiles.baja_imss;
+  // Upload finiquito doc
+  const f=pendingFiles.finiquito;
   const ext=f.name.split('.').pop();
-  const path=`empleados/${bajaEmpId}/baja_imss.${ext}`;
+  const path=`empleados/${bajaEmpId}/finiquito.${ext}`;
   const blob=dataURLtoBlob(f.data);
   await sb.storage.from('empleados').upload(path,blob,{contentType:f.mime,upsert:true});
-  await sb.from('documentos_empleado').upsert({empleado_id:bajaEmpId,tipo:'baja_imss',nombre_archivo:f.name,storage_path:path,size_bytes:f.size,mime_type:f.mime},{onConflict:'empleado_id,tipo'});
+  await sb.from('documentos_empleado').upsert({empleado_id:bajaEmpId,tipo:'finiquito',nombre_archivo:f.name,storage_path:path,size_bytes:f.size,mime_type:f.mime},{onConflict:'empleado_id,tipo'});
   await sb.from('empleados').update({activo:false,fecha_baja,motivo_baja:document.getElementById('bf-motivo').value||null}).eq('id',bajaEmpId);
   setLoading('baja-save-btn',false);
   toast('Baja registrada correctamente');
   closeModal('m-baja');await loadEmpleados();renderEmps();
+}
+
+// ─── FINIQUITO Y VACACIONES ─────────────────────────────────
+// Tabla de vacaciones por antigüedad, reforma "vacaciones dignas" (Art. 76 LFT, vigente desde 2023)
+let fqEmpId=null;
+function vacDiasPorServicioAnio(n){
+  if(n<=1)return 12;
+  if(n===2)return 14;
+  if(n===3)return 16;
+  if(n===4)return 18;
+  if(n===5)return 20;
+  if(n<=10)return 22;
+  if(n<=15)return 24;
+  if(n<=20)return 26;
+  if(n<=25)return 28;
+  if(n<=30)return 30;
+  return 32;
+}
+function openFiniquitoModal(empId,fechaPreset){
+  fqEmpId=empId;
+  const e=empData.find(x=>x.id===empId);if(!e)return;
+  document.getElementById('fq-emp-ref').textContent='👤 '+e.nombre+' — '+((ENTS[e.entidad]||{label:e.entidad}).label)+' · Ingreso: '+fmt(e.fecha_ingreso);
+  document.getElementById('fq-fecha').value=fechaPreset||e.fecha_baja||new Date().toISOString().slice(0,10);
+  document.getElementById('fq-salario').value=e.salario_diario||0;
+  document.getElementById('fq-dias-pend').value=0;
+  document.getElementById('fq-vac-tomadas').value=0;
+  document.getElementById('fq-otro-label').value='';
+  document.getElementById('fq-otro-monto').value='';
+  openModal('m-finiquito');
+  calcFiniquito();
+}
+function calcFiniquito(){
+  const e=empData.find(x=>x.id===fqEmpId);
+  const out=document.getElementById('fq-breakdown');
+  if(!e||!out)return null;
+  const fIngStr=e.fecha_ingreso;
+  const fCalcStr=document.getElementById('fq-fecha').value;
+  if(!fIngStr){out.innerHTML='<div class="empty" style="padding:16px">Este empleado no tiene fecha de ingreso registrada</div>';return null;}
+  if(!fCalcStr){out.innerHTML='<div class="empty" style="padding:16px">Indica la fecha de baja / cálculo</div>';return null;}
+  const fIng=new Date(fIngStr+'T12:00:00');
+  const fCalc=new Date(fCalcStr+'T12:00:00');
+  if(fCalc<fIng){out.innerHTML='<div class="empty" style="padding:16px">La fecha de baja no puede ser anterior al ingreso</div>';return null;}
+  const salario=Number(document.getElementById('fq-salario').value)||0;
+  const diasPendientes=Number(document.getElementById('fq-dias-pend').value)||0;
+  const vacTomadas=Number(document.getElementById('fq-vac-tomadas').value)||0;
+  const otroLabel=document.getElementById('fq-otro-label').value.trim();
+  const otroMonto=Number(document.getElementById('fq-otro-monto').value)||0;
+
+  let añosCompletos=fCalc.getFullYear()-fIng.getFullYear();
+  const aniversarioEsteAño=new Date(fCalc.getFullYear(),fIng.getMonth(),fIng.getDate(),12);
+  if(fCalc<aniversarioEsteAño)añosCompletos--;
+  if(añosCompletos<0)añosCompletos=0;
+  const añoServicioActual=añosCompletos+1;
+  const diasTablaVac=vacDiasPorServicioAnio(añoServicioActual);
+
+  const ultimoAniversario=new Date(fIng);
+  ultimoAniversario.setFullYear(fIng.getFullYear()+añosCompletos);
+  const diasPeriodoVac=Math.max(0,Math.round((fCalc-ultimoAniversario)/86400000));
+
+  const vacProporcionalDias=Math.max(0,(diasTablaVac/365)*diasPeriodoVac-vacTomadas);
+  const vacProporcionalMonto=vacProporcionalDias*salario;
+  const primaVacMonto=vacProporcionalMonto*0.25;
+
+  const inicioAño=new Date(fCalc.getFullYear(),0,1,12);
+  const inicioCalc=fIng>inicioAño?fIng:inicioAño;
+  const diasAñoCal=Math.max(0,Math.round((fCalc-inicioCalc)/86400000)+1);
+  const aguinaldoMonto=(15/365)*diasAñoCal*salario;
+
+  const salariosPendMonto=diasPendientes*salario;
+  const subtotal=vacProporcionalMonto+primaVacMonto+aguinaldoMonto+salariosPendMonto+otroMonto;
+
+  const mesesExtra=Math.floor((fCalc-ultimoAniversario)/(86400000*30.4));
+  const antiguedadTxt=`${añosCompletos} año${añosCompletos!==1?'s':''}, ${mesesExtra} mes${mesesExtra!==1?'es':''}`;
+
+  const rows=[
+    {c:'Vacaciones proporcionales',d:vacProporcionalDias.toFixed(2)+' días',m:vacProporcionalMonto},
+    {c:'Prima vacacional (25%)',d:'',m:primaVacMonto},
+    {c:'Aguinaldo proporcional',d:diasAñoCal+' días trabajados en '+fCalc.getFullYear(),m:aguinaldoMonto},
+    {c:'Salarios pendientes de pago',d:diasPendientes+' días',m:salariosPendMonto},
+  ];
+  if(otroLabel&&otroMonto)rows.push({c:otroLabel,d:'',m:otroMonto});
+
+  out.innerHTML=`
+    <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6">Antigüedad: <strong>${antiguedadTxt}</strong> · Año de servicio en curso: <strong>${añoServicioActual}°</strong> (${diasTablaVac} días de vacaciones/año por tabla LFT) · Días desde el último aniversario: <strong>${diasPeriodoVac}</strong></div>
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      ${rows.map(r=>`<tr><td style="padding:7px 4px;border-bottom:1px solid var(--border)">${r.c}</td><td style="padding:7px 4px;border-bottom:1px solid var(--border);color:var(--text3);font-size:11px;white-space:nowrap">${r.d}</td><td style="padding:7px 4px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--mono)">${fmxn(r.m)}</td></tr>`).join('')}
+      <tr><td style="padding:10px 4px;font-weight:700" colspan="2">TOTAL FINIQUITO</td><td style="padding:10px 4px;text-align:right;font-weight:700;font-size:15px;font-family:var(--mono);color:var(--green)">${fmxn(subtotal)}</td></tr>
+    </table>
+    <div style="font-size:10px;color:var(--text3);margin-top:8px">Cálculo estimado con base en la LFT (vacaciones, prima vacacional, aguinaldo proporcional). No incluye indemnización por despido injustificado.</div>
+  `;
+  return{e,fCalcStr,salario,añosCompletos,añoServicioActual,diasTablaVac,diasPeriodoVac,vacProporcionalDias,vacProporcionalMonto,primaVacMonto,diasAñoCal,aguinaldoMonto,diasPendientes,salariosPendMonto,otroLabel,otroMonto,subtotal,antiguedadTxt};
+}
+function imprimirFiniquito(){
+  const r=calcFiniquito();
+  if(!r)return;
+  const e=r.e;
+  const entLabel=(ENTS[e.entidad]||{label:e.entidad}).label;
+  const puesto=puestoNombre(e.puesto_id)||'';
+  const rows=[
+    ['Vacaciones proporcionales ('+r.vacProporcionalDias.toFixed(2)+' días)',fmxn(r.vacProporcionalMonto)],
+    ['Prima vacacional (25%)',fmxn(r.primaVacMonto)],
+    ['Aguinaldo proporcional ('+r.diasAñoCal+' días)',fmxn(r.aguinaldoMonto)],
+    ['Salarios pendientes de pago ('+r.diasPendientes+' días)',fmxn(r.salariosPendMonto)],
+  ];
+  if(r.otroLabel&&r.otroMonto)rows.push([r.otroLabel,fmxn(r.otroMonto)]);
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Finiquito — ${e.nombre}</title>
+<style>
+@page{size:8.5in 11in;margin:1.2cm}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+html,body{width:100%;height:100%}
+body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#16323c;background:#eaf4f5}
+.fq-wrap{max-width:720px;margin:0 auto}
+.fq-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:14px 20px;border-radius:8px 8px 0 0}
+.fq-hdr img{height:42px;width:42px;object-fit:contain;flex-shrink:0}
+.fq-hdr-text{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;letter-spacing:.02em}
+.fq-hdr-sub{font-size:11px;opacity:.85;margin-top:2px}
+.fq-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:18px 20px}
+.fq-info{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid #e2eef0}
+.fq-info b{color:#0f3d52}
+table.fq-tbl{width:100%;border-collapse:collapse;margin-bottom:16px}
+table.fq-tbl td{padding:8px 6px;border-bottom:1px solid #e2eef0;font-size:12.5px}
+table.fq-tbl td:last-child{text-align:right;font-family:'Courier New',monospace}
+.fq-total td{font-weight:700;font-size:15px;border-top:2px solid #0f3d52;border-bottom:none;padding-top:12px}
+.fq-legal{font-size:10.5px;color:#3a5a63;line-height:1.55;margin:18px 0;text-align:justify}
+.fq-firmas{display:flex;justify-content:space-between;margin-top:50px;gap:30px}
+.fq-firma{flex:1;text-align:center;font-size:11px;color:#3a5a63}
+.fq-firma-line{border-top:1px solid #16323c;margin-bottom:6px;padding-top:6px}
+.print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+@media print{.print-btn{display:none}body{padding:0;background:#fff}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
+<div class="fq-wrap">
+  <div class="fq-hdr"><img src="${PA_LOGO}" alt="El Pescador"><div><div class="fq-hdr-text">RECIBO DE FINIQUITO</div><div class="fq-hdr-sub">${entLabel} — El Pescador</div></div></div>
+  <div class="fq-body">
+    <div class="fq-info">
+      <div><b>Trabajador:</b> ${e.nombre}</div>
+      <div><b>Puesto:</b> ${puesto}</div>
+      <div><b>Fecha de ingreso:</b> ${fmt(e.fecha_ingreso)}</div>
+      <div><b>Fecha de baja:</b> ${fmt(r.fCalcStr)}</div>
+      <div><b>Antigüedad:</b> ${r.antiguedadTxt}</div>
+      <div><b>Salario diario:</b> ${fmxn(r.salario)}</div>
+    </div>
+    <table class="fq-tbl">
+      ${rows.map(row=>`<tr><td>${row[0]}</td><td>${row[1]}</td></tr>`).join('')}
+      <tr class="fq-total"><td>TOTAL FINIQUITO</td><td>${fmxn(r.subtotal)}</td></tr>
+    </table>
+    <div class="fq-legal">El trabajador manifiesta que recibe de conformidad la cantidad señalada en este documento por concepto de finiquito, comprendiendo el pago de vacaciones proporcionales, prima vacacional, aguinaldo proporcional y demás percepciones pendientes derivadas de la relación laboral que sostuvo con la empresa, sin tener nada más que reclamar por ningún concepto.</div>
+    <div class="fq-firmas">
+      <div class="fq-firma"><div class="fq-firma-line">Firma del trabajador</div>${e.nombre}</div>
+      <div class="fq-firma"><div class="fq-firma-line">Firma de la empresa</div>${entLabel}</div>
+    </div>
+  </div>
+</div>
+</body></html>`;
+  const w=window.open('','_blank');
+  w.document.write(html);
+  w.document.close();
 }
 
 // ─── ASISTENCIA ──────────────────────────────────────────────
