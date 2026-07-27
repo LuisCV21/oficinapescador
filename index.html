@@ -5879,6 +5879,7 @@ function renderMiBalance(){
     const meta=metaEgresosRange(f.c.ingresosSinIva);
     const ajuste=egresosAjuste(f.c.egresosSinIva,meta);
     const ajusteTxt=ajuste?(ajuste.dir==='ok'?'Dentro del rango, sin ajuste necesario':(ajuste.dir==='subir'?'Te faltan al menos '+fmxn(ajuste.monto)+' en egresos para entrar al rango meta':'Baja egresos al menos '+fmxn(ajuste.monto)+' para entrar al rango meta')):'';
+    const diferencia=f.c.ingresosSinIva-f.c.egresosSinIva;
     return`<div class="acc-card" style="padding:14px 16px">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
         <div>
@@ -5889,6 +5890,7 @@ function renderMiBalance(){
         </div>
         <div style="text-align:right">
           <div style="font-size:18px;font-weight:700;color:${est.color}">${pctTxt}</div>
+          <div style="font-size:12px;color:var(--text2);font-weight:600;margin-top:1px">${fmxn(diferencia)}</div>
           <span class="pill" style="background:${est.bg};color:${est.color};font-size:10px">${est.label}</span>
         </div>
       </div>
@@ -5974,6 +5976,7 @@ function imprimirMiBalance(){
     const ajuste=egresosAjuste(f.c.egresosSinIva,meta);
     const ajusteTxt=ajuste?(ajuste.dir==='ok'?'Sin ajuste necesario':(ajuste.dir==='subir'?'Subir al menos '+fmxn(ajuste.monto):'Bajar al menos '+fmxn(ajuste.monto))):'—';
     const personaLabel=f.tipo==='luis'?'LUIS ANTONIO CLEMENTE VAQUIER — FLORIDA':'ANA KATERYN CLEMENTE VAQUIER — PUEBLA + HOTEL';
+    const diferencia=f.c.ingresosSinIva-f.c.egresosSinIva;
     return`<div class="mb-wrap"${i<filas.length-1?' style="page-break-after:always"':''}>
       <div class="mb-hdr"><img src="${PA_LOGO}" alt="El Pescador"><div><div class="mb-hdr-text">MI BALANCE — PRIVADO</div><div class="mb-hdr-sub">${personaLabel} · Corte al ${fmtFechaLarga(f.fecha)}</div></div></div>
       <div class="mb-body">
@@ -5983,6 +5986,7 @@ function imprimirMiBalance(){
             <tr><th colspan="2">Análisis privado — sin IVA</th></tr>
             <tr><td>Ingresos sin IVA</td><td class="num">${fmxn(f.c.ingresosSinIva)}</td></tr>
             <tr><td>Egresos sin IVA</td><td class="num">${fmxn(f.c.egresosSinIva)}</td></tr>
+            <tr><td>Ingresos menos egresos (sin IVA)</td><td class="num" style="font-weight:700">${fmxn(diferencia)}</td></tr>
             <tr><td>Margen actual (egresos vs ingresos)</td><td class="num" style="color:${est.color};font-weight:700">${pctTxt}</td></tr>
             <tr><td>Meta de egresos (5%–10% abajo de ingresos)</td><td class="num">${meta?fmxn(meta.min)+' – '+fmxn(meta.max):'—'}</td></tr>
             <tr><td>Ajuste necesario en egresos</td><td class="num" style="color:${ajuste&&ajuste.dir==='ok'?'#1f6b3a':'#8A3E12'}">${ajusteTxt}</td></tr>
