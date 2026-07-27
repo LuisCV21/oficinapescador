@@ -612,16 +612,22 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .missing-item:last-child{border-bottom:none}
 
 /* ── ASISTENCIA ── */
+.asist-legend{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 16px}
+.asist-legend-item{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;
+  padding:4px 10px 4px 8px;border-radius:20px;white-space:nowrap}
 .asist-table{width:100%;border-collapse:collapse;font-size:12px}
 .asist-table th{background:var(--surface2);color:var(--text2);text-transform:uppercase;
   font-size:10px;letter-spacing:.04em;padding:8px 6px;border-bottom:1px solid var(--border);white-space:nowrap}
 .asist-table td{padding:4px;border-bottom:1px solid var(--border);text-align:center;vertical-align:middle}
+.asist-table tbody tr:nth-child(even){background:var(--surface2)}
+.asist-table tbody tr:hover{background:var(--copper-light)}
 .asist-table td.asist-name{text-align:left;font-weight:600;color:var(--text);white-space:nowrap;padding:6px 10px}
 .asist-cell{width:38px;height:34px;border-radius:8px;border:1.5px solid var(--border2);
-  background:var(--surface2);display:flex;align-items:center;justify-content:center;
-  font-size:15px;cursor:pointer;margin:0 auto;transition:all .15s}
-.asist-cell:hover{border-color:var(--copper);transform:translateY(-1px)}
-.asist-cell.sin-registro{opacity:.35}
+  background:var(--surface);display:flex;align-items:center;justify-content:center;
+  font-size:15px;cursor:pointer;margin:0 auto;transition:all .15s;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.asist-cell:hover{border-color:var(--copper);transform:translateY(-1px);box-shadow:0 3px 8px rgba(0,0,0,.12)}
+.asist-cell.sin-registro{background:transparent;border-style:dashed;color:var(--text3);opacity:.55}
+.asist-cell.sin-registro:hover{border-color:var(--copper);opacity:1}
 .asist-total{font-weight:700;color:var(--slate)}
 .asist-tot-row td{background:var(--copper-light);border-top:2px solid var(--copper);border-bottom:none}
 .asist-tot-row td.asist-name{color:var(--copper-dark);text-transform:uppercase;font-size:11px;letter-spacing:.04em}
@@ -723,10 +729,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 @media print{
   #print-horasextra{display:block !important;width:100%;padding:0}
 }
-.asist-estatus-opt{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--r);
-  border:1.5px solid var(--border2);cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
-.asist-estatus-opt:hover{border-color:var(--copper)}
-.asist-estatus-opt.sel{background:var(--copper-light)}
+.asist-estatus-opt{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r);
+  border:1.5px solid var(--border2);border-left-width:5px;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
+.asist-estatus-opt:hover{transform:translateX(2px)}
+.asist-estatus-opt.sel{box-shadow:0 0 0 2px var(--copper) inset}
 </style>
 </head>
 <body>
@@ -998,6 +1004,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
               <button class="btn btn-sm" onclick="printAsistencia()">🖨️ Imprimir</button>
             </div>
           </div>
+          <div class="asist-legend" id="asist-legend"></div>
           <div style="overflow-x:auto;margin:14px 0" id="asist-grid-wrap"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
           <div style="font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin:22px 0 10px">Incidencias de la semana</div>
           <div id="asist-incidencias" style="display:flex;flex-direction:column;gap:8px;padding-bottom:30px"></div>
@@ -3607,7 +3614,15 @@ function goAsistToday(){
   loadAsistencia().then(renderAsistGrid);
 }
 
+function renderAsistLegend(){
+  const el=document.getElementById('asist-legend');
+  if(!el)return;
+  el.innerHTML=Object.values(ASIST_ESTATUS).map(v=>
+    `<span class="asist-legend-item" style="background:${v.bg};color:${v.color}">${v.ico} ${v.label}</span>`
+  ).join('');
+}
 function renderAsistGrid(){
+  renderAsistLegend();
   const days=asistWeekDays(asistWeekStart);
   const diaLabels=['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
   const activeIds=new Set(empData.filter(e=>e.entidad===asistActiveEnt&&e.activo).map(e=>e.id));
@@ -3763,7 +3778,7 @@ function openAsistPicker(empId,fecha){
 function renderAsistEstatusOpts(){
   const el=document.getElementById('asist-estatus-grid');
   el.innerHTML=Object.entries(ASIST_ESTATUS).map(([k,v])=>
-    `<div class="asist-estatus-opt ${asistPickerEstatusSel===k?'sel':''}" style="border-color:${asistPickerEstatusSel===k?v.color:''}" onclick="pickAsistEstatus('${k}')">${v.ico} ${v.label}</div>`
+    `<div class="asist-estatus-opt ${asistPickerEstatusSel===k?'sel':''}" style="border-left-color:${v.color};background:${asistPickerEstatusSel===k?v.bg:'var(--surface)'}" onclick="pickAsistEstatus('${k}')">${v.ico} ${v.label}</div>`
   ).join('');
   document.getElementById('asist-destino-row').style.display=asistPickerEstatusSel==='cambio_sucursal'?'block':'none';
 }
