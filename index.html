@@ -3897,15 +3897,15 @@ table{border-collapse:collapse;width:100%;table-layout:fixed}
   </colgroup>
   <tr class="nom-title"><td colspan="13"><div class="nom-title-inner"><img class="nom-title-logo" src="${PA_LOGO}" alt="El Pescador"><span class="nom-title-text">${emp.titulo}</span></div></td></tr>
   <tr class="nom-head">
-    <td class="box-izq" rowspan="2">
+    <td class="box-izq" rowspan="2" colspan="4">
       <div class="patron">${emp.patron}</div>
       <div class="empresa">${emp.empresa}</div>
       <div>${emp.ciudad}</div>
     </td>
-    <td class="box-der" colspan="12">SEMANA CORRESPONDIENTE:<br>${fmtNominaRango(days[0],days[6])}</td>
+    <td class="box-der" colspan="9">SEMANA CORRESPONDIENTE:<br>${fmtNominaRango(days[0],days[6])}</td>
   </tr>
   <tr class="nom-head">
-    <td class="box-der" colspan="12">FECHA: ${fmtNominaFecha(days[6])}</td>
+    <td class="box-der" colspan="9">FECHA: ${fmtNominaFecha(days[6])}</td>
   </tr>
   <tr class="nom-fiscal-hdr"><td colspan="7"></td><td colspan="6">NOMINA FISCAL</td></tr>
   <tr class="nom-cols">
