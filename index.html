@@ -119,6 +119,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .tb-logout{background:none;border:none;cursor:pointer;color:var(--text3);
   font-size:12px;padding:4px 8px;border-radius:6px;transition:all .2s;font-family:var(--font)}
 .tb-logout:hover{background:var(--red-light);color:var(--red)}
+.tb-sb-toggle{width:32px;height:32px;border-radius:16px;border:1px solid var(--border2);
+  background:var(--surface2);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:15px;transition:all .2s;color:var(--text2);margin-right:6px;flex-shrink:0}
+.tb-sb-toggle:hover{background:var(--copper-light);border-color:var(--copper);color:var(--copper)}
 
 /* ── SIDEBAR ── */
 .layout{display:flex;min-height:calc(100vh - 62px)}
@@ -141,6 +145,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .sb-sep{height:1px;background:rgba(255,255,255,.06);margin:8px 16px}
 .sb-footer{margin-top:auto;padding:12px 16px;border-top:1px solid rgba(255,255,255,.08)}
 .sb-version{font-size:10px;color:rgba(255,255,255,.25);font-weight:500}
+.layout.sb-collapsed .sidebar{width:0;min-width:0;overflow:hidden;border:none}
 
 /* ── CONTENT ── */
 .content{flex:1;padding:24px;overflow-y:auto}
@@ -647,6 +652,13 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .he-neto.neg{color:var(--red)}
 .he-tot-row td{background:var(--copper-light);border-top:2px solid var(--copper);border-bottom:none;font-weight:700}
 .he-tot-row td.he-name{color:var(--copper-dark);text-transform:uppercase;font-size:11px;letter-spacing:.04em}
+.he-rate-cell{display:flex;flex-direction:column;align-items:center;gap:2px}
+.he-rate-input.he-input,.he-bonif-input.he-input{width:56px}
+.he-rate-reset{border:none;background:none;color:var(--text3);cursor:pointer;font-size:11px;padding:0;line-height:1}
+.he-rate-reset:hover{color:var(--copper)}
+.he-bonif-cell{display:flex;flex-direction:column;align-items:center;gap:2px}
+.he-bonif-concepto{width:78px;text-align:center;border:1.5px solid var(--border2);border-radius:6px;padding:3px 2px;font-size:9.5px;background:var(--surface2)}
+.he-bonif-concepto:focus{outline:none;border-color:var(--copper);background:var(--surface)}
 
 /* ── IMPRESIÓN: base compartida ── */
 @media print{
@@ -756,6 +768,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 <!-- APP -->
 <div class="app" id="app">
   <div class="topbar">
+    <button class="tb-sb-toggle" onclick="toggleSidebar()" title="Mostrar/ocultar menú" id="sb-toggle-btn">☰</button>
     <div class="tb-brand">
       <div class="tb-brand-icon">🐟</div>
       <div>
@@ -1032,7 +1045,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
               <button class="btn btn-sm" onclick="goNominaToday()">Esta semana</button>
               <button class="btn-icon" onclick="goNominaWeek(1)" title="Semana siguiente">▶</button>
               <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir nómina</button>
-              <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🗑️ Borrar</button>
+              <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🔄 Recalcular desde cero</button>
             </div>
           </div>
           <div id="nomina-content" style="margin:14px 0"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
@@ -1324,7 +1337,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 <div class="modal">
   <div class="modal-hdr"><div class="modal-title" id="m-emp-title">Nuevo empleado</div><button class="btn-icon" onclick="closeModal('m-emp')">✕</button></div>
   <div class="modal-body">
-    <div class="f-row"><label>Nombre completo <span class="req">*</span></label><input type="text" id="ef-nombre"/></div>
+    <div class="f-grid">
+      <div class="f-row"><label>Folio</label><input type="text" id="ef-folio" placeholder="Ej. 014"/></div>
+      <div class="f-row"><label>Nombre completo <span class="req">*</span></label><input type="text" id="ef-nombre"/></div>
+    </div>
     <div class="f-grid">
       <div class="f-row"><label>Entidad <span class="req">*</span></label>
         <select id="ef-ent">
@@ -3228,7 +3244,7 @@ function renderEmps(){
   else if(status==='prueba')data=data.filter(e=>e.activo&&e.tipo_contrato==='prueba');
   else data=data.filter(e=>!e.activo);
   if(puestoFiltro&&puestoFiltro!=='ALL')data=data.filter(e=>e.puesto_id===puestoFiltro);
-  if(search)data=data.filter(e=>e.nombre.toLowerCase().includes(search)||puestoNombre(e.puesto_id).toLowerCase().includes(search));
+  if(search)data=data.filter(e=>e.nombre.toLowerCase().includes(search)||puestoNombre(e.puesto_id).toLowerCase().includes(search)||(e.folio||'').toLowerCase().includes(search));
   const el=document.getElementById('rh-list');
   if(!data.length){el.innerHTML=`<div class="empty"><div class="empty-ico">👥</div>Sin empleados para esta selección</div>`;return;}
   // Group by entity
@@ -3252,7 +3268,7 @@ function renderEmpCard(e){
   const entColor=(ENTS[e.entidad]||{color:'#5f6368'}).color;
   return`<div class="emp-card ${!e.activo?'emp-inactive':''}" style="background:${entBg(e.entidad,14)};border-left:4px solid ${entColor}" onclick="openEmpDetail('${e.id}')">
     <div class="emp-avatar" style="background:${entBg(e.entidad,45)};color:${entColor}">${initials(e.nombre)}</div>
-    <div class="emp-name">${e.nombre}</div>
+    <div class="emp-name">${e.nombre}${e.folio?` <span style="font-weight:500;color:var(--text3);font-size:11px">#${e.folio}</span>`:''}</div>
     <div class="emp-puesto">${puestoNombre(e.puesto_id)||'Sin puesto'}</div>
     <div class="emp-tags">
       <span class="pill p-${e.entidad}">${(ENTS[e.entidad]||{label:e.entidad}).label}</span>
@@ -3274,6 +3290,7 @@ async function openEmpDetail(id){
   const DOC_TYPES=['ine','csf','nss_doc','contrato_prueba','contrato_indeterminado','finiquito'];
   if(docs.some(d=>d.tipo==='baja_imss'))DOC_TYPES.push('baja_imss');
   let html=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+    ${e.folio?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">Folio</div><div style="font-size:13px;font-family:var(--mono)">${e.folio}</div></div>`:''}
     ${e.puesto_id?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">Puesto</div><div style="font-size:13px">${puestoNombre(e.puesto_id)}</div></div>`:''}
     <div><div style="font-size:10px;color:var(--text3);font-weight:500">Ingreso</div><div style="font-size:13px">${fmt(e.fecha_ingreso)}</div></div>
     ${e.nss?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">NSS</div><div style="font-size:13px;font-family:var(--mono)">${e.nss}</div></div>`:''}
@@ -3351,6 +3368,7 @@ function openEmpModal(id){
   editEmpId=id||null;pendingFiles={};
   const e=id?empData.find(x=>x.id===id):null;
   document.getElementById('m-emp-title').textContent=id?'Editar empleado':'Nuevo empleado';
+  document.getElementById('ef-folio').value=e?e.folio||'':'';
   document.getElementById('ef-nombre').value=e?e.nombre:'';
   document.getElementById('ef-ent').value=e?e.entidad:'PUE';
   const puestoSel=document.getElementById('ef-puesto');
@@ -3387,7 +3405,7 @@ async function saveEmp(){
   const tipo_contrato=document.getElementById('ef-contrato').value;
   const fin_prueba=tipo_contrato==='prueba'?(()=>{const d=new Date(fecha_ingreso+'T12:00:00');d.setDate(d.getDate()+30);return d.toISOString().slice(0,10);})():null;
   const salarioVal=document.getElementById('ef-salario').value;
-  const obj={nombre,entidad:document.getElementById('ef-ent').value,puesto_id:document.getElementById('ef-puesto').value||null,fecha_ingreso,tipo_contrato,fecha_fin_prueba:fin_prueba,curp:document.getElementById('ef-curp').value||null,rfc:document.getElementById('ef-rfc').value||null,nss:document.getElementById('ef-nss').value||null,domicilio:document.getElementById('ef-domicilio').value||null,salario_diario:salarioVal?Number(salarioVal):null,activo:true};
+  const obj={folio:document.getElementById('ef-folio').value.trim()||null,nombre,entidad:document.getElementById('ef-ent').value,puesto_id:document.getElementById('ef-puesto').value||null,fecha_ingreso,tipo_contrato,fecha_fin_prueba:fin_prueba,curp:document.getElementById('ef-curp').value||null,rfc:document.getElementById('ef-rfc').value||null,nss:document.getElementById('ef-nss').value||null,domicilio:document.getElementById('ef-domicilio').value||null,salario_diario:salarioVal?Number(salarioVal):null,activo:true};
   setLoading('emp-save-btn',true);
   let empId=editEmpId;
   if(editEmpId){
@@ -3870,6 +3888,11 @@ function asistWeekDays(sunday){
   for(let i=0;i<7;i++){const x=new Date(d);x.setDate(d.getDate()+i);arr.push(dateToISO(x));}
   return arr;
 }
+function sundayOf(fechaIso){
+  const d=new Date(fechaIso+'T12:00:00');
+  d.setDate(d.getDate()-d.getDay());
+  return dateToISO(d);
+}
 
 async function loadAsistencia(){
   if(!asistWeekStart)asistWeekStart=asistDefaultSunday();
@@ -4118,8 +4141,10 @@ function goNominaToday(){
 async function loadNomina(){
   if(!nominaWeekStart)nominaWeekStart=asistDefaultSunday();
   const ent=nominaActiveEnt,week=nominaWeekStart;
-  const{data:periodos}=await sb.from('nomina_periodos').select('*').eq('entidad',ent).eq('semana_inicio',week);
+  await syncNominaSemana(ent,week);
   if(ent!==nominaActiveEnt||week!==nominaWeekStart)return; // llegó tarde: ya se cambió de pestaña/semana
+  const{data:periodos}=await sb.from('nomina_periodos').select('*').eq('entidad',ent).eq('semana_inicio',week);
+  if(ent!==nominaActiveEnt||week!==nominaWeekStart)return;
   nominaPeriodo=(periodos&&periodos[0])||null;
   if(nominaPeriodo){
     const{data:lineas}=await sb.from('nomina_lineas').select('*').eq('periodo_id',nominaPeriodo.id);
@@ -4127,6 +4152,52 @@ async function loadNomina(){
   }else{
     nominaLineas=[];
   }
+}
+
+// Crea el periodo de la semana si no existe y mantiene dias_trabajados/trabajo_domingo
+// al dia con asistencia. dias_pagados solo se recalcula mientras nadie lo haya editado
+// a mano (dias_pagados_manual). Al crear una linea nueva, precarga el ISR de la
+// linea mas reciente del mismo empleado (normalmente no cambia semana a semana).
+async function syncNominaSemana(ent,week){
+  const days=asistWeekDays(week);
+  const{data:periodos}=await sb.from('nomina_periodos').select('*').eq('entidad',ent).eq('semana_inicio',week);
+  let periodo=(periodos&&periodos[0])||null;
+  if(!periodo){
+    const{data:np,error:pe}=await sb.from('nomina_periodos').insert({entidad:ent,semana_inicio:week,semana_fin:days[6]}).select().single();
+    if(pe)return null;
+    periodo=np;
+  }
+  const{data:lineasExist}=await sb.from('nomina_lineas').select('*').eq('periodo_id',periodo.id);
+  const lineaByEmp={};(lineasExist||[]).forEach(l=>{lineaByEmp[l.empleado_id]=l;});
+  const activos=empData.filter(e=>e.entidad===ent&&e.activo);
+  const{data:asistSemana}=await sb.from('asistencia').select('*').eq('entidad',ent).gte('fecha',days[0]).lte('fecha',days[6]);
+  const domingoIso=days[0];
+  const nuevas=[];
+  for(const e of activos){
+    const regs=(asistSemana||[]).filter(a=>a.empleado_id===e.id);
+    const trabajados=regs.filter(a=>a.estatus==='asistio').length;
+    const domingo=regs.find(a=>a.fecha===domingoIso);
+    const trabajoDomingo=!!(domingo&&domingo.estatus==='asistio');
+    const sugerido=trabajados>0?Math.min(trabajados+1,7):0;
+    const existing=lineaByEmp[e.id];
+    if(!existing){
+      let retencionIsr=0;
+      const{data:prev}=await sb.from('nomina_lineas').select('retencion_isr,nomina_periodos!inner(semana_inicio,entidad)').eq('empleado_id',e.id).eq('nomina_periodos.entidad',ent).lt('nomina_periodos.semana_inicio',week).order('semana_inicio',{foreignTable:'nomina_periodos',ascending:false}).limit(1);
+      if(prev&&prev[0])retencionIsr=Number(prev[0].retencion_isr)||0;
+      nuevas.push({periodo_id:periodo.id,empleado_id:e.id,dias_trabajados:trabajados,dias_pagados:sugerido,trabajo_domingo:trabajoDomingo,salario_diario:e.salario_diario||0,dia_descanso:null,retencion_isr:retencionIsr,retencion_imss:0,dias_pagados_manual:false});
+    }else{
+      const upd={};
+      if(existing.dias_trabajados!==trabajados)upd.dias_trabajados=trabajados;
+      if(existing.trabajo_domingo!==trabajoDomingo)upd.trabajo_domingo=trabajoDomingo;
+      if(!existing.dias_pagados_manual&&Number(existing.dias_pagados)!==sugerido)upd.dias_pagados=sugerido;
+      if(Object.keys(upd).length){
+        upd.updated_at=new Date().toISOString();
+        await sb.from('nomina_lineas').update(upd).eq('id',existing.id);
+      }
+    }
+  }
+  if(nuevas.length)await sb.from('nomina_lineas').insert(nuevas);
+  return periodo;
 }
 
 function nominaCalc(l){
@@ -4149,8 +4220,8 @@ function renderNomina(){
     printTablaBtn.style.display='none';
     delBtn.style.display='none';
     el.innerHTML=`<div class="nomina-banner">
-      <div class="nomina-banner-txt">📋 Todavía no se ha generado la nómina de esta semana para ${(ENTS[nominaActiveEnt]||{label:nominaActiveEnt}).label}.</div>
-      <button class="btn btn-filled" onclick="generarNomina()">⚡ Generar nómina de esta semana</button>
+      <div class="nomina-banner-txt">⚠️ No se pudo generar automáticamente la nómina de esta semana para ${(ENTS[nominaActiveEnt]||{label:nominaActiveEnt}).label}.</div>
+      <button class="btn btn-filled" onclick="generarNomina()">🔄 Reintentar</button>
     </div>`;
     return;
   }
@@ -4219,43 +4290,26 @@ async function updateLineaField(lineaId,field,value){
   let v=value;
   if(['salario_diario','dias_pagados','retencion_isr','retencion_imss'].includes(field))v=Number(value)||0;
   l[field]=v;
+  const payload={[field]:v,updated_at:new Date().toISOString()};
+  if(field==='dias_pagados'){l.dias_pagados_manual=true;payload.dias_pagados_manual=true;}
   renderNomina();
-  const{error}=await sb.from('nomina_lineas').update({[field]:v,updated_at:new Date().toISOString()}).eq('id',lineaId);
+  const{error}=await sb.from('nomina_lineas').update(payload).eq('id',lineaId);
   if(error)toast('Error al guardar: '+error.message,true);
 }
 
 async function generarNomina(){
-  const days=asistWeekDays(nominaWeekStart);
-  const domingoIso=days[0];
-  const{data:periodo,error:pe}=await sb.from('nomina_periodos').insert({entidad:nominaActiveEnt,semana_inicio:nominaWeekStart,semana_fin:days[6]}).select().single();
-  if(pe){toast('Error al generar: '+pe.message,true);return;}
-  nominaPeriodo=periodo;
-  const activos=empData.filter(e=>e.entidad===nominaActiveEnt&&e.activo);
-  const{data:asistSemana}=await sb.from('asistencia').select('*').eq('entidad',nominaActiveEnt).gte('fecha',days[0]).lte('fecha',days[6]);
-  const lineas=activos.map(e=>{
-    const regs=(asistSemana||[]).filter(a=>a.empleado_id===e.id);
-    const trabajados=regs.filter(a=>a.estatus==='asistio').length;
-    const domingo=regs.find(a=>a.fecha===domingoIso);
-    const trabajoDomingo=!!(domingo&&domingo.estatus==='asistio');
-    const sugerido=trabajados>0?Math.min(trabajados+1,7):0;
-    return{periodo_id:periodo.id,empleado_id:e.id,dias_trabajados:trabajados,dias_pagados:sugerido,trabajo_domingo:trabajoDomingo,salario_diario:e.salario_diario||0,dia_descanso:null,retencion_isr:0,retencion_imss:0};
-  });
-  if(lineas.length){
-    const{error:le}=await sb.from('nomina_lineas').insert(lineas);
-    if(le){toast('Error al generar líneas: '+le.message,true);return;}
-  }
   await loadNomina();renderNomina();
-  toast('Nómina generada ✓');
+  toast(nominaPeriodo?'Nómina actualizada ✓':'No se pudo generar la nómina',!nominaPeriodo);
 }
 
 async function borrarNomina(){
   if(!isAdmin()||!nominaPeriodo)return;
-  if(!confirm('¿Borrar toda la nómina de esta semana para '+(ENTS[nominaActiveEnt]||{label:nominaActiveEnt}).label+'? Esto elimina las líneas de todos los empleados.'))return;
+  if(!confirm('¿Recalcular desde cero la nómina de esta semana para '+(ENTS[nominaActiveEnt]||{label:nominaActiveEnt}).label+'? Esto borra días pagados, ISR, IMSS y notas ya capturados, y los vuelve a generar desde asistencia.'))return;
   const{error}=await sb.from('nomina_periodos').delete().eq('id',nominaPeriodo.id);
   if(error){toast('Error al borrar: '+error.message,true);return;}
   nominaPeriodo=null;nominaLineas=[];
-  renderNomina();
-  toast('Nómina borrada');
+  await loadNomina();renderNomina();
+  toast('Nómina recalculada');
 }
 
 async function agregarLineaNomina(empId){
@@ -4282,14 +4336,16 @@ function imprimirRecibosHorasExtra(){
   const byEmpFecha={};
   horasExtraData.forEach(h=>{byEmpFecha[h.empleado_id+'_'+h.fecha]=h;});
   const cards=emps.map(e=>{
-    const rate=horasExtraRate(e);
+    const rate=horasExtraEffectiveRate(e);
+    const bonif=horasExtraBonif(e.id);
+    const bonifConcepto=(horasExtraOverrideFor(e.id)||{}).bonificacion_concepto||'';
     let totalHE=0,totalRT=0;
     days.forEach(fecha=>{
       const h=byEmpFecha[e.id+'_'+fecha];
       if(h){totalHE+=h.he||0;totalRT+=h.rt||0;}
     });
-    if(!totalHE&&!totalRT)return''; // nada que liquidar esta semana, no genera recibo
-    const neto=(totalHE-totalRT)*rate;
+    if(!totalHE&&!totalRT&&!bonif)return''; // nada que liquidar esta semana, no genera recibo
+    const neto=(totalHE-totalRT)*rate+bonif;
     return`<div class="recibo-card">
       <div class="recibo-card-hdr"><img class="recibo-card-logo" src="${PA_LOGO}" alt="El Pescador"><h4>Recibo de horas extra</h4></div>
       <div class="rc-sub">${entLabel} · Semana del ${fmtFechaCorta(days[0])} al ${fmtFechaCorta(days[6])}</div>
@@ -4299,12 +4355,13 @@ function imprimirRecibosHorasExtra(){
         <tr><td>Total horas extra</td><td>${totalHE}</td></tr>
         <tr><td>Total retardos</td><td>${totalRT}</td></tr>
         <tr><td>Tarifa por hora</td><td>${fmxn(rate)}</td></tr>
+        ${bonif?`<tr><td>Bonificación${bonifConcepto?' ('+bonifConcepto+')':''}</td><td>${fmxn(bonif)}</td></tr>`:''}
       </table>
       <div class="rc-total">TOTAL A ${neto<0?'DESCONTAR':'PAGAR'}: ${fmxn(Math.abs(neto))}</div>
       <div class="rc-firma">RECIBÍ — FIRMA DEL EMPLEADO</div>
     </div>`;
   }).join('');
-  document.getElementById('print-horasextra').innerHTML=`<div class="recibo-grid">${cards||'<div class="empty">Nadie tiene horas extra ni retardos que liquidar esta semana</div>'}</div>`;
+  document.getElementById('print-horasextra').innerHTML=`<div class="recibo-grid">${cards||'<div class="empty">Nadie tiene horas extra, retardos ni bonificación que liquidar esta semana</div>'}</div>`;
   window.print();
 }
 
@@ -4435,7 +4492,7 @@ table{border-collapse:collapse;width:100%;table-layout:fixed}
 }
 
 // ─── HORAS EXTRA / RETARDOS ─────────────────────────────────────
-let horasExtraActiveEnt='PUE',horasExtraWeekStart=null,horasExtraData=[];
+let horasExtraActiveEnt='PUE',horasExtraWeekStart=null,horasExtraData=[],horasExtraOverrides=[];
 const HORASEXTRA_DIAS=['SÁBADO','DOMINGO','LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES'];
 const HORASEXTRA_TITULO={HOT:'HOTEL REAL DE POZA',PUE:'RESTAURANTE EL PESCADOR PUEBLA',FLO:'RESTAURANTE EL PESCADOR FLORIDA'};
 
@@ -4450,8 +4507,10 @@ async function loadHorasExtra(){
   const ent=horasExtraActiveEnt,week=horasExtraWeekStart;
   const days=asistWeekDays(week);
   const{data}=await sb.from('horas_extra').select('*').eq('entidad',ent).gte('fecha',days[0]).lte('fecha',days[6]);
+  const{data:overrides}=await sb.from('horas_extra_semana').select('*').eq('entidad',ent).eq('semana_inicio',week);
   if(ent!==horasExtraActiveEnt||week!==horasExtraWeekStart)return;
   horasExtraData=data||[];
+  horasExtraOverrides=overrides||[];
 }
 function goHorasExtraWeek(delta){
   const d=new Date(horasExtraWeekStart+'T12:00:00');
@@ -4464,6 +4523,39 @@ function goHorasExtraToday(){
   loadHorasExtra().then(renderHorasExtraGrid);
 }
 function horasExtraRate(e){return e&&e.salario_diario?Number(e.salario_diario)/8:0;}
+function horasExtraOverrideFor(empId){return horasExtraOverrides.find(o=>o.empleado_id===empId)||null;}
+function horasExtraEffectiveRate(e){
+  const ov=horasExtraOverrideFor(e.id);
+  if(ov&&ov.tarifa_override!=null)return Number(ov.tarifa_override);
+  return horasExtraRate(e);
+}
+function horasExtraBonif(empId){
+  const ov=horasExtraOverrideFor(empId);
+  return ov?Number(ov.bonificacion)||0:0;
+}
+async function upsertHorasExtraSemana(empId,patch){
+  let ov=horasExtraOverrideFor(empId);
+  const base={empleado_id:empId,entidad:horasExtraActiveEnt,semana_inicio:horasExtraWeekStart};
+  if(!ov){ov={...base,tarifa_override:null,bonificacion:0,bonificacion_concepto:null};horasExtraOverrides.push(ov);}
+  Object.assign(ov,patch);
+  renderHorasExtraGrid();
+  const{data,error}=await sb.from('horas_extra_semana').upsert({...base,tarifa_override:ov.tarifa_override,bonificacion:ov.bonificacion,bonificacion_concepto:ov.bonificacion_concepto,updated_at:new Date().toISOString()},{onConflict:'empleado_id,entidad,semana_inicio'}).select().single();
+  if(error){toast('Error al guardar: '+error.message,true);return;}
+  if(data)Object.assign(ov,data);
+}
+async function updateHorasExtraTarifa(empId,value){
+  const v=value===''?null:Math.max(0,Number(value)||0);
+  await upsertHorasExtraSemana(empId,{tarifa_override:v});
+}
+async function resetHorasExtraTarifa(empId){
+  await upsertHorasExtraSemana(empId,{tarifa_override:null});
+}
+async function updateHorasExtraBonifMonto(empId,value){
+  await upsertHorasExtraSemana(empId,{bonificacion:Math.max(0,Number(value)||0)});
+}
+async function updateHorasExtraBonifConcepto(empId,value){
+  await upsertHorasExtraSemana(empId,{bonificacion_concepto:value.trim()||null});
+}
 
 function renderHorasExtraGrid(){
   const days=asistWeekDays(horasExtraWeekStart);
@@ -4474,7 +4566,7 @@ function renderHorasExtraGrid(){
   const byEmpFecha={};
   horasExtraData.forEach(h=>{byEmpFecha[h.empleado_id+'_'+h.fecha]=h;});
 
-  const thead1=`<tr><th rowspan="2" style="text-align:left">Empleado</th><th rowspan="2">$ Hr.extra/retardo</th>${days.map((d,i)=>`<th colspan="2">${HORASEXTRA_DIAS[i]}<br><span style="font-weight:400;font-size:9px">${Number(d.slice(8,10))}</span></th>`).join('')}<th rowspan="2">Total<br>HE</th><th rowspan="2">Total<br>RET</th><th rowspan="2">Total a pagar/<br>descontar</th></tr>`;
+  const thead1=`<tr><th rowspan="2" style="text-align:left">Empleado</th><th rowspan="2">$ Hr.extra/retardo</th>${days.map((d,i)=>`<th colspan="2">${HORASEXTRA_DIAS[i]}<br><span style="font-weight:400;font-size:9px">${Number(d.slice(8,10))}</span></th>`).join('')}<th rowspan="2">Total<br>HE</th><th rowspan="2">Total<br>RET</th><th rowspan="2">Bonif.</th><th rowspan="2">Total a pagar/<br>descontar</th></tr>`;
   const thead2=`<tr>${days.map(()=>'<th>HE</th><th>RT</th>').join('')}</tr>`;
 
   const el=document.getElementById('horasextra-grid-wrap');
@@ -4483,7 +4575,11 @@ function renderHorasExtraGrid(){
     return;
   }
   const rows=emps.map(e=>{
-    const rate=horasExtraRate(e);
+    const ov=horasExtraOverrideFor(e.id);
+    const rate=horasExtraEffectiveRate(e);
+    const rateOverridden=!!(ov&&ov.tarifa_override!=null);
+    const bonif=ov?Number(ov.bonificacion)||0:0;
+    const bonifConcepto=ov?ov.bonificacion_concepto||'':'';
     let totalHE=0,totalRT=0;
     const cells=days.map(fecha=>{
       const h=byEmpFecha[e.id+'_'+fecha];
@@ -4492,9 +4588,13 @@ function renderHorasExtraGrid(){
       return`<td><input type="number" min="0" step="1" class="he-input" value="${he||''}" onchange="updateHorasExtraCelda('${e.id}','${fecha}','he',this.value)"></td>`+
             `<td><input type="number" min="0" step="1" class="he-input" value="${rt||''}" onchange="updateHorasExtraCelda('${e.id}','${fecha}','rt',this.value)"></td>`;
     }).join('');
-    const neto=(totalHE-totalRT)*rate;
+    const neto=(totalHE-totalRT)*rate+bonif;
     return`<tr><td class="he-name">${e.nombre}<div style="font-size:10px;font-weight:400;color:var(--text3)">${puestoNombre(e.puesto_id)||''}</div></td>`+
-      `<td class="he-rate">${fmxn(rate)}</td>${cells}<td class="he-total">${totalHE}</td><td class="he-total">${totalRT}</td>`+
+      `<td class="he-rate"><div class="he-rate-cell"><input type="number" min="0" step="0.01" class="he-input he-rate-input" value="${rate?Number(rate.toFixed(2)):''}" title="Tarifa por hora extra/retardo" onchange="updateHorasExtraTarifa('${e.id}',this.value)">`+
+      `${rateOverridden?`<button class="he-rate-reset" title="Restaurar cálculo automático (salario/8)" onclick="resetHorasExtraTarifa('${e.id}')">↺ auto</button>`:''}</div></td>`+
+      `${cells}<td class="he-total">${totalHE}</td><td class="he-total">${totalRT}</td>`+
+      `<td class="he-bonif"><div class="he-bonif-cell"><input type="number" min="0" step="0.01" class="he-input he-bonif-input" value="${bonif||''}" placeholder="0" title="Bonificación" onchange="updateHorasExtraBonifMonto('${e.id}',this.value)">`+
+      `<input type="text" class="he-bonif-concepto" value="${bonifConcepto}" placeholder="Motivo" title="Motivo de la bonificación" onchange="updateHorasExtraBonifConcepto('${e.id}',this.value)"></div></td>`+
       `<td class="he-neto ${neto<0?'neg':''}">${fmxnSigned(neto)}</td></tr>`;
   }).join('');
 
@@ -4522,7 +4622,8 @@ function imprimirHorasExtra(){
   const titulo=HORASEXTRA_TITULO[horasExtraActiveEnt]||(ENTS[horasExtraActiveEnt]||{label:horasExtraActiveEnt}).label;
 
   const rows=emps.map((e,i)=>{
-    const rate=horasExtraRate(e);
+    const rate=horasExtraEffectiveRate(e);
+    const bonif=horasExtraBonif(e.id);
     let totalHE=0,totalRT=0;
     const cells=days.map(fecha=>{
       const h=byEmpFecha[e.id+'_'+fecha];
@@ -4530,7 +4631,7 @@ function imprimirHorasExtra(){
       totalHE+=he;totalRT+=rt;
       return`<td class="nc">${he||''}</td><td class="nc">${rt||''}</td>`;
     }).join('');
-    const neto=(totalHE-totalRT)*rate;
+    const neto=(totalHE-totalRT)*rate+bonif;
     return`<tr>
       <td class="nc">${i+1}</td>
       <td class="nl">${e.nombre.toUpperCase()}</td>
@@ -4538,6 +4639,7 @@ function imprimirHorasExtra(){
       ${cells}
       <td class="nc nb">${totalHE}</td>
       <td class="nc nb">${totalRT}</td>
+      <td class="nr">${bonif?'$'+fmxnPlain(bonif):''}</td>
       <td class="nr nb ${neto<0?'neg':''}">${neto<0?'-':''}$${fmxnPlain(Math.abs(neto))}</td>
     </tr>`;
   }).join('');
@@ -4568,19 +4670,19 @@ table{border-collapse:collapse;width:100%;table-layout:fixed}
 <button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
 <table class="he-wrap">
   <colgroup>
-    <col style="width:2.29%"><col style="width:17.4%"><col style="width:5.95%">
-    ${days.map(()=>'<col style="width:3.94%"><col style="width:3.94%">').join('')}
-    <col style="width:5.49%"><col style="width:5.49%"><col style="width:8.24%">
+    <col style="width:2.1%"><col style="width:16.2%"><col style="width:5.5%">
+    ${days.map(()=>'<col style="width:3.66%"><col style="width:3.66%">').join('')}
+    <col style="width:5.1%"><col style="width:5.1%"><col style="width:5.5%"><col style="width:7.65%">
   </colgroup>
-  <tr class="he-title"><td colspan="${3+days.length*2+3}"><div class="he-title-inner"><img class="he-title-logo" src="${PA_LOGO}" alt="El Pescador"><span class="he-title-text">${titulo}</span></div></td></tr>
-  <tr class="he-sub"><td colspan="${3+days.length*2+3}">CONTROL DE HORAS EXTRAS &nbsp;·&nbsp; SEMANA: DEL ${fmtNominaRango(days[0],days[6])}</td></tr>
+  <tr class="he-title"><td colspan="${3+days.length*2+4}"><div class="he-title-inner"><img class="he-title-logo" src="${PA_LOGO}" alt="El Pescador"><span class="he-title-text">${titulo}</span></div></td></tr>
+  <tr class="he-sub"><td colspan="${3+days.length*2+4}">CONTROL DE HORAS EXTRAS &nbsp;·&nbsp; SEMANA: DEL ${fmtNominaRango(days[0],days[6])}</td></tr>
   <tr class="he-cols">
     <th rowspan="2">No.</th><th rowspan="2">NOMBRE</th><th rowspan="2">$ HRE/RT</th>
     ${days.map((d,i)=>{const dd=new Date(d+'T12:00:00');return`<th colspan="2">${String(dd.getDate()).padStart(2,'0')}-${NOMINA_MESES[dd.getMonth()].slice(0,3)}<br>${HORASEXTRA_DIAS[i]}</th>`;}).join('')}
-    <th rowspan="2">TOTAL<br>DE HRE</th><th rowspan="2">TOTAL<br>RET</th><th rowspan="2">TOTAL A PAGAR/<br>DESCONTAR</th>
+    <th rowspan="2">TOTAL<br>DE HRE</th><th rowspan="2">TOTAL<br>RET</th><th rowspan="2">BONIF.</th><th rowspan="2">TOTAL A PAGAR/<br>DESCONTAR</th>
   </tr>
   <tr class="he-cols">${days.map(()=>'<th>HE</th><th>RT</th>').join('')}</tr>
-  <tbody class="he-data">${rows||`<tr><td colspan="${3+days.length*2+3}" style="text-align:center;padding:16px">Sin empleados esta semana</td></tr>`}</tbody>
+  <tbody class="he-data">${rows||`<tr><td colspan="${3+days.length*2+4}" style="text-align:center;padding:16px">Sin empleados esta semana</td></tr>`}</tbody>
 </table>
 </body></html>`;
   const w=window.open('','_blank');
@@ -6990,6 +7092,16 @@ function initTheme(){
 }
 initTheme();
 
+// ─── SIDEBAR ────────────────────────────────────────────────────
+function toggleSidebar(){
+  const collapsed=document.querySelector('.layout').classList.toggle('sb-collapsed');
+  localStorage.setItem('ep_sb_collapsed',collapsed?'1':'0');
+}
+function initSidebar(){
+  if(localStorage.getItem('ep_sb_collapsed')==='1')document.querySelector('.layout').classList.add('sb-collapsed');
+}
+initSidebar();
+
 // ─── GOOD MORNING ──────────────────────────────────────────────
 function renderGoodMorning(){
   const hour=new Date().getHours();
@@ -7164,10 +7276,18 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'ado_ledger'},async()=>{await loadAdoLedger();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='ado')renderAdoLedgerList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'bitacora_tareas'},async()=>{await loadBitacora();if(document.getElementById('page-bitacora').classList.contains('active'))renderBitacora();})
     .on('postgres_changes',{event:'*',schema:'public',table:'bitacora_registros'},async()=>{const hoy=new Date().toISOString().slice(0,10);const{data:regs}=await sb.from('bitacora_registros').select('*').eq('fecha',hoy);bitRegistros=regs||[];if(document.getElementById('page-bitacora').classList.contains('active'))renderBitacora();})
-    .on('postgres_changes',{event:'*',schema:'public',table:'asistencia'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='asistencia')await loadAsistencia().then(renderAsistGrid);})
+    .on('postgres_changes',{event:'*',schema:'public',table:'asistencia'},async(payload)=>{
+      const row=(payload.new&&Object.keys(payload.new).length)?payload.new:payload.old;
+      if(row&&row.entidad&&row.fecha)await syncNominaSemana(row.entidad,sundayOf(row.fecha));
+      if(document.getElementById('page-nominayasist').classList.contains('active')){
+        if(moduloActivoTab==='asistencia')await loadAsistencia().then(renderAsistGrid);
+        else if(moduloActivoTab==='nomina')await loadNomina().then(renderNomina);
+      }
+    })
     .on('postgres_changes',{event:'*',schema:'public',table:'nomina_periodos'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='nomina')await loadNomina().then(renderNomina);})
     .on('postgres_changes',{event:'*',schema:'public',table:'nomina_lineas'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='nomina')await loadNomina().then(renderNomina);})
     .on('postgres_changes',{event:'*',schema:'public',table:'horas_extra'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='horasextra')await loadHorasExtra().then(renderHorasExtraGrid);})
+    .on('postgres_changes',{event:'*',schema:'public',table:'horas_extra_semana'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='horasextra')await loadHorasExtra().then(renderHorasExtraGrid);})
     .subscribe((status)=>{
       if(status==='SUBSCRIBED'){console.log('Realtime conectado ✓');showRealtimeIndicator(true);}
       else if(status==='CLOSED'||status==='CHANNEL_ERROR'){showRealtimeIndicator(false);setTimeout(setupRealtime,3000);}
