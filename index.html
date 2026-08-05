@@ -6709,9 +6709,39 @@ function openCorteDetail(id){
   const row=(label,val)=>`<div class="acc-row"><span class="acc-row-label">${label}</span><span class="acc-row-val">${val}</span></div>`;
   const ventasHtml=Object.entries(d.ventas_por_forma||{}).map(([k,v])=>row(k,fmxn(v))).join('')
     ||'<div class="acc-row-val" style="color:var(--text3)">Sin datos</div>';
-  const gastosHtml=Object.entries(d.gastos_por_categoria||{}).map(([k,v])=>row(k,fmxn(v))).join('')
-    ||'<div class="acc-row-val" style="color:var(--text3)">Sin gastos</div>';
   const difCuadra=Math.abs(Number(cu.diferencia_cuadre||0))<0.5;
+
+  const desglose=d.movimientos_desglose||[];
+  const gastosMerc = desglose.filter(m=>m.categoria==='gasto_mercancia');
+  const gastosDiv  = desglose.filter(m=>m.categoria==='gasto_diverso');
+  const detVales   = desglose.filter(m=>m.categoria==='vales');
+  const detBaucher = desglose.filter(m=>m.medio==='baucher');
+  const detBodega  = desglose.filter(m=>m.categoria==='bodega');
+
+  // Lista simple de gastos (concepto + medio, monto) -- siempre salida de dinero
+  const gastosList=(movs)=>{
+    if(!movs.length)return'<div class="acc-row-val" style="color:var(--text3)">Sin movimientos</div>';
+    return movs.map(m=>row(m.concepto+(m.medio==='baucher'?' (Baucher)':''),fmxn(m.monto))).join('');
+  };
+  // Lista de movimientos con saldo arrastrado (vales/baucher/bodega): colorea
+  // por si entra o sale del saldo, según medio+tipo (mismo criterio que el PDF)
+  const saldoList=(movs)=>{
+    if(!movs.length)return'<div class="acc-row-val" style="color:var(--text3)">Sin movimientos este turno</div>';
+    return movs.map(m=>{
+      const esBaucher=m.medio==='baucher';
+      const esEntrada=esBaucher?m.tipo==='deposito':m.tipo==='retiro';
+      const color=esEntrada?'var(--green)':'var(--red)';
+      const tag=esBaucher?' (Baucher)':'';
+      return row(m.concepto+tag,`<span style="color:${color}">${fmxn(m.monto)}</span>`);
+    }).join('');
+  };
+  const bloqueAnterior=(titulo,movs,anterior,actual)=>`
+    <div class="modal-sec">${titulo}</div>
+    ${row('Anterior',fmxn(anterior))}
+    ${saldoList(movs)}
+    ${row('<b>Actual</b>',`<b>${fmxn(actual)}</b>`)}
+  `;
+
   document.getElementById('m-corte-detail-title').textContent=`Corte ${c.sucursal||''} · Turno #${c.turno_id}`;
   document.getElementById('m-corte-detail-body').innerHTML=`
     <div class="modal-sec">Periodo</div>
@@ -6726,22 +6756,34 @@ function openCorteDetail(id){
     ${row('Monedas',fmxn(d.efectivo_monedas))}
     ${row('Billetes',fmxn(d.efectivo_billetes))}
 
-    <div class="modal-sec">Saldos acumulados (arrastrados)</div>
+    <div class="modal-sec">Cuadre del corte</div>
     ${row('Bodega',fmxn(d.saldo_bodega))}
-    ${row('Vales',fmxn(d.saldo_vales))}
     ${row('Baucher',fmxn(d.saldo_baucher))}
+    ${row('Monedas',fmxn(d.efectivo_monedas))}
+    ${row('Billetes',fmxn(d.efectivo_billetes))}
+    ${row('Vales',fmxn(d.saldo_vales))}
+    ${row('<b>Total Caja</b>',`<b>${fmxn(cu.primer_total_caja)}</b>`)}
+    ${row('+ Gastos',fmxn(cu.gastos_totales))}
+    ${row('<b>Total Caja</b>',`<b>${fmxn(cu.segundo_total_caja)}</b>`)}
 
-    <div class="modal-sec">Gastos del turno</div>
-    ${gastosHtml}
-
-    <div class="modal-sec">Cuadre del día</div>
+    <div class="modal-sec">Cuadre del día — anterior / tira</div>
     ${row('Anterior de caja',fmxn(cu.anterior_caja))}
     ${row('+ Tira (venta total)',fmxn(cu.tira))}
-    ${row('= Esperado',fmxn(cu.esperado))}
-    ${row('Primer total de caja',fmxn(cu.primer_total_caja))}
-    ${row('- Gastos',fmxn(cu.gastos_totales))}
-    ${row('= Segundo total de caja',fmxn(cu.segundo_total_caja))}
-    ${row('<b>Diferencia</b>',`<b style="color:${difCuadra?'var(--green)':'var(--red)'}">${fmxnSigned(cu.diferencia_cuadre)}</b>`)}
+    ${row('= Total esperado',fmxn(cu.esperado))}
+    ${row('Total Caja (segundo)',fmxn(cu.segundo_total_caja))}
+    ${row('<b>Diferencia</b>',`<b style="color:${difCuadra?'var(--green)':'var(--red)'}">${difCuadra?'Cuadra exacto':fmxnSigned(cu.diferencia_cuadre)}</b>`)}
+
+    <div class="modal-sec">Gastos de mercancía</div>
+    ${gastosList(gastosMerc)}
+    ${gastosMerc.length?row('<b>Total</b>',`<b>${fmxn(gastosMerc.reduce((s,m)=>s+Number(m.monto||0),0))}</b>`):''}
+
+    <div class="modal-sec">Gastos diversos</div>
+    ${gastosList(gastosDiv)}
+    ${gastosDiv.length?row('<b>Total</b>',`<b>${fmxn(gastosDiv.reduce((s,m)=>s+Number(m.monto||0),0))}</b>`):''}
+
+    ${bloqueAnterior('Detalle de vales',detVales,cu.anterior_vales,d.saldo_vales)}
+    ${bloqueAnterior('Detalle de baucher',detBaucher,cu.anterior_baucher,d.saldo_baucher)}
+    ${bloqueAnterior('Detalle de bodega',detBodega,cu.anterior_bodega,d.saldo_bodega)}
   `;
   document.getElementById('m-corte-detail-ftr').innerHTML=
     '<button class="btn" onclick="closeModal(\'m-corte-detail\')">Cerrar</button>';
