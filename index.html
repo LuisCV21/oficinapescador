@@ -1991,6 +1991,9 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 <!-- FAB GASOLINA -->
 <button class="fab" id="gas-fab" style="display:none" onclick="openCargaModal()" title="Registrar carga de gasolina">⛽</button>
 
+<!-- FAB PRUEBA NOMINA FACTURA.COM (temporal, solo admin) -->
+<button class="fab" id="nomina-prueba-fab" style="display:none;bottom:92px;background:#e67e22" onclick="probarNominaFacturacom()" title="Prueba: timbrar nómina de sandbox con Factura.com">🧪</button>
+
 <!-- MODAL BALANCE MENSUAL -->
 <div class="modal-overlay" id="m-balance">
 <div class="modal">
@@ -2309,6 +2312,7 @@ let currentEnt=localStorage.getItem('ep_obl_ent')||null,currentRhEnt=null;
 let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null,editCatId=null,editCuentaId=null,editPuestoId=null,editUsuarioId=null;
 let cuentasPagoData=[],puestosData=[],usuariosData=[];
 const EDGE_FN_URL=SUPA_URL+'/functions/v1/crear-usuario';
+const EDGE_FN_NOMINA_PRUEBA_URL=SUPA_URL+'/functions/v1/timbrar-nomina-prueba';
 let selIconObl='',selIconAcc='';
 let pendingFiles={};
 let repoPath=[];
@@ -2359,6 +2363,7 @@ async function doLogout(){
   document.getElementById('app').style.display='none';
   document.getElementById('login-wrap').style.display='flex';
   document.getElementById('gas-fab').style.display='none';
+  document.getElementById('nomina-prueba-fab').style.display='none';
   currentUser=null;currentPerfil=null;
 }
 document.getElementById('l-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
@@ -2380,6 +2385,7 @@ async function initApp(user){
   document.getElementById('login-wrap').style.display='none';
   document.getElementById('app').style.display='block';
   document.getElementById('gas-fab').style.display='flex';
+  document.getElementById('nomina-prueba-fab').style.display=(p&&p.rol==='admin')?'flex':'none';
   document.getElementById('tb-date').textContent=TODAY.toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   const nombre=p?p.nombre:user.email.split('@')[0];
   document.getElementById('tb-name').textContent=nombre;
@@ -2952,6 +2958,32 @@ async function togglePuesto(id,activar){
   if(!isAdmin())return;
   await sb.from('puestos').update({activa:activar}).eq('id',id);
   await loadPuestos();renderConfigPuestos();
+}
+
+// ─── PRUEBA: Nómina Factura.com (temporal, ver memoria del proyecto) ────
+async function probarNominaFacturacom(){
+  if(!isAdmin())return;
+  const nombre=prompt('Nombre del empleado de prueba:','JUAN PEREZ LOPEZ');
+  if(!nombre)return;
+  const salarioTxt=prompt('Salario de prueba (pesos, algo chico):','50');
+  const salario=Number(salarioTxt)||50;
+  toast('Timbrando nómina de prueba en sandbox de Factura.com...');
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const resp=await fetch(EDGE_FN_NOMINA_PRUEBA_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+      body:JSON.stringify({nombre,salario})
+    });
+    const out=await resp.json();
+    console.log('[prueba-nomina-facturacom]',out);
+    if(!resp.ok){toast('Error: '+(out.error||resp.statusText),true);return;}
+    if(out.ok){toast('✓ Nómina timbrada. UUID: '+out.uuid);}
+    else{toast('No se timbró — revisa la consola (F12) para el detalle',true);}
+  }catch(e){
+    toast('Error de red al llamar la función de prueba',true);
+    console.error(e);
+  }
 }
 
 // ─── USUARIOS (tabla perfiles + Edge Function crear-usuario) ────
