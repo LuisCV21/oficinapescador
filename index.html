@@ -6689,7 +6689,7 @@ function renderCortes(){
     return`<div class="acc-card" style="cursor:pointer" onclick="openCorteDetail('${c.id}')">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <div>
-          <div style="font-weight:600;font-size:14px">${c.sucursal||''} · ${fmtFechaHora(c.cierre||c.apertura)}</div>
+          <div style="font-weight:600;font-size:14px">${c.sucursal||''} · ${fmtFechaHora(c.cierre||c.apertura)}${c.pdf_path?' 📄':''}</div>
           <div style="font-size:11px;color:var(--text2);margin-top:2px">Turno #${c.turno_id} · Venta total ${fmxn(c.total_ventas)}</div>
         </div>
         <div style="text-align:right">
@@ -6785,9 +6785,18 @@ function openCorteDetail(id){
     ${bloqueAnterior('Detalle de baucher',detBaucher,cu.anterior_baucher,d.saldo_baucher)}
     ${bloqueAnterior('Detalle de bodega',detBodega,cu.anterior_bodega,d.saldo_bodega)}
   `;
+  const btnPdf=c.pdf_path
+    ?`<button class="btn btn-filled" onclick="verCortePdf('${c.pdf_path}')">📄 Ver PDF</button>`
+    :'';
   document.getElementById('m-corte-detail-ftr').innerHTML=
-    '<button class="btn" onclick="closeModal(\'m-corte-detail\')">Cerrar</button>';
+    btnPdf+'<button class="btn" onclick="closeModal(\'m-corte-detail\')">Cerrar</button>';
   openModal('m-corte-detail');
+}
+
+async function verCortePdf(pdfPath){
+  const {data,error}=await sb.storage.from('cortes-pdf').createSignedUrl(pdfPath,3600);
+  if(error||!data){toast('No se pudo abrir el PDF: '+(error?.message||'sin datos'),true);return;}
+  window.open(data.signedUrl,'_blank');
 }
 
 function renderBalanceList(){

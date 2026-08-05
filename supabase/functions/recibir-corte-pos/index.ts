@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { turno_id, sucursal, apertura, cierre, total_ventas, cuadre } = body ?? {};
+    const { turno_id, sucursal, apertura, cierre, total_ventas, cuadre, pdf_base64, pdf_filename } = body ?? {};
     if (!turno_id || !sucursal || !apertura) {
       return json({ error: "turno_id, sucursal y apertura son obligatorios" }, 400);
     }
@@ -37,6 +37,25 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const adminClient = createClient(supabaseUrl, serviceKey);
+
+    // Subir el PDF al bucket privado (si vino) -- se guarda solo la ruta,
+    // no una URL publica; el frontend pide una signed URL al vuelo.
+    let pdf_path: string | null = null;
+    if (pdf_base64 && pdf_filename) {
+      try {
+        const bytes = Uint8Array.from(atob(pdf_base64), (c) => c.charCodeAt(0));
+        const path = `${sucursal}/${turno_id}_${pdf_filename}`;
+        const { error: upErr } = await adminClient.storage
+          .from("cortes-pdf")
+          .upload(path, bytes, { contentType: "application/pdf", upsert: true });
+        if (!upErr) pdf_path = path;
+      } catch {
+        // Si falla la subida del PDF no se pierde el resto del corte.
+      }
+    }
+
+    // No guardar el PDF (pesado) dentro de la columna jsonb `datos`.
+    const { pdf_base64: _omit, ...datosSinPdf } = body;
 
     const { error } = await adminClient.from("cortes_caja").upsert(
       {
@@ -46,14 +65,15 @@ Deno.serve(async (req) => {
         cierre: cierre ?? null,
         total_ventas: total_ventas ?? 0,
         diferencia_cuadre: cuadre?.diferencia_cuadre ?? null,
-        datos: body,
+        pdf_path,
+        datos: datosSinPdf,
       },
       { onConflict: "sucursal,turno_id" },
     );
 
     if (error) return json({ error: error.message }, 400);
 
-    return json({ ok: true });
+    return json({ ok: true, pdf_path });
   } catch (e) {
     return json({ error: String(e) }, 500);
   }
