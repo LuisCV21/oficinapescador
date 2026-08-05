@@ -437,6 +437,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 /* ── BALANCE WIZARD ── */
 #m-balance .modal{max-width:640px}
 #m-balance-kat .modal{max-width:640px}
+#m-corte-detail .modal{max-width:640px}
 .bal-steps{display:flex;gap:4px;margin-bottom:18px}
 .bal-step-pill{flex:1;text-align:center;padding:8px 2px;border-radius:var(--r);
   background:var(--surface2);border:1px solid var(--border);cursor:pointer;transition:all .2s}
@@ -840,6 +841,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <span class="sb-item-icon">📊</span>
         <span class="sb-item-label">Balance mensual</span>
       </div>
+      <div class="sb-item" onclick="showPage('cortes')" id="si-cortes">
+        <span class="sb-item-icon">🧾</span>
+        <span class="sb-item-label">Cortes de caja</span>
+      </div>
       <div class="sb-sep"></div>
       <div class="sb-item" onclick="showPage('archivos')" id="si-archivos">
         <span class="sb-item-icon">🗂️</span>
@@ -1097,6 +1102,25 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         </div>
       </div>
 
+      <!-- CORTES DE CAJA -->
+      <div class="page" id="page-cortes">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">Cortes de caja</div>
+            <div class="page-sub">Cortes diarios enviados automáticamente por Pescador POS al cerrar turno</div>
+          </div>
+        </div>
+        <div class="toolbar" style="background:var(--surface);border-radius:var(--rxl);box-shadow:var(--shadow);border:1px solid var(--border);margin-bottom:14px">
+          <div class="toolbar-l">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer">
+              <input type="checkbox" id="corte-solo-dif" onchange="renderCortes()"> Solo con diferencia
+            </label>
+          </div>
+          <div class="lcount" id="corte-count"></div>
+        </div>
+        <div class="acc-grid" id="cortes-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+      </div>
+
       <!-- BALANCE MENSUAL -->
       <div class="page" id="page-balance">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
@@ -1180,6 +1204,15 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   <div class="modal-hdr"><div class="modal-title" id="m-obl-detail-title">Obligación</div><button class="btn-icon" onclick="closeModal('m-obl-detail')">✕</button></div>
   <div class="modal-body" id="m-obl-detail-body"></div>
   <div class="modal-ftr" id="m-obl-detail-ftr"></div>
+</div>
+</div>
+
+<!-- MODAL CORTES DE CAJA -->
+<div class="modal-overlay" id="m-corte-detail">
+<div class="modal">
+  <div class="modal-hdr"><div class="modal-title" id="m-corte-detail-title">Corte</div><button class="btn-icon" onclick="closeModal('m-corte-detail')">✕</button></div>
+  <div class="modal-body" id="m-corte-detail-body"></div>
+  <div class="modal-ftr" id="m-corte-detail-ftr"></div>
 </div>
 </div>
 
@@ -2307,7 +2340,7 @@ let currentUser=null,currentPerfil=null;
 function isAdmin(){return currentPerfil&&currentPerfil.rol==='admin';}
 function canDelete(){return isAdmin();}
 function showIfAdmin(html){return isAdmin()?html:'';}
-let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[];
+let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[],cortesData=[];
 let currentEnt=localStorage.getItem('ep_obl_ent')||null,currentRhEnt=null;
 let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null,editCatId=null,editCuentaId=null,editPuestoId=null,editUsuarioId=null;
 let cuentasPagoData=[],puestosData=[],usuariosData=[];
@@ -2321,6 +2354,7 @@ let repoPath=[];
 function fmt(s){if(!s)return'';const d=new Date(s+'T12:00:00');return d.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})}
 function fmxn(n){if(!n&&n!==0)return'';return'$'+Number(n).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function fmxnPlain(n){return Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function fmtFechaHora(iso){if(!iso)return'';const d=new Date(iso);if(isNaN(d))return'';return d.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'})+' '+d.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}
 function daysUntil(s){if(!s)return 999;return Math.round((new Date(s+'T12:00:00')-TODAY)/86400000)}
 function oblStatus(o){const d=daysUntil(o.fecha_limite);if(d<0)return'overdue';if(d<=7)return'urgent';if(d<=15)return'soon';return'ok'}
 function oblIcon(o){return o.icono||catInfo(o.categoria).icono}
@@ -2403,8 +2437,12 @@ async function initApp(user){
 
 // ─── LOAD DATA ────────────────────────────────────────────────
 async function loadAll(){
-  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadUsuarios(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger()]);
+  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadUsuarios(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger(),loadCortes()]);
   renderAll();
+}
+async function loadCortes(){
+  const {data}=await sb.from('cortes_caja').select('*').order('cierre',{ascending:false});
+  cortesData=data||[];
 }
 async function loadBalances(){
   const {data}=await sb.from('balances_mensuales').select('*').order('fecha_corte',{ascending:false}).order('created_at',{ascending:false});
@@ -2484,6 +2522,7 @@ function showPage(id){
   else if(id==='directorio')renderDirectorio();
   else if(id==='flotilla')renderFlotilla();
   else if(id==='balance')switchBalTab(balActiveTab);
+  else if(id==='cortes')renderCortes();
   else if(id==='nominayasist')reloadModuloActivo();
   else if(id==='config'){
     if(configTabCurrent==='cuentas')renderConfigCuentas();
@@ -6633,6 +6672,82 @@ function fmtFechaCorta(dateStr){
   return d.toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'});
 }
 
+function renderCortes(){
+  const el=document.getElementById('cortes-list');
+  if(!el)return;
+  const soloDif=document.getElementById('corte-solo-dif')?.checked;
+  let list=cortesData;
+  if(soloDif)list=list.filter(c=>Math.abs(Number(c.diferencia_cuadre||0))>0.5);
+  const cnt=document.getElementById('corte-count');
+  if(cnt)cnt.textContent=list.length+(list.length===1?' corte':' cortes');
+  if(!list.length){el.innerHTML='<div class="empty"><div class="empty-ico">🧾</div>Sin cortes recibidos aún</div>';return;}
+  el.innerHTML=list.map(c=>{
+    const dif=Number(c.diferencia_cuadre||0);
+    const cuadra=Math.abs(dif)<0.5;
+    const difColor=cuadra?'var(--green)':'var(--red)';
+    const difTxt=cuadra?'Cuadra':fmxnSigned(dif);
+    return`<div class="acc-card" style="cursor:pointer" onclick="openCorteDetail('${c.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-weight:600;font-size:14px">${c.sucursal||''} · ${fmtFechaHora(c.cierre||c.apertura)}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">Turno #${c.turno_id} · Venta total ${fmxn(c.total_ventas)}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:10px;color:var(--text2);text-transform:uppercase">Cuadre</div>
+          <div style="font-weight:700;color:${difColor}">${difTxt}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openCorteDetail(id){
+  const c=cortesData.find(x=>x.id===id);
+  if(!c)return;
+  const d=c.datos||{};
+  const cu=d.cuadre||{};
+  const row=(label,val)=>`<div class="acc-row"><span class="acc-row-label">${label}</span><span class="acc-row-val">${val}</span></div>`;
+  const ventasHtml=Object.entries(d.ventas_por_forma||{}).map(([k,v])=>row(k,fmxn(v))).join('')
+    ||'<div class="acc-row-val" style="color:var(--text3)">Sin datos</div>';
+  const gastosHtml=Object.entries(d.gastos_por_categoria||{}).map(([k,v])=>row(k,fmxn(v))).join('')
+    ||'<div class="acc-row-val" style="color:var(--text3)">Sin gastos</div>';
+  const difCuadra=Math.abs(Number(cu.diferencia_cuadre||0))<0.5;
+  document.getElementById('m-corte-detail-title').textContent=`Corte ${c.sucursal||''} · Turno #${c.turno_id}`;
+  document.getElementById('m-corte-detail-body').innerHTML=`
+    <div class="modal-sec">Periodo</div>
+    ${row('Apertura',fmtFechaHora(c.apertura))}
+    ${row('Cierre',fmtFechaHora(c.cierre))}
+
+    <div class="modal-sec">Ventas por forma de pago</div>
+    ${ventasHtml}
+    ${row('Total',`<b>${fmxn(c.total_ventas)}</b>`)}
+
+    <div class="modal-sec">Efectivo contado</div>
+    ${row('Monedas',fmxn(d.efectivo_monedas))}
+    ${row('Billetes',fmxn(d.efectivo_billetes))}
+
+    <div class="modal-sec">Saldos acumulados (arrastrados)</div>
+    ${row('Bodega',fmxn(d.saldo_bodega))}
+    ${row('Vales',fmxn(d.saldo_vales))}
+    ${row('Baucher',fmxn(d.saldo_baucher))}
+
+    <div class="modal-sec">Gastos del turno</div>
+    ${gastosHtml}
+
+    <div class="modal-sec">Cuadre del día</div>
+    ${row('Anterior de caja',fmxn(cu.anterior_caja))}
+    ${row('+ Tira (venta total)',fmxn(cu.tira))}
+    ${row('= Esperado',fmxn(cu.esperado))}
+    ${row('Primer total de caja',fmxn(cu.primer_total_caja))}
+    ${row('- Gastos',fmxn(cu.gastos_totales))}
+    ${row('= Segundo total de caja',fmxn(cu.segundo_total_caja))}
+    ${row('<b>Diferencia</b>',`<b style="color:${difCuadra?'var(--green)':'var(--red)'}">${fmxnSigned(cu.diferencia_cuadre)}</b>`)}
+  `;
+  document.getElementById('m-corte-detail-ftr').innerHTML=
+    '<button class="btn" onclick="closeModal(\'m-corte-detail\')">Cerrar</button>';
+  openModal('m-corte-detail');
+}
+
 function renderBalanceList(){
   const el=document.getElementById('balance-list');
   if(!el)return;
@@ -7302,6 +7417,7 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'cargas_gasolina'},async()=>{await loadCargas();if(document.getElementById('page-flotilla').classList.contains('active'))renderFlotilla();})
     .on('postgres_changes',{event:'*',schema:'public',table:'uniformes'},async()=>{await loadEmpleados();})
     .on('postgres_changes',{event:'*',schema:'public',table:'directorio'},async()=>{await loadDirectorio();if(document.getElementById('page-directorio').classList.contains('active'))renderDirectorio();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'cortes_caja'},async()=>{await loadCortes();if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();})
     .on('postgres_changes',{event:'*',schema:'public',table:'balances_mensuales'},async()=>{await loadBalances();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='luis')renderBalanceList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'balances_kateryn'},async()=>{await loadBalancesKat();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='kat')renderBalanceKatList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'nomina_ledger'},async()=>{await loadNominaLedger();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='nomina')renderNominaLedgerList();})
