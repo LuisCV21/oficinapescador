@@ -1050,7 +1050,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
               <button class="btn btn-sm" onclick="goNominaToday()">Esta semana</button>
               <button class="btn-icon" onclick="goNominaWeek(1)" title="Semana siguiente">▶</button>
               <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir nómina</button>
-              <button class="btn btn-sm btn-filled" style="display:none" onclick="timbrarNominaSemana()" id="nomina-timbrar-btn">🧾 Timbrar nómina</button>
+              <button class="btn btn-sm btn-filled" style="display:none" onclick="abrirPreviewNomina()" id="nomina-timbrar-btn">🧾 Timbrar nómina</button>
               <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🔄 Recalcular desde cero</button>
             </div>
           </div>
@@ -1217,6 +1217,15 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   <div class="modal-hdr"><div class="modal-title" id="m-corte-detail-title">Corte</div><button class="btn-icon" onclick="closeModal('m-corte-detail')">✕</button></div>
   <div class="modal-body" id="m-corte-detail-body"></div>
   <div class="modal-ftr" id="m-corte-detail-ftr"></div>
+</div>
+</div>
+
+<!-- MODAL VISTA PREVIA DE TIMBRADO DE NÓMINA -->
+<div class="modal-overlay" id="m-nomina-preview">
+<div class="modal" style="max-width:760px">
+  <div class="modal-hdr"><div class="modal-title" id="m-nomina-preview-title">Vista previa de nómina</div><button class="btn-icon" onclick="closeModal('m-nomina-preview')">✕</button></div>
+  <div class="modal-body" id="m-nomina-preview-body"></div>
+  <div class="modal-ftr" id="m-nomina-preview-ftr"></div>
 </div>
 </div>
 
@@ -4371,12 +4380,63 @@ function renderNominaRow(l,e){
   </tr>`;
 }
 
-async function timbrarNominaSemana(){
+// factura.com no tiene modo "borrador": su endpoint de creación manda
+// directo a la fila de timbrado real ante el SAT, no existe una forma de
+// pedirle solo un PDF de prueba. Por eso la vista previa se arma aquí, del
+// lado de Oficina Pescador, con los mismos cálculos que ya se ven en la
+// tabla semanal — así se puede revisar todo antes de que exista un solo
+// CFDI real, y factura.com nunca se llama hasta que se confirme dentro
+// de este modal.
+function abrirPreviewNomina(){
   if(!isAdmin()||!nominaPeriodo)return;
+  const empById={};empData.forEach(e=>{empById[e.id]=e;});
   const entLabel=(ENTS[nominaActiveEnt]||{label:nominaActiveEnt}).label;
-  if(!confirm(`¿Timbrar la nómina de ${entLabel} de esta semana en factura.com?\n\nSolo se timbran los empleados que ya tengan CURP, RFC y NSS capturados. Esto genera CFDIs reales (no es una prueba).`))return;
-  const btn=document.getElementById('nomina-timbrar-btn');
-  btn.disabled=true;btn.textContent='Timbrando...';
+  const filas=nominaLineas.map(l=>{
+    const e=empById[l.empleado_id];if(!e)return null;
+    const c=nominaCalc(l);
+    const faltan=[];
+    if(!e.curp?.trim())faltan.push('CURP');
+    if(!e.rfc?.trim())faltan.push('RFC');
+    if(!e.nss?.trim())faltan.push('NSS');
+    if(!e.fecha_ingreso)faltan.push('fecha de ingreso');
+    if(Number(l.dias_pagados)<=0)faltan.push('días pagados en 0');
+    return{e,l,c,faltan};
+  }).filter(Boolean).sort((a,b)=>a.e.nombre.localeCompare(b.e.nombre));
+  const listos=filas.filter(f=>!f.faltan.length);
+  document.getElementById('m-nomina-preview-title').textContent='Vista previa · Nómina '+entLabel;
+  document.getElementById('m-nomina-preview-body').innerHTML=`
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">
+      Esto es lo que se mandaría a timbrar. Nada se envía a factura.com todavía — factura.com no tiene modo de prueba,
+      así que la confirmación de abajo genera CFDIs reales.
+    </div>
+    <div style="overflow-x:auto">
+    <table class="nomina-table" style="min-width:0">
+      <thead><tr><th style="text-align:left">Empleado</th><th>Sueldo</th><th>Prima dom.</th><th>ISR</th><th>IMSS</th><th>Neto</th><th>Estado</th></tr></thead>
+      <tbody>${filas.map(f=>`<tr>
+        <td class="nom-name">${f.e.nombre}</td>
+        <td>${fmxn(f.c.nominaFiscal)}</td>
+        <td>${fmxn(f.c.primaDominical)}</td>
+        <td>${fmxn(f.l.retencion_isr)}</td>
+        <td>${fmxn(f.l.retencion_imss)}</td>
+        <td><b>${fmxn(f.c.total)}</b></td>
+        <td>${f.faltan.length?`<span style="color:var(--amber);font-size:11px" title="Falta: ${f.faltan.join(', ')}">⚠️ Falta: ${f.faltan.join(', ')}</span>`:`<span style="color:var(--green);font-size:11px">✅ Listo</span>`}</td>
+      </tr>`).join('')}</tbody>
+    </table>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-top:12px">
+      ${listos.length?`Se van a timbrar <b>${listos.length}</b> de ${filas.length} empleados. Los que dicen "Falta" no se tocan.`:'Ningún empleado está listo todavía — completa CURP/RFC/NSS en Recursos Humanos.'}
+    </div>`;
+  document.getElementById('m-nomina-preview-ftr').innerHTML=
+    `<button class="btn" onclick="closeModal('m-nomina-preview')">Cerrar</button>`+
+    (listos.length?`<button class="btn btn-filled" id="nomina-confirmar-timbrar-btn" onclick="confirmarTimbrarNomina()">🧾 Confirmar y timbrar (${listos.length})</button>`:'');
+  openModal('m-nomina-preview');
+}
+
+async function confirmarTimbrarNomina(){
+  if(!isAdmin()||!nominaPeriodo)return;
+  if(!confirm('Esto genera CFDIs de nómina reales ante el SAT, no se puede deshacer con un simple clic. ¿Confirmar y timbrar?'))return;
+  const btn=document.getElementById('nomina-confirmar-timbrar-btn');
+  if(btn){btn.disabled=true;btn.textContent='Timbrando...';}
   try{
     const{data:{session}}=await sb.auth.getSession();
     const resp=await fetch(SUPA_URL+'/functions/v1/timbrar-nomina',{
@@ -4387,6 +4447,7 @@ async function timbrarNominaSemana(){
     const out=await resp.json();
     console.log('[timbrar-nomina]',out);
     if(!resp.ok&&!out.resultados){toast('Error: '+(out.error||resp.statusText),true);return;}
+    closeModal('m-nomina-preview');
     await loadNomina();renderNomina();
     if(out.timbrados)toast(`✓ ${out.timbrados} de ${out.total||out.timbrados} nómina(s) timbrada(s)`);
     else toast('No se timbró ninguna — revisa la columna "Timbre" de cada empleado',true);
@@ -4394,7 +4455,7 @@ async function timbrarNominaSemana(){
     toast('Error de red al timbrar',true);
     console.error(e);
   }finally{
-    btn.disabled=false;btn.textContent='🧾 Timbrar nómina';
+    if(btn){btn.disabled=false;btn.textContent='🧾 Confirmar y timbrar';}
   }
 }
 

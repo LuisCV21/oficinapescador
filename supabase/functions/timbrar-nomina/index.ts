@@ -89,7 +89,8 @@ Deno.serve(async (req) => {
     const apiKey = Deno.env.get(`FACTURACOM_API_KEY_${ent}`);
     const secretKey = Deno.env.get(`FACTURACOM_SECRET_KEY_${ent}`);
     const serie = Deno.env.get(`FACTURACOM_SERIE_${ent}`);
-    if (!apiKey || !secretKey || !serie) {
+    const patronal = Deno.env.get(`FACTURACOM_PATRONAL_${ent}`);
+    if (!apiKey || !secretKey || !serie || !patronal) {
       return json({ error: `Faltan las llaves de factura.com configuradas para ${ENT_LABEL[ent] || ent}` }, 500);
     }
     const headers = facturacomHeaders(apiKey, secretKey);
@@ -176,6 +177,7 @@ Deno.serve(async (req) => {
           sindicalizado: "No",
           entidad_emite: "VER",
           tipo_jornada: "01",
+          patronal,
           cuota_diaria: String(e.salario_diario || 0),
           salario: String(e.salario_diario || 0),
           riesgo: "2",
