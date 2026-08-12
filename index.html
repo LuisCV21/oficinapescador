@@ -1050,6 +1050,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
               <button class="btn btn-sm" onclick="goNominaToday()">Esta semana</button>
               <button class="btn-icon" onclick="goNominaWeek(1)" title="Semana siguiente">▶</button>
               <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir nómina</button>
+              <button class="btn btn-sm btn-filled" style="display:none" onclick="timbrarNominaSemana()" id="nomina-timbrar-btn">🧾 Timbrar nómina</button>
               <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🔄 Recalcular desde cero</button>
             </div>
           </div>
@@ -4301,6 +4302,8 @@ function renderNomina(){
   }
   printTablaBtn.style.display='inline-flex';
   delBtn.style.display=isAdmin()?'inline-flex':'none';
+  const timbrarBtn=document.getElementById('nomina-timbrar-btn');
+  if(timbrarBtn)timbrarBtn.style.display=isAdmin()?'inline-flex':'none';
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
   const sorted=[...nominaLineas].sort((a,b)=>{
     const ea=empById[a.empleado_id],eb=empById[b.empleado_id];
@@ -4319,15 +4322,15 @@ function renderNomina(){
   el.innerHTML=`<div class="nomina-table-wrap"><table class="nomina-table">
     <thead><tr>
       <th style="text-align:left">Empleado</th><th>Descanso</th><th>Salario</th><th>Días trab.</th>
-      <th>¿Domingo?</th><th>Días pag.</th><th>Prima dom.</th><th>Subtotal</th><th>ISR</th><th>IMSS</th><th>Total</th><th></th>
+      <th>¿Domingo?</th><th>Días pag.</th><th>Prima dom.</th><th>Subtotal</th><th>ISR</th><th>IMSS</th><th>Total</th><th>Timbre</th><th></th>
     </tr></thead>
-    <tbody>${rows||'<tr><td colspan="12" style="padding:20px;color:var(--text3)">Sin empleados en esta nómina</td></tr>'}</tbody>
+    <tbody>${rows||'<tr><td colspan="13" style="padding:20px;color:var(--text3)">Sin empleados en esta nómina</td></tr>'}</tbody>
     <tfoot><tr class="nomina-tot-row">
       <td colspan="5" style="text-align:right">TOTALES</td>
       <td>${totals.pagados}</td><td></td>
       <td class="nom-computed">${fmxn(totals.subtotal)}</td>
       <td>${fmxn(totals.isr)}</td><td>${fmxn(totals.imss)}</td>
-      <td class="nom-total">${fmxn(totals.total)}</td><td></td>
+      <td class="nom-total">${fmxn(totals.total)}</td><td></td><td></td>
     </tr></tfoot>
   </table></div>
   ${faltantes.length?`<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -4339,6 +4342,15 @@ function renderNomina(){
 function renderNominaRow(l,e){
   if(!e)return'';
   const c=nominaCalc(l);
+  const timbreMap={
+    timbrada:{ico:'✅',color:'var(--green)',txt:'Timbrada'},
+    datos_incompletos:{ico:'⚠️',color:'var(--amber)',txt:'Datos incompletos'},
+    error:{ico:'❌',color:'var(--red)',txt:'Error'},
+  };
+  const timbre=timbreMap[l.facturacom_status];
+  const timbreCell=timbre
+    ?`<span style="color:${timbre.color};font-size:11px;cursor:${l.facturacom_mensaje?'help':'default'}" title="${(l.facturacom_mensaje||'').replace(/"/g,'')}">${timbre.ico} ${timbre.txt}</span>`
+    :`<span style="color:var(--text3);font-size:11px">—</span>`;
   return`<tr>
     <td class="nom-name">${e.nombre}<div class="nom-puesto">${puestoNombre(e.puesto_id)||''}</div></td>
     <td><select onchange="updateLineaField('${l.id}','dia_descanso',this.value)">
@@ -4354,8 +4366,36 @@ function renderNominaRow(l,e){
     <td><input type="number" step="0.01" value="${l.retencion_isr}" onchange="updateLineaField('${l.id}','retencion_isr',this.value)"></td>
     <td><input type="number" step="0.01" value="${l.retencion_imss}" onchange="updateLineaField('${l.id}','retencion_imss',this.value)"></td>
     <td class="nom-total">${fmxn(c.total)}</td>
+    <td>${timbreCell}</td>
     <td>${isAdmin()?`<button class="btn-text red" style="font-size:10px" onclick="eliminarLineaNomina('${l.id}')">✕</button>`:''}</td>
   </tr>`;
+}
+
+async function timbrarNominaSemana(){
+  if(!isAdmin()||!nominaPeriodo)return;
+  const entLabel=(ENTS[nominaActiveEnt]||{label:nominaActiveEnt}).label;
+  if(!confirm(`¿Timbrar la nómina de ${entLabel} de esta semana en factura.com?\n\nSolo se timbran los empleados que ya tengan CURP, RFC y NSS capturados. Esto genera CFDIs reales (no es una prueba).`))return;
+  const btn=document.getElementById('nomina-timbrar-btn');
+  btn.disabled=true;btn.textContent='Timbrando...';
+  try{
+    const{data:{session}}=await sb.auth.getSession();
+    const resp=await fetch(SUPA_URL+'/functions/v1/timbrar-nomina',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+      body:JSON.stringify({periodo_id:nominaPeriodo.id})
+    });
+    const out=await resp.json();
+    console.log('[timbrar-nomina]',out);
+    if(!resp.ok&&!out.resultados){toast('Error: '+(out.error||resp.statusText),true);return;}
+    await loadNomina();renderNomina();
+    if(out.timbrados)toast(`✓ ${out.timbrados} de ${out.total||out.timbrados} nómina(s) timbrada(s)`);
+    else toast('No se timbró ninguna — revisa la columna "Timbre" de cada empleado',true);
+  }catch(e){
+    toast('Error de red al timbrar',true);
+    console.error(e);
+  }finally{
+    btn.disabled=false;btn.textContent='🧾 Timbrar nómina';
+  }
 }
 
 async function updateLineaField(lineaId,field,value){
