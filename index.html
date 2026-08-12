@@ -1110,15 +1110,18 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             <div class="page-sub">Cortes diarios enviados automáticamente por Pescador POS al cerrar turno</div>
           </div>
         </div>
-        <div class="toolbar" style="background:var(--surface);border-radius:var(--rxl);box-shadow:var(--shadow);border:1px solid var(--border);margin-bottom:14px">
-          <div class="toolbar-l">
-            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer">
-              <input type="checkbox" id="corte-solo-dif" onchange="renderCortes()"> Solo con diferencia
-            </label>
+        <div class="tabs-wrap">
+          <div class="tabs-bar" id="cortes-tabs-bar"></div>
+          <div class="toolbar">
+            <div class="toolbar-l">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer">
+                <input type="checkbox" id="corte-solo-dif" onchange="renderCortes()"> Solo con diferencia
+              </label>
+            </div>
+            <div class="lcount" id="corte-count"></div>
           </div>
-          <div class="lcount" id="corte-count"></div>
+          <div class="acc-grid" id="cortes-list" style="padding:16px"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
-        <div class="acc-grid" id="cortes-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
       </div>
 
       <!-- BALANCE MENSUAL -->
@@ -6672,24 +6675,48 @@ function fmtFechaCorta(dateStr){
   return d.toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'});
 }
 
+let currentCorteSuc='TODAS';
+function corteSucColor(nombre){
+  const found=Object.values(ENTS).find(e=>e.label.toLowerCase()===String(nombre||'').toLowerCase());
+  return found?found.color:'#8a8a8a';
+}
+function renderCorteTabs(){
+  const bar=document.getElementById('cortes-tabs-bar');
+  if(!bar)return;
+  const sucs=[...new Set(cortesData.map(c=>c.sucursal).filter(Boolean))].sort();
+  if(currentCorteSuc!=='TODAS'&&!sucs.includes(currentCorteSuc))currentCorteSuc='TODAS';
+  let html=`<div class="tab ${currentCorteSuc==='TODAS'?'active':''}" onclick="switchCorteSuc('TODAS')">🧾 Todas<span class="tab-badge">${cortesData.length}</span></div>`;
+  sucs.forEach(s=>{
+    const cnt=cortesData.filter(c=>c.sucursal===s).length;
+    html+=`<div class="tab ${currentCorteSuc===s?'active':''}" onclick="switchCorteSuc('${s.replace(/'/g,"\\'")}')"><span class="ent-dot" style="background:${corteSucColor(s)}"></span>${s}<span class="tab-badge">${cnt}</span></div>`;
+  });
+  bar.innerHTML=html;
+}
+function switchCorteSuc(s){currentCorteSuc=s;renderCortes();}
 function renderCortes(){
   const el=document.getElementById('cortes-list');
   if(!el)return;
+  renderCorteTabs();
   const soloDif=document.getElementById('corte-solo-dif')?.checked;
-  let list=cortesData;
+  let list=currentCorteSuc==='TODAS'?cortesData:cortesData.filter(c=>c.sucursal===currentCorteSuc);
   if(soloDif)list=list.filter(c=>Math.abs(Number(c.diferencia_cuadre||0))>0.5);
   const cnt=document.getElementById('corte-count');
   if(cnt)cnt.textContent=list.length+(list.length===1?' corte':' cortes');
-  if(!list.length){el.innerHTML='<div class="empty"><div class="empty-ico">🧾</div>Sin cortes recibidos aún</div>';return;}
+  if(!list.length){
+    const msg=soloDif?'Sin diferencias en '+(currentCorteSuc==='TODAS'?'ningún corte':currentCorteSuc):
+      (currentCorteSuc==='TODAS'?'Sin cortes recibidos aún':'Sin cortes de '+currentCorteSuc+' aún');
+    el.innerHTML=`<div class="empty"><div class="empty-ico">🧾</div>${msg}</div>`;return;
+  }
   el.innerHTML=list.map(c=>{
     const dif=Number(c.diferencia_cuadre||0);
     const cuadra=Math.abs(dif)<0.5;
     const difColor=cuadra?'var(--green)':'var(--red)';
     const difTxt=cuadra?'Cuadra':fmxnSigned(dif);
+    const sucTag=currentCorteSuc==='TODAS'?`<span class="ent-dot" style="background:${corteSucColor(c.sucursal)};margin-right:5px"></span>${c.sucursal||''} · `:'';
     return`<div class="acc-card" style="cursor:pointer" onclick="openCorteDetail('${c.id}')">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <div>
-          <div style="font-weight:600;font-size:14px">${c.sucursal||''} · ${fmtFechaHora(c.cierre||c.apertura)}${c.pdf_path?' 📄':''}</div>
+          <div style="font-weight:600;font-size:14px;display:flex;align-items:center">${sucTag}${fmtFechaHora(c.cierre||c.apertura)}${c.pdf_path?' 📄':''}</div>
           <div style="font-size:11px;color:var(--text2);margin-top:2px">Turno #${c.turno_id} · Venta total ${fmxn(c.total_ventas)}</div>
         </div>
         <div style="text-align:right">
