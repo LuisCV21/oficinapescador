@@ -2332,7 +2332,7 @@ const ENTS={
 const ENT_ORDER=['HOT','PUE','FLO','OBR','OFI','PER','CEN'];
 const RECUR={none:'—',weekly:'Semanal',monthly:'Mensual',bimonthly:'Bimestral',annual:'Anual'};
 const ICONS=['👥','🏛️','💡','🛡️','📋','🏦','📦','🚗','🔧','📱','💻','🏢','📊','💰','🧾','📄','🔑','⚡','💧','🌐','📝','🔒','🏗️','🍽️','🏨','📡','🖨️','📞'];
-const FILE_LABELS={pago:'Comprobante',cotizacion:'Cotización',factura_pdf:'Factura PDF',factura_xml:'XML SAT',ine:'INE',csf:'CSF',nss_doc:'NSS',contrato_prueba:'Contrato prueba',contrato_indeterminado:'Contrato',baja_imss:'Baja IMSS',finiquito:'Finiquito firmado',otro:'Documento'};
+const FILE_LABELS={pago:'Comprobante',cotizacion:'Cotización',factura_pdf:'Factura PDF',factura_xml:'XML SAT',ine:'INE',csf:'CSF',nss_doc:'Comprobante NSS',contrato_prueba:'Contrato prueba',contrato_indeterminado:'Contrato',baja_imss:'Baja IMSS',finiquito:'Finiquito firmado',otro:'Documento'};
 const DOC_TIPOS_VEH={tarjeta_circulacion:'Tarjeta de circulación',seguro:'Seguro',tenencia:'Tenencia',verificacion:'Verificación',factura:'Factura',otro:'Otro'};
 const DOC_ICONS_VEH={tarjeta_circulacion:'📋',seguro:'🛡️',tenencia:'🏛️',verificacion:'✅',factura:'🧾',otro:'📄'};
 const VEH_ICONS={moto:'🏍️',camioneta:'🚚',auto:'🚗',otro:'🚙'};
@@ -3377,9 +3377,9 @@ async function openEmpDetail(id){
     ${e.folio?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">Folio</div><div style="font-size:13px;font-family:var(--mono)">${e.folio}</div></div>`:''}
     ${e.puesto_id?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">Puesto</div><div style="font-size:13px">${puestoNombre(e.puesto_id)}</div></div>`:''}
     <div><div style="font-size:10px;color:var(--text3);font-weight:500">Ingreso</div><div style="font-size:13px">${fmt(e.fecha_ingreso)}</div></div>
-    ${e.nss?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">NSS</div><div style="font-size:13px;font-family:var(--mono)">${e.nss}</div></div>`:''}
-    ${e.curp?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">CURP</div><div style="font-size:12px;font-family:var(--mono)">${e.curp}</div></div>`:''}
-    ${e.rfc?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">RFC</div><div style="font-size:13px;font-family:var(--mono)">${e.rfc}</div></div>`:''}
+    <div><div style="font-size:10px;color:var(--text3);font-weight:500">NSS</div><div style="font-size:13px;font-family:var(--mono)${e.nss?'':';color:var(--red)'}">${e.nss||'Falta capturar (Editar)'}</div></div>
+    <div><div style="font-size:10px;color:var(--text3);font-weight:500">CURP</div><div style="font-size:12px;font-family:var(--mono)${e.curp?'':';color:var(--red)'}">${e.curp||'Falta capturar (Editar)'}</div></div>
+    <div><div style="font-size:10px;color:var(--text3);font-weight:500">RFC</div><div style="font-size:13px;font-family:var(--mono)${e.rfc?'':';color:var(--red)'}">${e.rfc||'Falta capturar (Editar)'}</div></div>
     <div><div style="font-size:10px;color:var(--text3);font-weight:500">Contrato</div><div style="font-size:13px">${{prueba:'Prueba (30 días)',indeterminado:'Tiempo indeterminado',obra:'Por obra'}[e.tipo_contrato]||e.tipo_contrato}</div></div>
     ${e.fecha_fin_prueba?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">Fin de prueba</div><div style="font-size:13px">${fmt(e.fecha_fin_prueba)}</div></div>`:''}
   </div>
