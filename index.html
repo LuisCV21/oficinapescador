@@ -4244,7 +4244,11 @@ async function syncNominaSemana(ent,week){
   const nuevas=[];
   for(const e of activos){
     const regs=(asistSemana||[]).filter(a=>a.empleado_id===e.id);
-    const trabajados=regs.filter(a=>a.estatus==='asistio').length;
+    // Vacaciones cuenta igual que asistio para dias trabajados/pagados (a
+    // peticion de la contadora, la semana se timbra completa). La prima
+    // dominical no aplica en vacaciones -- es un pago especifico por
+    // laborar el domingo, no por estar en la nomina ese dia.
+    const trabajados=regs.filter(a=>a.estatus==='asistio'||a.estatus==='vacaciones').length;
     const domingo=regs.find(a=>a.fecha===domingoIso);
     const trabajoDomingo=!!(domingo&&domingo.estatus==='asistio');
     const sugerido=trabajados>0?Math.min(trabajados+1,7):0;
