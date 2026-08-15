@@ -90,8 +90,8 @@ Deno.serve(async (req) => {
     if (callerErr || !caller) return json({ error: "Sesión inválida" }, 401);
 
     const { data: callerPerfil } = await callerClient.from("perfiles").select("rol").eq("id", caller.id).single();
-    if (!callerPerfil || callerPerfil.rol !== "admin") {
-      return json({ error: "Solo un administrador puede timbrar nómina" }, 403);
+    if (!callerPerfil || (callerPerfil.rol !== "admin" && callerPerfil.rol !== "oficinista")) {
+      return json({ error: "No tienes permiso para timbrar nómina" }, 403);
     }
 
     const { periodo_id, linea_ids } = await req.json().catch(() => ({}));

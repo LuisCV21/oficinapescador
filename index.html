@@ -2374,6 +2374,7 @@ let currentUser=null,currentPerfil=null;
 
 // ROLE HELPERS
 function isAdmin(){return currentPerfil&&currentPerfil.rol==='admin';}
+function puedeTimbrarNomina(){return currentPerfil&&(currentPerfil.rol==='admin'||currentPerfil.rol==='oficinista');}
 function canDelete(){return isAdmin();}
 function showIfAdmin(html){return isAdmin()?html:'';}
 let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[],cortesData=[];
@@ -4428,7 +4429,7 @@ function renderNomina(){
   printTablaBtn.style.display='inline-flex';
   delBtn.style.display=isAdmin()?'inline-flex':'none';
   const timbrarBtn=document.getElementById('nomina-timbrar-btn');
-  if(timbrarBtn)timbrarBtn.style.display=isAdmin()?'inline-flex':'none';
+  if(timbrarBtn)timbrarBtn.style.display=puedeTimbrarNomina()?'inline-flex':'none';
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
   const recibosSimplesBtn=document.getElementById('nomina-recibos-simples-btn');
   if(recibosSimplesBtn)recibosSimplesBtn.style.display=nominaLineas.some(l=>{const e=empById[l.empleado_id];return e&&e.nomina_fiscal===false&&Number(l.dias_pagados)>0;})?'inline-flex':'none';
@@ -4518,7 +4519,7 @@ function renderNominaRow(l,e){
 let nominaPreviewFilas=[],nominaPreviewSel=new Set();
 
 function abrirPreviewNomina(){
-  if(!isAdmin()||!nominaPeriodo)return;
+  if(!puedeTimbrarNomina()||!nominaPeriodo)return;
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
   const filas=nominaLineas.map(l=>{
     const e=empById[l.empleado_id];if(!e||e.nomina_fiscal===false)return null; // recibo simple, no entra al timbrado
@@ -4588,7 +4589,7 @@ function renderNominaPreviewModal(){
 }
 
 async function confirmarTimbrarNomina(){
-  if(!isAdmin()||!nominaPeriodo)return;
+  if(!puedeTimbrarNomina()||!nominaPeriodo)return;
   const lineaIds=Array.from(nominaPreviewSel);
   if(!lineaIds.length)return;
   if(!confirm(`Esto genera ${lineaIds.length} CFDI(s) de nómina reales ante el SAT, no se puede deshacer con un simple clic. ¿Confirmar y timbrar?`))return;
