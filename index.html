@@ -4743,10 +4743,15 @@ let horasExtraActiveEnt='PUE',horasExtraWeekStart=null,horasExtraData=[],horasEx
 const HORASEXTRA_DIAS=['SÁBADO','DOMINGO','LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES'];
 const HORASEXTRA_TITULO={HOT:'HOTEL REAL DE POZA',PUE:'RESTAURANTE EL PESCADOR PUEBLA',FLO:'RESTAURANTE EL PESCADOR FLORIDA'};
 
+// El timbrado de horas extra/retardos siempre es en sabado, y el dia de hoy
+// nunca se puede cerrar todavia (falta que llegue el reporte de la sucursal
+// y puede haber compensaciones dentro del mismo dia). Por eso "esta semana"
+// aqui nunca es la semana en curso: siempre es la ultima semana sabado-viernes
+// que ya termino por completo, sin importar que dia sea hoy.
 function horasExtraDefaultSaturday(){
   const d=new Date();
-  const diff=(d.getDay()+1)%7; // dias desde el ultimo sabado
-  d.setDate(d.getDate()-diff);
+  const diff=(d.getDay()+1)%7; // dias desde el sabado de la semana en curso
+  d.setDate(d.getDate()-diff-7); // retrocede una semana completa mas: la ya cerrada
   return dateToISO(d);
 }
 async function loadHorasExtra(){
