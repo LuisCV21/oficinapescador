@@ -72,6 +72,34 @@ function calcularSubsidioSemanal(salarioDiario: number): number {
   return Math.round(((SUBSIDIO_EMPLEO_MENSUAL_2026 / 30.4) * 7) * 100) / 100;
 }
 
+// Salario diario integrado (SBC) para dar de alta al empleado en
+// factura.com -- mismo calculo que ya usa index.html/calcularFactorIntegracion
+// para el IMSS retenido: integra aguinaldo (15 dias) y la prima vacacional de
+// los dias de vacaciones que le tocan por antiguedad (tabla "vacaciones
+// dignas" vigente desde 2023).
+function diasVacacionesLFT(anios: number): number {
+  const tabla: Record<number, number> = { 1: 12, 2: 14, 3: 16, 4: 18, 5: 20 };
+  if (tabla[anios]) return tabla[anios];
+  if (anios <= 10) return 22;
+  if (anios <= 15) return 24;
+  if (anios <= 20) return 26;
+  if (anios <= 25) return 28;
+  return 30;
+}
+function calcularSalarioIntegrado(salarioDiario: number, fechaIngreso: string | null): number {
+  const salario = Number(salarioDiario) || 0;
+  if (!fechaIngreso) return salario;
+  const ingreso = new Date(fechaIngreso + "T12:00:00");
+  const hoy = new Date();
+  let anios = hoy.getFullYear() - ingreso.getFullYear();
+  const aniversarioEsteAnio = new Date(hoy.getFullYear(), ingreso.getMonth(), ingreso.getDate());
+  if (hoy < aniversarioEsteAnio) anios--;
+  const aniosTabla = Math.max(1, anios);
+  const dias = diasVacacionesLFT(aniosTabla);
+  const factor = (365 + 15 + dias * 0.25) / 365;
+  return Math.round(salario * factor * 10000) / 10000;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -217,6 +245,7 @@ Deno.serve(async (req) => {
       const e = l.empleados as any;
       if (e.facturacom_uid) continue;
       const partes = String(e.nombre).trim().split(/\s+/);
+      const salarioIntegrado = calcularSalarioIntegrado(e.salario_diario, e.fecha_ingreso);
       const empleadoRes = await fetch(`${HOST}/payroll/employee/create`, {
         method: "POST", headers, body: JSON.stringify({
           grupo: grupoUid,
@@ -224,8 +253,8 @@ Deno.serve(async (req) => {
           nombre: partes[0] || e.nombre,
           paterno: partes[1] || "",
           materno: partes.slice(2).join(" ") || "",
-          metodo_pago: "03",
-          periodo: "04",
+          metodo_pago: "01", // Efectivo (antes 03=Transferencia, incorrecto -- se paga en efectivo)
+          periodo: "02", // Semanal (antes 04=Quincenal, incorrecto -- la nomina que se timbra es semanal)
           regimen: "02",
           puesto: puestoNombre(e.puesto_id),
           departamento: ENT_LABEL[ent] || ent,
@@ -237,10 +266,10 @@ Deno.serve(async (req) => {
           asimilados: "0",
           sindicalizado: "No",
           entidad_emite: "VER",
-          tipo_jornada: "01",
+          tipo_jornada: "03", // Mixta (antes 01=Diurna, incorrecto -- todos son jornada mixta)
           patronal,
-          cuota_diaria: String(e.salario_diario || 0),
-          salario: String(e.salario_diario || 0),
+          cuota_diaria: String(salarioIntegrado),
+          salario: String(salarioIntegrado),
           riesgo: "2",
           inicio: e.fecha_ingreso,
         }),
