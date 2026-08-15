@@ -1036,7 +1036,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
               <button class="btn btn-sm" onclick="goHorasExtraToday()">Esta semana</button>
               <button class="btn-icon" onclick="goHorasExtraWeek(1)" title="Semana siguiente">▶</button>
               <button class="btn btn-sm" onclick="imprimirHorasExtra()">📊 Imprimir</button>
-              <button class="btn btn-sm" onclick="imprimirRecibosHorasExtra()">🖨️ Recibos</button>
+              <button class="btn btn-sm" onclick="abrirPreviewRecibosHorasExtra()">🖨️ Recibos</button>
             </div>
           </div>
           <div style="overflow-x:auto;margin:14px 0" id="horasextra-grid-wrap"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
@@ -1226,6 +1226,14 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   <div class="modal-hdr"><div class="modal-title" id="m-nomina-preview-title">Vista previa de nómina</div><button class="btn-icon" onclick="closeModal('m-nomina-preview')">✕</button></div>
   <div class="modal-body" id="m-nomina-preview-body"></div>
   <div class="modal-ftr" id="m-nomina-preview-ftr"></div>
+</div>
+</div>
+
+<div class="modal-overlay" id="m-recibos-he-preview">
+<div class="modal" style="max-width:760px">
+  <div class="modal-hdr"><div class="modal-title">Recibos de horas extra — qué incluir</div><button class="btn-icon" onclick="closeModal('m-recibos-he-preview')">✕</button></div>
+  <div class="modal-body" id="m-recibos-he-preview-body"></div>
+  <div class="modal-ftr" id="m-recibos-he-preview-ftr"></div>
 </div>
 </div>
 
@@ -4596,42 +4604,110 @@ async function eliminarLineaNomina(lineaId){
   await loadNomina();renderNomina();
 }
 
+function recibosHeDatosEmpleado(e){
+  const days=asistWeekDays(horasExtraWeekStart);
+  const byEmpFecha={};
+  horasExtraData.forEach(h=>{byEmpFecha[h.empleado_id+'_'+h.fecha]=h;});
+  const rate=horasExtraEffectiveRate(e);
+  const bonif=horasExtraBonif(e.id);
+  const bonifConcepto=(horasExtraOverrideFor(e.id)||{}).bonificacion_concepto||'';
+  const descuento=horasExtraDescuento(e.id);
+  const descuentoConcepto=(horasExtraOverrideFor(e.id)||{}).descuento_concepto||'';
+  let totalHE=0,totalRT=0;
+  days.forEach(fecha=>{
+    const h=byEmpFecha[e.id+'_'+fecha];
+    if(h){totalHE+=h.he||0;totalRT+=h.rt||0;}
+  });
+  return{rate,bonif,bonifConcepto,descuento,descuentoConcepto,totalHE,totalRT};
+}
+
+let recibosHeSel={};
+
+function abrirPreviewRecibosHorasExtra(){
+  const activeIds=new Set(empData.filter(e=>e.entidad===horasExtraActiveEnt&&e.activo).map(e=>e.id));
+  const weekEmpIds=new Set(horasExtraData.map(h=>h.empleado_id));
+  const emps=empData.filter(e=>activeIds.has(e.id)||weekEmpIds.has(e.id)).sort((a,b)=>a.nombre.localeCompare(b.nombre))
+    .filter(e=>{const d=recibosHeDatosEmpleado(e);return d.totalHE||d.totalRT||d.bonif||d.descuento;});
+  if(!emps.length){toast('Nadie tiene horas extra, retardos, bonificación ni descuento que liquidar esta semana',true);return;}
+  recibosHeSel={};
+  emps.forEach(e=>{
+    const d=recibosHeDatosEmpleado(e);
+    recibosHeSel[e.id]={he:!!d.totalHE,rt:!!d.totalRT,bonif:!!d.bonif,descuento:!!d.descuento};
+  });
+  renderRecibosHePreview(emps);
+  openModal('m-recibos-he-preview');
+}
+
+function toggleRecibosHeSel(empId,campo,checked){
+  if(!recibosHeSel[empId])recibosHeSel[empId]={he:false,rt:false,bonif:false,descuento:false};
+  recibosHeSel[empId][campo]=checked;
+  renderRecibosHePreview();
+}
+
+function renderRecibosHePreview(empsArg){
+  const activeIds=new Set(empData.filter(e=>e.entidad===horasExtraActiveEnt&&e.activo).map(e=>e.id));
+  const weekEmpIds=new Set(horasExtraData.map(h=>h.empleado_id));
+  const emps=empsArg||empData.filter(e=>activeIds.has(e.id)||weekEmpIds.has(e.id)).sort((a,b)=>a.nombre.localeCompare(b.nombre))
+    .filter(e=>recibosHeSel[e.id]);
+  const rows=emps.map(e=>{
+    const d=recibosHeDatosEmpleado(e);
+    const sel=recibosHeSel[e.id]||{he:false,rt:false,bonif:false,descuento:false};
+    const he=sel.he?d.totalHE:0,rt=sel.rt?d.totalRT:0,bonif=sel.bonif?d.bonif:0,descuento=sel.descuento?d.descuento:0;
+    const neto=(he-rt)*d.rate+bonif-descuento;
+    return`<tr>
+      <td class="nom-name">${e.nombre}</td>
+      <td>${d.totalHE?`<label style="display:flex;align-items:center;gap:4px;font-size:11px"><input type="checkbox" ${sel.he?'checked':''} onchange="toggleRecibosHeSel('${e.id}','he',this.checked)">${d.totalHE} HE</label>`:'—'}</td>
+      <td>${d.totalRT?`<label style="display:flex;align-items:center;gap:4px;font-size:11px"><input type="checkbox" ${sel.rt?'checked':''} onchange="toggleRecibosHeSel('${e.id}','rt',this.checked)">${d.totalRT} RT</label>`:'—'}</td>
+      <td>${d.bonif?`<label style="display:flex;align-items:center;gap:4px;font-size:11px"><input type="checkbox" ${sel.bonif?'checked':''} onchange="toggleRecibosHeSel('${e.id}','bonif',this.checked)">${fmxn(d.bonif)}</label>`:'—'}</td>
+      <td>${d.descuento?`<label style="display:flex;align-items:center;gap:4px;font-size:11px"><input type="checkbox" ${sel.descuento?'checked':''} onchange="toggleRecibosHeSel('${e.id}','descuento',this.checked)">${fmxn(d.descuento)}</label>`:'—'}</td>
+      <td><b class="${neto<0?'he-neto neg':'he-neto'}">${fmxnSigned(neto)}</b></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('m-recibos-he-preview-body').innerHTML=`
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">
+      Desmarca lo que no quieras que entre en el recibo de cada quien (por ejemplo, si los retardos de alguien ya se
+      descontaron por otro lado). Lo que quede marcado es lo que sale impreso y lo que suma al total del recibo.
+    </div>
+    <div style="overflow-x:auto">
+    <table class="nomina-table" style="min-width:0">
+      <thead><tr><th style="text-align:left">Empleado</th><th>Horas extra</th><th>Retardos</th><th>Bonificación</th><th>Descuento</th><th>Total recibo</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    </div>`;
+  document.getElementById('m-recibos-he-preview-ftr').innerHTML=
+    `<button class="btn" onclick="closeModal('m-recibos-he-preview')">Cancelar</button>`+
+    `<button class="btn btn-filled" onclick="imprimirRecibosHorasExtra()">🖨️ Imprimir recibos</button>`;
+}
+
 function imprimirRecibosHorasExtra(){
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
   const days=asistWeekDays(horasExtraWeekStart);
   const entLabel=(ENTS[horasExtraActiveEnt]||{label:horasExtraActiveEnt}).label;
-  const activeIds=new Set(empData.filter(e=>e.entidad===horasExtraActiveEnt&&e.activo).map(e=>e.id));
-  const weekEmpIds=new Set(horasExtraData.map(h=>h.empleado_id));
-  const emps=empData.filter(e=>activeIds.has(e.id)||weekEmpIds.has(e.id)).sort((a,b)=>a.nombre.localeCompare(b.nombre));
-  const byEmpFecha={};
-  horasExtraData.forEach(h=>{byEmpFecha[h.empleado_id+'_'+h.fecha]=h;});
+  const emps=Object.keys(recibosHeSel).map(id=>empById[id]).filter(Boolean).sort((a,b)=>a.nombre.localeCompare(b.nombre));
   const cards=emps.map(e=>{
-    const rate=horasExtraEffectiveRate(e);
-    const bonif=horasExtraBonif(e.id);
-    const bonifConcepto=(horasExtraOverrideFor(e.id)||{}).bonificacion_concepto||'';
-    let totalHE=0,totalRT=0;
-    days.forEach(fecha=>{
-      const h=byEmpFecha[e.id+'_'+fecha];
-      if(h){totalHE+=h.he||0;totalRT+=h.rt||0;}
-    });
-    if(!totalHE&&!totalRT&&!bonif)return''; // nada que liquidar esta semana, no genera recibo
-    const neto=(totalHE-totalRT)*rate+bonif;
+    const d=recibosHeDatosEmpleado(e);
+    const sel=recibosHeSel[e.id]||{he:false,rt:false,bonif:false,descuento:false};
+    const totalHE=sel.he?d.totalHE:0,totalRT=sel.rt?d.totalRT:0,bonif=sel.bonif?d.bonif:0,descuento=sel.descuento?d.descuento:0;
+    const rate=d.rate,bonifConcepto=d.bonifConcepto,descuentoConcepto=d.descuentoConcepto;
+    if(!totalHE&&!totalRT&&!bonif&&!descuento)return''; // todo desmarcado para este empleado, no genera recibo
+    const neto=(totalHE-totalRT)*rate+bonif-descuento;
     return`<div class="recibo-card">
       <div class="recibo-card-hdr"><img class="recibo-card-logo" src="${PA_LOGO}" alt="El Pescador"><h4>Recibo de horas extra</h4></div>
       <div class="rc-sub">${entLabel} · Semana del ${fmtFechaCorta(days[0])} al ${fmtFechaCorta(days[6])}</div>
       <table>
         <tr><td><strong>Nombre:</strong></td><td>${e.nombre}</td></tr>
         <tr><td><strong>Puesto:</strong></td><td>${puestoNombre(e.puesto_id)||''}</td></tr>
-        <tr><td>Total horas extra</td><td>${totalHE}</td></tr>
-        <tr><td>Total retardos</td><td>${totalRT}</td></tr>
-        <tr><td>Tarifa por hora</td><td>${fmxn(rate)}</td></tr>
+        ${totalHE?`<tr><td>Total horas extra</td><td>${totalHE}</td></tr>`:''}
+        ${totalRT?`<tr><td>Total retardos</td><td>${totalRT}</td></tr>`:''}
+        ${totalHE||totalRT?`<tr><td>Tarifa por hora</td><td>${fmxn(rate)}</td></tr>`:''}
         ${bonif?`<tr><td>Bonificación${bonifConcepto?' ('+bonifConcepto+')':''}</td><td>${fmxn(bonif)}</td></tr>`:''}
+        ${descuento?`<tr><td>Descuento${descuentoConcepto?' ('+descuentoConcepto+')':''}</td><td>-${fmxn(descuento)}</td></tr>`:''}
       </table>
       <div class="rc-total">TOTAL A ${neto<0?'DESCONTAR':'PAGAR'}: ${fmxn(Math.abs(neto))}</div>
       <div class="rc-firma">RECIBÍ — FIRMA DEL EMPLEADO</div>
     </div>`;
   }).join('');
-  document.getElementById('print-horasextra').innerHTML=`<div class="recibo-grid">${cards||'<div class="empty">Nadie tiene horas extra, retardos ni bonificación que liquidar esta semana</div>'}</div>`;
+  document.getElementById('print-horasextra').innerHTML=`<div class="recibo-grid">${cards||'<div class="empty">Nadie tiene horas extra, retardos, bonificación ni descuento que liquidar esta semana</div>'}</div>`;
   window.print();
 }
 
@@ -4777,10 +4853,11 @@ function horasExtraDefaultSaturday(){
   d.setDate(d.getDate()-diff-7); // retrocede una semana completa mas: la ya cerrada
   return dateToISO(d);
 }
-// Las bonificaciones casi siempre se repiten semana con semana -- si nadie
-// las cambia a mano, se copia la ultima bonificacion (y su motivo) del
-// empleado a la semana nueva la primera vez que se abre. Si despues la
-// editan aqui, eso ya queda como el nuevo valor para las semanas siguientes.
+// Las bonificaciones y los descuentos (ej. abono a un prestamo) casi siempre
+// se repiten semana con semana -- si nadie los cambia a mano, se copian el
+// ultimo monto y motivo del empleado a la semana nueva la primera vez que se
+// abre. Si despues los editan aqui, eso ya queda como el nuevo valor para
+// las semanas siguientes.
 async function syncBonificacionesSemana(ent,week){
   const activos=empData.filter(e=>e.entidad===ent&&e.activo).map(e=>e.id);
   if(!activos.length)return;
@@ -4788,10 +4865,10 @@ async function syncBonificacionesSemana(ent,week){
   const yaTiene=new Set((actuales||[]).map(o=>o.empleado_id));
   const faltan=activos.filter(id=>!yaTiene.has(id));
   if(!faltan.length)return;
-  const{data:previos}=await sb.from('horas_extra_semana').select('*').eq('entidad',ent).lt('semana_inicio',week).in('empleado_id',faltan).gt('bonificacion',0).order('semana_inicio',{ascending:false});
+  const{data:previos}=await sb.from('horas_extra_semana').select('*').eq('entidad',ent).lt('semana_inicio',week).in('empleado_id',faltan).or('bonificacion.gt.0,descuento.gt.0').order('semana_inicio',{ascending:false});
   const masReciente={};
   (previos||[]).forEach(o=>{if(!masReciente[o.empleado_id])masReciente[o.empleado_id]=o;});
-  const nuevas=Object.values(masReciente).map(o=>({empleado_id:o.empleado_id,entidad:ent,semana_inicio:week,bonificacion:o.bonificacion,bonificacion_concepto:o.bonificacion_concepto,tarifa_override:null}));
+  const nuevas=Object.values(masReciente).map(o=>({empleado_id:o.empleado_id,entidad:ent,semana_inicio:week,bonificacion:o.bonificacion,bonificacion_concepto:o.bonificacion_concepto,descuento:o.descuento,descuento_concepto:o.descuento_concepto,tarifa_override:null}));
   if(nuevas.length)await sb.from('horas_extra_semana').insert(nuevas);
 }
 async function loadHorasExtra(){
@@ -4827,13 +4904,17 @@ function horasExtraBonif(empId){
   const ov=horasExtraOverrideFor(empId);
   return ov?Number(ov.bonificacion)||0:0;
 }
+function horasExtraDescuento(empId){
+  const ov=horasExtraOverrideFor(empId);
+  return ov?Number(ov.descuento)||0:0;
+}
 async function upsertHorasExtraSemana(empId,patch){
   let ov=horasExtraOverrideFor(empId);
   const base={empleado_id:empId,entidad:horasExtraActiveEnt,semana_inicio:horasExtraWeekStart};
-  if(!ov){ov={...base,tarifa_override:null,bonificacion:0,bonificacion_concepto:null};horasExtraOverrides.push(ov);}
+  if(!ov){ov={...base,tarifa_override:null,bonificacion:0,bonificacion_concepto:null,descuento:0,descuento_concepto:null};horasExtraOverrides.push(ov);}
   Object.assign(ov,patch);
   renderHorasExtraGrid();
-  const{data,error}=await sb.from('horas_extra_semana').upsert({...base,tarifa_override:ov.tarifa_override,bonificacion:ov.bonificacion,bonificacion_concepto:ov.bonificacion_concepto,updated_at:new Date().toISOString()},{onConflict:'empleado_id,entidad,semana_inicio'}).select().single();
+  const{data,error}=await sb.from('horas_extra_semana').upsert({...base,tarifa_override:ov.tarifa_override,bonificacion:ov.bonificacion,bonificacion_concepto:ov.bonificacion_concepto,descuento:ov.descuento,descuento_concepto:ov.descuento_concepto,updated_at:new Date().toISOString()},{onConflict:'empleado_id,entidad,semana_inicio'}).select().single();
   if(error){toast('Error al guardar: '+error.message,true);return;}
   if(data)Object.assign(ov,data);
 }
@@ -4850,6 +4931,12 @@ async function updateHorasExtraBonifMonto(empId,value){
 async function updateHorasExtraBonifConcepto(empId,value){
   await upsertHorasExtraSemana(empId,{bonificacion_concepto:value.trim()||null});
 }
+async function updateHorasExtraDescuentoMonto(empId,value){
+  await upsertHorasExtraSemana(empId,{descuento:Math.max(0,Number(value)||0)});
+}
+async function updateHorasExtraDescuentoConcepto(empId,value){
+  await upsertHorasExtraSemana(empId,{descuento_concepto:value.trim()||null});
+}
 
 function renderHorasExtraGrid(){
   const days=asistWeekDays(horasExtraWeekStart);
@@ -4860,7 +4947,7 @@ function renderHorasExtraGrid(){
   const byEmpFecha={};
   horasExtraData.forEach(h=>{byEmpFecha[h.empleado_id+'_'+h.fecha]=h;});
 
-  const thead1=`<tr><th rowspan="2" style="text-align:left">Empleado</th><th rowspan="2">$ Hr.extra/retardo</th>${days.map((d,i)=>`<th colspan="2">${HORASEXTRA_DIAS[i]}<br><span style="font-weight:400;font-size:9px">${Number(d.slice(8,10))}</span></th>`).join('')}<th rowspan="2">Total<br>HE</th><th rowspan="2">Total<br>RET</th><th rowspan="2">Bonif.</th><th rowspan="2">Total a pagar/<br>descontar</th></tr>`;
+  const thead1=`<tr><th rowspan="2" style="text-align:left">Empleado</th><th rowspan="2">$ Hr.extra/retardo</th>${days.map((d,i)=>`<th colspan="2">${HORASEXTRA_DIAS[i]}<br><span style="font-weight:400;font-size:9px">${Number(d.slice(8,10))}</span></th>`).join('')}<th rowspan="2">Total<br>HE</th><th rowspan="2">Total<br>RET</th><th rowspan="2">Bonif.</th><th rowspan="2">Descuento</th><th rowspan="2">Total a pagar/<br>descontar</th></tr>`;
   const thead2=`<tr>${days.map(()=>'<th>HE</th><th>RT</th>').join('')}</tr>`;
 
   const el=document.getElementById('horasextra-grid-wrap');
@@ -4874,6 +4961,8 @@ function renderHorasExtraGrid(){
     const rateOverridden=!!(ov&&ov.tarifa_override!=null);
     const bonif=ov?Number(ov.bonificacion)||0:0;
     const bonifConcepto=ov?ov.bonificacion_concepto||'':'';
+    const descuento=ov?Number(ov.descuento)||0:0;
+    const descuentoConcepto=ov?ov.descuento_concepto||'':'';
     let totalHE=0,totalRT=0;
     const cells=days.map(fecha=>{
       const h=byEmpFecha[e.id+'_'+fecha];
@@ -4882,13 +4971,15 @@ function renderHorasExtraGrid(){
       return`<td><input type="number" min="0" step="1" class="he-input" value="${he||''}" onchange="updateHorasExtraCelda('${e.id}','${fecha}','he',this.value)"></td>`+
             `<td><input type="number" min="0" step="1" class="he-input" value="${rt||''}" onchange="updateHorasExtraCelda('${e.id}','${fecha}','rt',this.value)"></td>`;
     }).join('');
-    const neto=(totalHE-totalRT)*rate+bonif;
+    const neto=(totalHE-totalRT)*rate+bonif-descuento;
     return`<tr><td class="he-name">${e.nombre}<div style="font-size:10px;font-weight:400;color:var(--text3)">${puestoNombre(e.puesto_id)||''}</div></td>`+
       `<td class="he-rate"><div class="he-rate-cell"><input type="number" min="0" step="0.01" class="he-input he-rate-input" value="${rate?Number(rate.toFixed(2)):''}" title="Tarifa por hora extra/retardo" onchange="updateHorasExtraTarifa('${e.id}',this.value)">`+
       `${rateOverridden?`<button class="he-rate-reset" title="Restaurar cálculo automático (salario/8)" onclick="resetHorasExtraTarifa('${e.id}')">↺ auto</button>`:''}</div></td>`+
       `${cells}<td class="he-total">${totalHE}</td><td class="he-total">${totalRT}</td>`+
       `<td class="he-bonif"><div class="he-bonif-cell"><input type="number" min="0" step="0.01" class="he-input he-bonif-input" value="${bonif||''}" placeholder="0" title="Bonificación" onchange="updateHorasExtraBonifMonto('${e.id}',this.value)">`+
       `<input type="text" class="he-bonif-concepto" value="${bonifConcepto}" placeholder="Motivo" title="Motivo de la bonificación" onchange="updateHorasExtraBonifConcepto('${e.id}',this.value)"></div></td>`+
+      `<td class="he-bonif"><div class="he-bonif-cell"><input type="number" min="0" step="0.01" class="he-input he-bonif-input" value="${descuento||''}" placeholder="0" title="Descuento (ej. abono a préstamo)" onchange="updateHorasExtraDescuentoMonto('${e.id}',this.value)">`+
+      `<input type="text" class="he-bonif-concepto" value="${descuentoConcepto}" placeholder="Motivo" title="Motivo del descuento" onchange="updateHorasExtraDescuentoConcepto('${e.id}',this.value)"></div></td>`+
       `<td class="he-neto ${neto<0?'neg':''}">${fmxnSigned(neto)}</td></tr>`;
   }).join('');
 
@@ -4918,6 +5009,7 @@ function imprimirHorasExtra(){
   const rows=emps.map((e,i)=>{
     const rate=horasExtraEffectiveRate(e);
     const bonif=horasExtraBonif(e.id);
+    const descuento=horasExtraDescuento(e.id);
     let totalHE=0,totalRT=0;
     const cells=days.map(fecha=>{
       const h=byEmpFecha[e.id+'_'+fecha];
@@ -4925,7 +5017,8 @@ function imprimirHorasExtra(){
       totalHE+=he;totalRT+=rt;
       return`<td class="nc">${he||''}</td><td class="nc">${rt||''}</td>`;
     }).join('');
-    const neto=(totalHE-totalRT)*rate+bonif;
+    const neto=(totalHE-totalRT)*rate+bonif-descuento;
+    const bonifCelda=[bonif?'+$'+fmxnPlain(bonif):'',descuento?'-$'+fmxnPlain(descuento):''].filter(Boolean).join(' ');
     return`<tr>
       <td class="nc">${i+1}</td>
       <td class="nl">${e.nombre.toUpperCase()}</td>
@@ -4933,7 +5026,7 @@ function imprimirHorasExtra(){
       ${cells}
       <td class="nc nb">${totalHE}</td>
       <td class="nc nb">${totalRT}</td>
-      <td class="nr">${bonif?'$'+fmxnPlain(bonif):''}</td>
+      <td class="nr">${bonifCelda}</td>
       <td class="nr nb ${neto<0?'neg':''}">${neto<0?'-':''}$${fmxnPlain(Math.abs(neto))}</td>
     </tr>`;
   }).join('');
