@@ -55,6 +55,23 @@ const DOMICILIO_EMPRESA: Record<string, {
 
 const TIPO_CONTRATO_SAT: Record<string, string> = { indeterminado: "01", obra: "02", prueba: "05" };
 
+// Subsidio para el empleo, decreto DOF 31/12/2025 vigente en 2026: cuota fija
+// mensual (sin tabla escalonada), completa si el trabajador no rebasa el
+// limite mensual, prorrateada a la semana igual que en el front-end
+// (index.html, calcularSubsidioSemanal) para que el ISR guardado en
+// nomina_lineas y el subsidio que se manda al CFDI salgan consistentes entre
+// si. La elegibilidad se checa contra el SALARIO DIARIO BASE, no el subtotal
+// variable de la semana -- ver la nota en index.html/calcularSubsidioSemanal
+// con el caso real que confirma esto.
+const SUBSIDIO_EMPLEO_MENSUAL_2026 = 536.22;
+const SUBSIDIO_EMPLEO_LIMITE_MENSUAL_2026 = 11492.66;
+function calcularSubsidioSemanal(salarioDiario: number): number {
+  const salario = Number(salarioDiario) || 0;
+  const limiteDiario = SUBSIDIO_EMPLEO_LIMITE_MENSUAL_2026 / 30.4;
+  if (salario <= 0 || salario > limiteDiario) return 0;
+  return Math.round(((SUBSIDIO_EMPLEO_MENSUAL_2026 / 30.4) * 7) * 100) / 100;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -210,6 +227,7 @@ Deno.serve(async (req) => {
       const diasPagados = Number(l.dias_pagados) || 0;
       const sueldo = salario * diasPagados;
       const prima = l.trabajo_domingo ? salario * 0.25 : 0;
+      const subsidio = calcularSubsidioSemanal(salario);
       const percepciones = [{ tipo: "001", clave: "001", descripcion: "Sueldos, salarios rayas y jornales", exento: "0", gravado: sueldo.toFixed(2) }];
       if (prima > 0) percepciones.push({ tipo: "019", clave: "019", descripcion: "Prima dominical", exento: "0", gravado: prima.toFixed(2) });
       const deducciones = [];
@@ -220,8 +238,8 @@ Deno.serve(async (req) => {
         percepciones,
         deducciones,
         otrospagos: [{
-          tipo: "002", clave: "002", descripcion: "Subsidio al empleo", importe: "0.00",
-          SubsidioAlEmpleo: { SubsidioCausado: "0.00" },
+          tipo: "002", clave: "002", descripcion: "Subsidio al empleo", importe: subsidio.toFixed(2),
+          SubsidioAlEmpleo: { SubsidioCausado: subsidio.toFixed(2) },
         }],
       };
     });

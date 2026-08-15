@@ -4273,7 +4273,7 @@ async function syncNominaSemana(ent,week){
       if(prev&&prev[0])retencionIsr=Number(prev[0].retencion_isr)||0;
       else{
         const salario=Number(e.salario_diario)||0;
-        retencionIsr=calcularIsrSemanal(salario*sugerido+(trabajoDomingo?salario*0.25:0));
+        retencionIsr=calcularIsrNetoSemanal(salario*sugerido+(trabajoDomingo?salario*0.25:0),salario);
       }
       nuevas.push({periodo_id:periodo.id,empleado_id:e.id,dias_trabajados:trabajados,dias_pagados:sugerido,trabajo_domingo:trabajoDomingo,salario_diario:e.salario_diario||0,dia_descanso:null,retencion_isr:retencionIsr,retencion_imss:0,dias_pagados_manual:false});
     }else{
@@ -4302,10 +4302,7 @@ function nominaCalc(l){
 }
 
 // Tarifa oficial de ISR para pagos semanales (periodo de 7 dias), Anexo 8 de
-// la RMF 2026 (DOF 28/12/2025, seccion B.II). No incluye subsidio al empleo
-// -- factura.com tampoco lo aplica en el timbrado (ver timbrar-nomina), asi
-// que el ISR calculado aqui es solo la retencion segun la tarifa, sin restar
-// subsidio.
+// la RMF 2026 (DOF 28/12/2025, seccion B.II).
 const ISR_TARIFA_SEMANAL_2026=[
   {limInf:0.01,limSup:194.46,cuota:0,pct:1.92},
   {limInf:194.47,limSup:1650.67,cuota:3.71,pct:6.40},
@@ -4324,6 +4321,32 @@ function calcularIsrSemanal(baseGravable){
   if(base<=0)return 0;
   const b=ISR_TARIFA_SEMANAL_2026.find(r=>base>=r.limInf&&base<=r.limSup)||ISR_TARIFA_SEMANAL_2026[ISR_TARIFA_SEMANAL_2026.length-1];
   return Math.round((b.cuota+(base-b.limInf)*(b.pct/100))*100)/100;
+}
+
+// Subsidio para el empleo, decreto DOF 31/12/2025 vigente en 2026: cuota fija
+// mensual (no tabla escalonada, esa la tenia el mecanismo anterior a 2024),
+// aplicable completa si el trabajador no rebasa el limite mensual, prorrateada
+// a la semana con el mismo factor de dias/mes (30.4) que usa el SAT. La
+// elegibilidad se checa contra el SALARIO DIARIO BASE (no el total variable
+// de la semana, que puede subir por horas extra/prima y no debe afectar si
+// aplica o no) -- verificado contra un caso real: Amalia Hernandez Garcia,
+// salario_diario 368.05, subtotal semana 2668.36, ISR Aspel/Excel 84.20;
+// checando elegibilidad con el subtotal daba 0 de subsidio (no cuadraba),
+// checando con salario_diario si cuadra exacto (207.67 tarifa - 123.47
+// subsidio = 84.20).
+const SUBSIDIO_EMPLEO_MENSUAL_2026=536.22;
+const SUBSIDIO_EMPLEO_LIMITE_MENSUAL_2026=11492.66;
+function calcularSubsidioSemanal(salarioDiario){
+  const salario=Number(salarioDiario)||0;
+  const limiteDiario=SUBSIDIO_EMPLEO_LIMITE_MENSUAL_2026/30.4;
+  if(salario<=0||salario>limiteDiario)return 0;
+  return Math.round((SUBSIDIO_EMPLEO_MENSUAL_2026/30.4)*7*100)/100;
+}
+// ISR neto a retener: la tarifa menos el subsidio para el empleo, sin bajar
+// de cero (el credito en efectivo cuando el subsidio supera el ISR causado
+// no esta implementado -- a estos niveles de salario no debería ocurrir).
+function calcularIsrNetoSemanal(baseGravable,salarioDiario){
+  return Math.max(0,Math.round((calcularIsrSemanal(baseGravable)-calcularSubsidioSemanal(salarioDiario))*100)/100);
 }
 
 function renderNomina(){
@@ -4406,8 +4429,8 @@ function renderNominaRow(l,e){
     <td class="nom-computed">${fmxn(c.subtotal)}</td>
     <td><div style="display:flex;align-items:center;gap:4px">
       <input type="number" step="0.01" value="${l.retencion_isr}" style="width:64px" onchange="updateLineaField('${l.id}','retencion_isr',this.value)">
-      <button class="he-rate-reset" title="Calcular ISR con la tarifa SAT semanal 2026 sobre el subtotal de esta línea (${fmxn(calcularIsrSemanal(c.subtotal))})" onclick="recalcularIsrLinea('${l.id}')">↺ auto</button>
-      ${Math.abs((Number(l.retencion_isr)||0)-calcularIsrSemanal(c.subtotal))>0.5?`<span title="La tarifa SAT semanal daría ${fmxn(calcularIsrSemanal(c.subtotal))} para este subtotal — el valor capturado no coincide, revísalo" style="color:var(--amber);cursor:help">⚠️</span>`:''}
+      <button class="he-rate-reset" title="Calcular ISR (tarifa SAT semanal 2026 menos subsidio al empleo) sobre el subtotal de esta línea (${fmxn(calcularIsrNetoSemanal(c.subtotal,l.salario_diario))})" onclick="recalcularIsrLinea('${l.id}')">↺ auto</button>
+      ${Math.abs((Number(l.retencion_isr)||0)-calcularIsrNetoSemanal(c.subtotal,l.salario_diario))>0.5?`<span title="La tarifa SAT semanal menos subsidio daría ${fmxn(calcularIsrNetoSemanal(c.subtotal,l.salario_diario))} para este subtotal — el valor capturado no coincide, revísalo" style="color:var(--amber);cursor:help">⚠️</span>`:''}
     </div></td>
     <td><input type="number" step="0.01" value="${l.retencion_imss}" onchange="updateLineaField('${l.id}','retencion_imss',this.value)"></td>
     <td class="nom-total">${fmxn(c.total)}</td>
@@ -4540,7 +4563,7 @@ async function updateLineaField(lineaId,field,value){
 async function recalcularIsrLinea(lineaId){
   const l=nominaLineas.find(x=>x.id===lineaId);
   if(!l)return;
-  const isr=calcularIsrSemanal(nominaCalc(l).subtotal);
+  const isr=calcularIsrNetoSemanal(nominaCalc(l).subtotal,l.salario_diario);
   await updateLineaField(lineaId,'retencion_isr',isr);
 }
 
