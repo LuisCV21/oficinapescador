@@ -4604,7 +4604,7 @@ async function confirmarTimbrarNomina(){
     });
     const out=await resp.json();
     console.log('[timbrar-nomina]',out);
-    if(!resp.ok&&!out.resultados){toast('Error: '+(out.error||resp.statusText)+(out.debug?' — '+JSON.stringify(out.debug):''),true);return;}
+    if(!resp.ok&&!out.resultados){toast('Error: '+(out.error||resp.statusText)+(out.detalle?' — '+JSON.stringify(out.detalle):'')+(out.debug?' — '+JSON.stringify(out.debug):''),true);return;}
     closeModal('m-nomina-preview');
     await loadNomina();renderNomina();
     if(out.timbrados)toast(`✓ ${out.timbrados} de ${out.total||out.timbrados} nómina(s) timbrada(s)`);
