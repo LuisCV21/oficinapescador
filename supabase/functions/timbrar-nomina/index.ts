@@ -273,9 +273,14 @@ Deno.serve(async (req) => {
     });
     const nominaData = await nominaRes.json();
     if (nominaData.response !== "success") {
+      const mensaje = "factura.com rechazó la nómina: " + JSON.stringify(nominaData);
       for (const l of listosConUid) {
-        resultados.push({ linea_id: l.id, empleado: (l.empleados as any).nombre, status: "error", mensaje: "factura.com rechazó la nómina: " + JSON.stringify(nominaData) });
+        resultados.push({ linea_id: l.id, empleado: (l.empleados as any).nombre, status: "error", mensaje });
       }
+      await db.from("nomina_lineas").update({ facturacom_status: "error", facturacom_mensaje: mensaje }).in(
+        "id",
+        listosConUid.map((l) => l.id),
+      );
       return json({ ok: false, timbrados: 0, resultados });
     }
 

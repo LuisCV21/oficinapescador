@@ -4680,7 +4680,10 @@ async function confirmarTimbrarNomina(){
     closeModal('m-nomina-preview');
     await loadNomina();renderNomina();
     if(out.timbrados)toast(`✓ ${out.timbrados} de ${out.total||out.timbrados} nómina(s) timbrada(s)`);
-    else toast('No se timbró ninguna — revisa la columna "Timbre" de cada empleado',true);
+    else{
+      const primerError=(out.resultados||[]).find(r=>r.status==='error');
+      toast('No se timbró ninguna'+(primerError?': '+primerError.mensaje:' — revisa la columna "Timbre" de cada empleado'),true);
+    }
   }catch(e){
     toast('Error de red al timbrar',true);
     console.error(e);
