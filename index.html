@@ -4437,8 +4437,8 @@ function renderNominaRow(l,e){
     <td class="nom-computed">${fmxn(c.subtotal)}</td>
     <td><div style="display:flex;align-items:center;gap:4px">
       <input type="number" step="0.01" value="${l.retencion_isr}" style="width:64px" onchange="updateLineaField('${l.id}','retencion_isr',this.value)">
-      <button class="he-rate-reset" title="Calcular ISR (tarifa SAT semanal 2026 menos subsidio al empleo) sobre el subtotal de esta línea (${fmxn(calcularIsrNetoSemanal(c.subtotal,l.salario_diario))})" onclick="recalcularIsrLinea('${l.id}')">↺ auto</button>
-      ${Math.abs((Number(l.retencion_isr)||0)-calcularIsrNetoSemanal(c.subtotal,l.salario_diario))>0.5?`<span title="La tarifa SAT semanal menos subsidio daría ${fmxn(calcularIsrNetoSemanal(c.subtotal,l.salario_diario))} para este subtotal — el valor capturado no coincide, revísalo" style="color:var(--amber);cursor:help">⚠️</span>`:''}
+      <button class="he-rate-reset" title="La tarifa SAT (menos subsidio al empleo) calcula ${fmxn(calcularIsrNetoSemanal(c.subtotal,l.salario_diario))} de ISR para el subtotal de esta línea (${fmxn(c.subtotal)}). Clic para usar ese valor." onclick="recalcularIsrLinea('${l.id}')">↺ auto</button>
+      ${Math.abs((Number(l.retencion_isr)||0)-calcularIsrNetoSemanal(c.subtotal,l.salario_diario))>0.5?`<span title="Capturado: ${fmxn(l.retencion_isr)} — la tarifa SAT calcula: ${fmxn(calcularIsrNetoSemanal(c.subtotal,l.salario_diario))}. No coinciden, revísalo." style="color:var(--amber);cursor:help">⚠️</span>`:''}
     </div></td>
     <td><input type="number" step="0.01" value="${l.retencion_imss}" onchange="updateLineaField('${l.id}','retencion_imss',this.value)"></td>
     <td class="nom-total">${fmxn(c.total)}</td>
