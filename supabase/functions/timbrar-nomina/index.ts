@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
       return json({ error: "Solo un administrador puede timbrar nómina" }, 403);
     }
 
-    const { periodo_id } = await req.json().catch(() => ({}));
+    const { periodo_id, linea_ids } = await req.json().catch(() => ({}));
     if (!periodo_id) return json({ error: "Falta periodo_id" }, 400);
 
     const db = createClient(supabaseUrl, serviceKey);
@@ -95,10 +95,15 @@ Deno.serve(async (req) => {
     }
     const headers = facturacomHeaders(apiKey, secretKey);
 
-    const { data: lineas, error: lineasErr } = await db
+    // linea_ids es opcional: si viene, solo se timbran esas lineas del periodo
+    // (usado por el "Solo esta" / seleccion parcial de la vista previa, para
+    // poder probar con un empleado antes de mandar el resto).
+    let lineasQuery = db
       .from("nomina_lineas")
       .select("*, empleados(id,nombre,curp,rfc,nss,salario_diario,puesto_id,fecha_ingreso,tipo_contrato,facturacom_uid)")
       .eq("periodo_id", periodo_id);
+    if (Array.isArray(linea_ids) && linea_ids.length) lineasQuery = lineasQuery.in("id", linea_ids);
+    const { data: lineas, error: lineasErr } = await lineasQuery;
     if (lineasErr) return json({ error: lineasErr.message }, 500);
     if (!lineas || !lineas.length) return json({ error: "Esta nómina no tiene empleados capturados" }, 400);
 

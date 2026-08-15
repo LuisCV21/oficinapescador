@@ -4265,9 +4265,16 @@ async function syncNominaSemana(ent,week){
     const sugerido=trabajados>0?Math.min(trabajados+1,7):0;
     const existing=lineaByEmp[e.id];
     if(!existing){
+      // Por default se repite el ISR de la semana pasada del mismo empleado
+      // (casi siempre aplica igual). El boton "auto" en la fila permite
+      // recalcularlo con la tarifa SAT si no coincide -- ver calcularIsrSemanal.
       let retencionIsr=0;
       const{data:prev}=await sb.from('nomina_lineas').select('retencion_isr,nomina_periodos!inner(semana_inicio,entidad)').eq('empleado_id',e.id).eq('nomina_periodos.entidad',ent).lt('nomina_periodos.semana_inicio',week).order('semana_inicio',{foreignTable:'nomina_periodos',ascending:false}).limit(1);
       if(prev&&prev[0])retencionIsr=Number(prev[0].retencion_isr)||0;
+      else{
+        const salario=Number(e.salario_diario)||0;
+        retencionIsr=calcularIsrSemanal(salario*sugerido+(trabajoDomingo?salario*0.25:0));
+      }
       nuevas.push({periodo_id:periodo.id,empleado_id:e.id,dias_trabajados:trabajados,dias_pagados:sugerido,trabajo_domingo:trabajoDomingo,salario_diario:e.salario_diario||0,dia_descanso:null,retencion_isr:retencionIsr,retencion_imss:0,dias_pagados_manual:false});
     }else{
       const upd={};
@@ -4292,6 +4299,31 @@ function nominaCalc(l){
   const subtotal=nominaFiscal+primaDominical;
   const total=subtotal-(Number(l.retencion_isr)||0)-(Number(l.retencion_imss)||0);
   return{nominaFiscal,primaDominical,subtotal,total};
+}
+
+// Tarifa oficial de ISR para pagos semanales (periodo de 7 dias), Anexo 8 de
+// la RMF 2026 (DOF 28/12/2025, seccion B.II). No incluye subsidio al empleo
+// -- factura.com tampoco lo aplica en el timbrado (ver timbrar-nomina), asi
+// que el ISR calculado aqui es solo la retencion segun la tarifa, sin restar
+// subsidio.
+const ISR_TARIFA_SEMANAL_2026=[
+  {limInf:0.01,limSup:194.46,cuota:0,pct:1.92},
+  {limInf:194.47,limSup:1650.67,cuota:3.71,pct:6.40},
+  {limInf:1650.68,limSup:2900.87,cuota:96.95,pct:10.88},
+  {limInf:2900.88,limSup:3372.11,cuota:232.96,pct:16.00},
+  {limInf:3372.12,limSup:4037.32,cuota:308.35,pct:17.92},
+  {limInf:4037.33,limSup:8142.75,cuota:427.56,pct:21.36},
+  {limInf:8142.76,limSup:12834.08,cuota:1304.45,pct:23.52},
+  {limInf:12834.09,limSup:24502.45,cuota:2407.86,pct:30.00},
+  {limInf:24502.46,limSup:32669.91,cuota:5908.35,pct:32.00},
+  {limInf:32669.92,limSup:98009.66,cuota:8521.94,pct:34.00},
+  {limInf:98009.67,limSup:Infinity,cuota:30737.49,pct:35.00},
+];
+function calcularIsrSemanal(baseGravable){
+  const base=Number(baseGravable)||0;
+  if(base<=0)return 0;
+  const b=ISR_TARIFA_SEMANAL_2026.find(r=>base>=r.limInf&&base<=r.limSup)||ISR_TARIFA_SEMANAL_2026[ISR_TARIFA_SEMANAL_2026.length-1];
+  return Math.round((b.cuota+(base-b.limInf)*(b.pct/100))*100)/100;
 }
 
 function renderNomina(){
@@ -4372,7 +4404,11 @@ function renderNominaRow(l,e){
     <td><input type="number" step="1" value="${l.dias_pagados}" onchange="updateLineaField('${l.id}','dias_pagados',this.value)"></td>
     <td class="nom-computed">${fmxn(c.primaDominical)}</td>
     <td class="nom-computed">${fmxn(c.subtotal)}</td>
-    <td><input type="number" step="0.01" value="${l.retencion_isr}" onchange="updateLineaField('${l.id}','retencion_isr',this.value)"></td>
+    <td><div style="display:flex;align-items:center;gap:4px">
+      <input type="number" step="0.01" value="${l.retencion_isr}" style="width:64px" onchange="updateLineaField('${l.id}','retencion_isr',this.value)">
+      <button class="he-rate-reset" title="Calcular ISR con la tarifa SAT semanal 2026 sobre el subtotal de esta línea (${fmxn(calcularIsrSemanal(c.subtotal))})" onclick="recalcularIsrLinea('${l.id}')">↺ auto</button>
+      ${Math.abs((Number(l.retencion_isr)||0)-calcularIsrSemanal(c.subtotal))>0.5?`<span title="La tarifa SAT semanal daría ${fmxn(calcularIsrSemanal(c.subtotal))} para este subtotal — el valor capturado no coincide, revísalo" style="color:var(--amber);cursor:help">⚠️</span>`:''}
+    </div></td>
     <td><input type="number" step="0.01" value="${l.retencion_imss}" onchange="updateLineaField('${l.id}','retencion_imss',this.value)"></td>
     <td class="nom-total">${fmxn(c.total)}</td>
     <td>${timbreCell}</td>
@@ -4387,10 +4423,11 @@ function renderNominaRow(l,e){
 // tabla semanal — así se puede revisar todo antes de que exista un solo
 // CFDI real, y factura.com nunca se llama hasta que se confirme dentro
 // de este modal.
+let nominaPreviewFilas=[],nominaPreviewSel=new Set();
+
 function abrirPreviewNomina(){
   if(!isAdmin()||!nominaPeriodo)return;
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
-  const entLabel=(ENTS[nominaActiveEnt]||{label:nominaActiveEnt}).label;
   const filas=nominaLineas.map(l=>{
     const e=empById[l.empleado_id];if(!e)return null;
     const c=nominaCalc(l);
@@ -4402,17 +4439,41 @@ function abrirPreviewNomina(){
     if(Number(l.dias_pagados)<=0)faltan.push('días pagados en 0');
     return{e,l,c,faltan};
   }).filter(Boolean).sort((a,b)=>a.e.nombre.localeCompare(b.e.nombre));
-  const listos=filas.filter(f=>!f.faltan.length);
+  nominaPreviewFilas=filas;
+  nominaPreviewSel=new Set(filas.filter(f=>!f.faltan.length).map(f=>f.l.id));
+  renderNominaPreviewModal();
+  openModal('m-nomina-preview');
+}
+
+function toggleNominaPreviewSel(lineaId,checked){
+  if(checked)nominaPreviewSel.add(lineaId);else nominaPreviewSel.delete(lineaId);
+  renderNominaPreviewModal();
+}
+function nominaPreviewSoloEsta(lineaId){
+  nominaPreviewSel=new Set([lineaId]);
+  renderNominaPreviewModal();
+}
+function nominaPreviewSelTodos(marcar){
+  nominaPreviewSel=marcar?new Set(nominaPreviewFilas.filter(f=>!f.faltan.length).map(f=>f.l.id)):new Set();
+  renderNominaPreviewModal();
+}
+
+function renderNominaPreviewModal(){
+  const entLabel=(ENTS[nominaActiveEnt]||{label:nominaActiveEnt}).label;
+  const filas=nominaPreviewFilas;
+  const seleccionados=filas.filter(f=>!f.faltan.length&&nominaPreviewSel.has(f.l.id));
   document.getElementById('m-nomina-preview-title').textContent='Vista previa · Nómina '+entLabel;
   document.getElementById('m-nomina-preview-body').innerHTML=`
     <div style="font-size:12px;color:var(--text2);margin-bottom:12px">
       Esto es lo que se mandaría a timbrar. Nada se envía a factura.com todavía — factura.com no tiene modo de prueba,
-      así que la confirmación de abajo genera CFDIs reales.
+      así que la confirmación de abajo genera CFDIs reales solo para las filas marcadas. Desmarca a quien no quieras
+      timbrar todavía, o usa "Solo esta" para probar con una sola persona primero.
     </div>
     <div style="overflow-x:auto">
     <table class="nomina-table" style="min-width:0">
-      <thead><tr><th style="text-align:left">Empleado</th><th>Sueldo</th><th>Prima dom.</th><th>ISR</th><th>IMSS</th><th>Neto</th><th>Estado</th></tr></thead>
+      <thead><tr><th></th><th style="text-align:left">Empleado</th><th>Sueldo</th><th>Prima dom.</th><th>ISR</th><th>IMSS</th><th>Neto</th><th>Estado</th><th></th></tr></thead>
       <tbody>${filas.map(f=>`<tr>
+        <td>${f.faltan.length?'':`<input type="checkbox" ${nominaPreviewSel.has(f.l.id)?'checked':''} onchange="toggleNominaPreviewSel('${f.l.id}',this.checked)">`}</td>
         <td class="nom-name">${f.e.nombre}</td>
         <td>${fmxn(f.c.nominaFiscal)}</td>
         <td>${fmxn(f.c.primaDominical)}</td>
@@ -4420,21 +4481,25 @@ function abrirPreviewNomina(){
         <td>${fmxn(f.l.retencion_imss)}</td>
         <td><b>${fmxn(f.c.total)}</b></td>
         <td>${f.faltan.length?`<span style="color:var(--amber);font-size:11px" title="Falta: ${f.faltan.join(', ')}">⚠️ Falta: ${f.faltan.join(', ')}</span>`:`<span style="color:var(--green);font-size:11px">✅ Listo</span>`}</td>
+        <td>${f.faltan.length?'':`<button class="btn-text" style="font-size:10px" onclick="nominaPreviewSoloEsta('${f.l.id}')">Solo esta</button>`}</td>
       </tr>`).join('')}</tbody>
     </table>
     </div>
-    <div style="font-size:12px;color:var(--text2);margin-top:12px">
-      ${listos.length?`Se van a timbrar <b>${listos.length}</b> de ${filas.length} empleados. Los que dicen "Falta" no se tocan.`:'Ningún empleado está listo todavía — completa CURP/RFC/NSS en Recursos Humanos.'}
+    <div style="font-size:12px;color:var(--text2);margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span>${seleccionados.length?`Se van a timbrar <b>${seleccionados.length}</b> de ${filas.length} empleados.`:'No hay nadie marcado para timbrar.'}</span>
+      <button class="btn-text" style="font-size:11px" onclick="nominaPreviewSelTodos(true)">Marcar todos los listos</button>
+      <button class="btn-text" style="font-size:11px" onclick="nominaPreviewSelTodos(false)">Desmarcar todos</button>
     </div>`;
   document.getElementById('m-nomina-preview-ftr').innerHTML=
     `<button class="btn" onclick="closeModal('m-nomina-preview')">Cerrar</button>`+
-    (listos.length?`<button class="btn btn-filled" id="nomina-confirmar-timbrar-btn" onclick="confirmarTimbrarNomina()">🧾 Confirmar y timbrar (${listos.length})</button>`:'');
-  openModal('m-nomina-preview');
+    (seleccionados.length?`<button class="btn btn-filled" id="nomina-confirmar-timbrar-btn" onclick="confirmarTimbrarNomina()">🧾 Confirmar y timbrar (${seleccionados.length})</button>`:'');
 }
 
 async function confirmarTimbrarNomina(){
   if(!isAdmin()||!nominaPeriodo)return;
-  if(!confirm('Esto genera CFDIs de nómina reales ante el SAT, no se puede deshacer con un simple clic. ¿Confirmar y timbrar?'))return;
+  const lineaIds=Array.from(nominaPreviewSel);
+  if(!lineaIds.length)return;
+  if(!confirm(`Esto genera ${lineaIds.length} CFDI(s) de nómina reales ante el SAT, no se puede deshacer con un simple clic. ¿Confirmar y timbrar?`))return;
   const btn=document.getElementById('nomina-confirmar-timbrar-btn');
   if(btn){btn.disabled=true;btn.textContent='Timbrando...';}
   try{
@@ -4442,7 +4507,7 @@ async function confirmarTimbrarNomina(){
     const resp=await fetch(SUPA_URL+'/functions/v1/timbrar-nomina',{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
-      body:JSON.stringify({periodo_id:nominaPeriodo.id})
+      body:JSON.stringify({periodo_id:nominaPeriodo.id,linea_ids:lineaIds})
     });
     const out=await resp.json();
     console.log('[timbrar-nomina]',out);
@@ -4470,6 +4535,13 @@ async function updateLineaField(lineaId,field,value){
   renderNomina();
   const{error}=await sb.from('nomina_lineas').update(payload).eq('id',lineaId);
   if(error)toast('Error al guardar: '+error.message,true);
+}
+
+async function recalcularIsrLinea(lineaId){
+  const l=nominaLineas.find(x=>x.id===lineaId);
+  if(!l)return;
+  const isr=calcularIsrSemanal(nominaCalc(l).subtotal);
+  await updateLineaField(lineaId,'retencion_isr',isr);
 }
 
 async function generarNomina(){
