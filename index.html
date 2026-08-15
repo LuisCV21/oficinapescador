@@ -1067,6 +1067,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
               <button class="btn-icon" onclick="goNominaWeek(1)" title="Semana siguiente">▶</button>
               <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir nómina</button>
               <button class="btn btn-sm" style="display:none" onclick="imprimirRecibosNominaSimple()" id="nomina-recibos-simples-btn">🧾 Recibos simples</button>
+              <button class="btn btn-sm" onclick="imprimirRecibosNominaTodos()" id="nomina-recibos-todos-btn">🖨️ Recibos de todos</button>
               <button class="btn btn-sm btn-filled" style="display:none" onclick="abrirPreviewNomina()" id="nomina-timbrar-btn">🧾 Timbrar nómina</button>
               <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🔄 Recalcular desde cero</button>
             </div>
@@ -4928,6 +4929,36 @@ function fmtNominaFecha(iso){
 // justo un dia antes de que empiece esta semana de nomina (domingo-sabado)
 // -- son la misma quincena de pago, solo que Horas Extra las trackea con un
 // calendario corrido un dia, ver horasExtraDefaultSaturday.
+// Recibo de nomina para TODOS los empleados de la semana (fiscales o no),
+// con el mismo monto que se hubiera timbrado -- para cuando el timbrado
+// real no esta disponible (ej. factura.com atorado) y hay que pagarles con
+// un recibo en papel mientras tanto. No toca nomina_fiscal ni el estatus de
+// timbrado de nadie, es solo una impresion.
+function imprimirRecibosNominaTodos(){
+  if(!nominaPeriodo){toast('No hay nómina generada para esta semana',true);return;}
+  const empById={};empData.forEach(e=>{empById[e.id]=e;});
+  const candidatos=nominaLineas.filter(l=>Number(l.dias_pagados)>0&&empById[l.empleado_id]);
+  if(!candidatos.length){toast('Nadie tiene días pagados esta semana',true);return;}
+  const days=asistWeekDays(nominaWeekStart);
+  const semanaLabel=fmtNominaRango(days[0],days[6]),fechaPago=fmtNominaFecha(days[6]);
+  const cards=candidatos.map(l=>{
+    const e=empById[l.empleado_id];
+    const c=nominaCalc(l);
+    const isr=Number(l.retencion_isr)||0,imss=Number(l.retencion_imss)||0;
+    const filas=[{concepto:'Salario',dias:l.dias_pagados,horas:'',importe:fmxn(c.nominaFiscal)}];
+    if(c.primaDominical)filas.push({concepto:'Prima dominical',dias:'',horas:'',importe:fmxn(c.primaDominical)});
+    if(isr)filas.push({concepto:'ISR',dias:'',horas:'',importe:'-'+fmxn(isr)});
+    if(imss)filas.push({concepto:'IMSS',dias:'',horas:'',importe:'-'+fmxn(imss)});
+    return reciboCardHTML({
+      titulo:'Recibo de nómina',semanaLabel,fechaPago,entidad:nominaActiveEnt,
+      nombre:e.nombre,puesto:puestoNombre(e.puesto_id)||'',
+      filas,totalLabel:`TOTAL A ${c.total<0?'DESCONTAR':'PAGAR'}`,totalMonto:fmxn(Math.abs(c.total)),
+    });
+  }).join('');
+  document.getElementById('print-horasextra').innerHTML=`<div class="recibo-grid">${cards}</div>`;
+  window.print();
+}
+
 async function imprimirRecibosNominaSimple(){
   if(!nominaPeriodo)return;
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
