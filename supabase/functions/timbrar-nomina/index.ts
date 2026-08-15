@@ -120,9 +120,10 @@ Deno.serve(async (req) => {
       const statusDataV = await statusResV.json();
       const registrosV: any[] = statusDataV?.data?.registros || [];
       const e = l.empleados as any;
-      const reg = registrosV.find((r) => r.data?.id === e.facturacom_uid) || registrosV.find((r) => r.data?.nombre === e.nombre);
+      const reg = registrosV.find((r) => r.employee_uid === e.facturacom_uid) || registrosV.find((r) => r.data?.id === e.facturacom_uid) || registrosV.find((r) => r.data?.nombre === e.nombre);
       const timbrada = reg?.status_timbre === "timbrada";
-      const rechazada = reg?.status_timbre && reg.status_timbre !== "timbrada" && reg.status_timbre !== "en fila" && reg.status_timbre !== "pendiente";
+      const ESPERANDO = ["en fila", "pendiente", "espera", "en proceso", "procesando"];
+      const rechazada = reg?.status_timbre && reg.status_timbre !== "timbrada" && !ESPERANDO.includes(reg.status_timbre);
       const status = timbrada ? "timbrada" : (rechazada ? "error" : "pendiente");
       const mensaje = timbrada
         ? "Timbrada correctamente"
@@ -327,9 +328,10 @@ Deno.serve(async (req) => {
     let timbrados = 0;
     for (const l of listosConUid) {
       const e = l.empleados as any;
-      const reg = registrosStatus.find((r) => r.data?.id === e.facturacom_uid) || registrosStatus.find((r) => r.data?.nombre === e.nombre);
+      const reg = registrosStatus.find((r) => r.employee_uid === e.facturacom_uid) || registrosStatus.find((r) => r.data?.id === e.facturacom_uid) || registrosStatus.find((r) => r.data?.nombre === e.nombre);
       const timbrada = reg?.status_timbre === "timbrada";
-      const rechazada = reg?.status_timbre && reg.status_timbre !== "timbrada" && reg.status_timbre !== "en fila" && reg.status_timbre !== "pendiente";
+      const ESPERANDO = ["en fila", "pendiente", "espera", "en proceso", "procesando"];
+      const rechazada = reg?.status_timbre && reg.status_timbre !== "timbrada" && !ESPERANDO.includes(reg.status_timbre);
       if (timbrada) timbrados++;
       const status = timbrada ? "timbrada" : (rechazada ? "error" : "pendiente");
       const mensaje = timbrada
