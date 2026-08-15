@@ -4777,10 +4777,29 @@ function horasExtraDefaultSaturday(){
   d.setDate(d.getDate()-diff-7); // retrocede una semana completa mas: la ya cerrada
   return dateToISO(d);
 }
+// Las bonificaciones casi siempre se repiten semana con semana -- si nadie
+// las cambia a mano, se copia la ultima bonificacion (y su motivo) del
+// empleado a la semana nueva la primera vez que se abre. Si despues la
+// editan aqui, eso ya queda como el nuevo valor para las semanas siguientes.
+async function syncBonificacionesSemana(ent,week){
+  const activos=empData.filter(e=>e.entidad===ent&&e.activo).map(e=>e.id);
+  if(!activos.length)return;
+  const{data:actuales}=await sb.from('horas_extra_semana').select('empleado_id').eq('entidad',ent).eq('semana_inicio',week);
+  const yaTiene=new Set((actuales||[]).map(o=>o.empleado_id));
+  const faltan=activos.filter(id=>!yaTiene.has(id));
+  if(!faltan.length)return;
+  const{data:previos}=await sb.from('horas_extra_semana').select('*').eq('entidad',ent).lt('semana_inicio',week).in('empleado_id',faltan).gt('bonificacion',0).order('semana_inicio',{ascending:false});
+  const masReciente={};
+  (previos||[]).forEach(o=>{if(!masReciente[o.empleado_id])masReciente[o.empleado_id]=o;});
+  const nuevas=Object.values(masReciente).map(o=>({empleado_id:o.empleado_id,entidad:ent,semana_inicio:week,bonificacion:o.bonificacion,bonificacion_concepto:o.bonificacion_concepto,tarifa_override:null}));
+  if(nuevas.length)await sb.from('horas_extra_semana').insert(nuevas);
+}
 async function loadHorasExtra(){
   if(!horasExtraWeekStart)horasExtraWeekStart=horasExtraDefaultSaturday();
   const ent=horasExtraActiveEnt,week=horasExtraWeekStart;
   const days=asistWeekDays(week);
+  await syncBonificacionesSemana(ent,week);
+  if(ent!==horasExtraActiveEnt||week!==horasExtraWeekStart)return;
   const{data}=await sb.from('horas_extra').select('*').eq('entidad',ent).gte('fecha',days[0]).lte('fecha',days[6]);
   const{data:overrides}=await sb.from('horas_extra_semana').select('*').eq('entidad',ent).eq('semana_inicio',week);
   if(ent!==horasExtraActiveEnt||week!==horasExtraWeekStart)return;
