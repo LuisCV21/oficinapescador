@@ -101,9 +101,20 @@ Deno.serve(async (req) => {
 
     const { data: periodo, error: periodoErr } = await db.from("nomina_periodos").select("*").eq("id", periodo_id).single();
     if (periodoErr || !periodo) {
+      let jwtPayload: unknown = null;
+      try {
+        const parts = serviceKey.split(".");
+        if (parts.length === 3) jwtPayload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+      } catch (_e) { /* no era un JWT decodificable */ }
       return json({
         error: "No se encontró el periodo de nómina",
-        debug: { periodo_id, periodoErr: periodoErr ? { message: periodoErr.message, code: (periodoErr as any).code, details: (periodoErr as any).details, hint: (periodoErr as any).hint } : null },
+        debug: {
+          periodo_id,
+          serviceKeyPrefix: serviceKey ? serviceKey.slice(0, 15) : null,
+          serviceKeyLen: serviceKey ? serviceKey.length : 0,
+          serviceKeyJwtPayload: jwtPayload,
+          periodoErr: periodoErr ? { message: periodoErr.message, code: (periodoErr as any).code, details: (periodoErr as any).details, hint: (periodoErr as any).hint } : null,
+        },
       }, 404);
     }
 
