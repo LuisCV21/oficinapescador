@@ -1029,9 +1029,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             </div>
           </div>
           <div class="asist-legend" id="asist-legend"></div>
-          <div style="overflow-x:auto;margin:14px 0" id="asist-grid-wrap"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
-          <div style="font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin:22px 0 10px">Incidencias de la semana</div>
-          <div id="asist-incidencias" style="display:flex;flex-direction:column;gap:8px;padding-bottom:30px"></div>
+          <div style="overflow-x:auto;margin:14px 0 30px" id="asist-grid-wrap"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
 
         <div class="modulo-sub" id="sub-horasextra" style="display:none">
@@ -4041,27 +4039,6 @@ function renderAsistGrid(){
 
   document.getElementById('asist-grid-wrap').innerHTML=`<table class="asist-table"><thead>${thead}</thead><tbody>${rows}</tbody><tfoot>${tfoot}</tfoot></table>`;
   document.getElementById('asist-week-label').textContent='Semana del '+fmtFechaCorta(days[0])+' al '+fmtFechaCorta(days[6]);
-  renderAsistIncidencias(emps);
-}
-
-function renderAsistIncidencias(emps){
-  const el=document.getElementById('asist-incidencias');
-  if(!el)return;
-  const empById={};emps.forEach(e=>{empById[e.id]=e;});
-  const items=asistData.filter(a=>a.estatus!=='asistio').sort((a,b)=>a.fecha.localeCompare(b.fecha));
-  if(!items.length){el.innerHTML='<div class="empty"><div class="empty-ico">📋</div>Sin incidencias esta semana</div>';return;}
-  el.innerHTML=items.map(a=>{
-    const emp=empById[a.empleado_id];
-    const est=ASIST_ESTATUS[a.estatus];
-    const destino=a.sucursal_destino?' → '+(ENTS[a.sucursal_destino]||{label:a.sucursal_destino}).label:'';
-    return`<div class="acc-card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-      <div>
-        <div style="font-weight:600;font-size:13px">${emp?emp.nombre:'(empleado eliminado)'}</div>
-        <div style="font-size:11px;color:var(--text2)">${fmtFechaCorta(a.fecha)}${a.notas?' — '+a.notas:''}</div>
-      </div>
-      <span class="pill" style="background:${est.bg};color:${est.color}">${est.ico} ${est.label}${destino}</span>
-    </div>`;
-  }).join('');
 }
 
 // ─── IMPRESIÓN SEMANAL ──────────────────────────────────────────
@@ -4270,6 +4247,15 @@ async function syncNominaSemana(ent,week){
     }
   }
   if(nuevas.length)await sb.from('nomina_lineas').insert(nuevas);
+  // Limpieza: una linea que quedo de cuando el empleado si estaba activo en
+  // esta sucursal (o cubrio un turno aqui) se queda huerfana para siempre si
+  // luego se da de baja o cambia de sucursal -- el ciclo de arriba solo
+  // recorre "activos", nunca revisa ni borra lo que sobra. Se borran nomas
+  // las que no tienen nada pagado esta semana (dias_pagados<=0): si de
+  // verdad se le debe un ultimo pago, dias_pagados>0 y se deja intacta.
+  const activosIds=new Set(activos.map(e=>e.id));
+  const huerfanas=(lineasExist||[]).filter(l=>!activosIds.has(l.empleado_id)&&Number(l.dias_pagados)<=0);
+  if(huerfanas.length)await sb.from('nomina_lineas').delete().in('id',huerfanas.map(l=>l.id));
   return periodo;
 }
 
