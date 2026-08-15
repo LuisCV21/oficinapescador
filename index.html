@@ -1054,6 +1054,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
               <button class="btn btn-sm" onclick="goNominaToday()">Esta semana</button>
               <button class="btn-icon" onclick="goNominaWeek(1)" title="Semana siguiente">▶</button>
               <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir nómina</button>
+              <button class="btn btn-sm" style="display:none" onclick="imprimirRecibosNominaSimple()" id="nomina-recibos-simples-btn">🧾 Recibos simples</button>
               <button class="btn btn-sm btn-filled" style="display:none" onclick="abrirPreviewNomina()" id="nomina-timbrar-btn">🧾 Timbrar nómina</button>
               <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🔄 Recalcular desde cero</button>
             </div>
@@ -1421,6 +1422,9 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
     </div>
     <div class="f-row"><label>Salario diario</label><input type="number" step="0.01" id="ef-salario" placeholder="316.00"/></div>
     <div class="f-row"><label>Domicilio</label><input type="text" id="ef-domicilio" placeholder="Calle, número, colonia, C.P., ciudad"/></div>
+    <div class="f-row"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="ef-nomina-fiscal" checked style="width:auto"> Se timbra fiscalmente (CFDI)</label>
+      <div style="font-size:11px;color:var(--text3);margin-top:2px">Si se destilda, esta persona nunca entra al timbrado real — en Nómina se le genera un recibo simple (como el de horas extra) en vez de un CFDI.</div>
+    </div>
     <div class="modal-sec">Datos fiscales / IMSS</div>
     <div class="f-grid">
       <div class="f-row"><label>CURP</label><input type="text" id="ef-curp" placeholder="18 caracteres" style="font-family:var(--mono);font-size:12px"/></div>
@@ -3450,6 +3454,7 @@ function openEmpModal(id){
   document.getElementById('ef-nss').value=e?e.nss||'':'';
   document.getElementById('ef-salario').value=e&&e.salario_diario!=null?e.salario_diario:'';
   document.getElementById('ef-domicilio').value=e?e.domicilio||'':'';
+  document.getElementById('ef-nomina-fiscal').checked=e?e.nomina_fiscal!==false:true;
   resetFileZones([['fz-ine','fl-ine','🪪','Adjuntar INE','ff-ine'],['fz-csf','fl-csf','📋','Adjuntar CSF','ff-csf'],['fz-nss-doc','fl-nss-doc','📄','Comprobante NSS','ff-nss-doc']]);
   openModal('m-emp');
 }
@@ -3462,14 +3467,25 @@ function prefillSalarioPuesto(){
   const p=puestosData.find(x=>x.id===puestoId);
   if(p&&p.salario_sugerido!=null)salEl.value=p.salario_sugerido;
 }
+// Estandariza a Mayúscula-minúscula (ej. "Ana Arminda Vaquier Rodríguez")
+// en vez de dejar mezcla de MAYUSCULAS Y Minusculas segun quien lo capturo.
+// Los conectores comunes en nombres en español se dejan en minúscula.
+const NOMBRE_CONECTORES=new Set(['de','del','la','las','los','y']);
+function formatNombrePropio(str){
+  return(str||'').trim().split(/\s+/).map((palabra,i)=>{
+    const lower=palabra.toLocaleLowerCase('es-MX');
+    if(i>0&&NOMBRE_CONECTORES.has(lower))return lower;
+    return lower.charAt(0).toLocaleUpperCase('es-MX')+lower.slice(1);
+  }).join(' ');
+}
 async function saveEmp(){
-  const nombre=document.getElementById('ef-nombre').value.trim();
+  const nombre=formatNombrePropio(document.getElementById('ef-nombre').value.trim());
   const fecha_ingreso=document.getElementById('ef-ingreso').value;
   if(!nombre||!fecha_ingreso){toast('Nombre y fecha de ingreso son obligatorios',true);return;}
   const tipo_contrato=document.getElementById('ef-contrato').value;
   const fin_prueba=tipo_contrato==='prueba'?(()=>{const d=new Date(fecha_ingreso+'T12:00:00');d.setDate(d.getDate()+30);return d.toISOString().slice(0,10);})():null;
   const salarioVal=document.getElementById('ef-salario').value;
-  const obj={folio:document.getElementById('ef-folio').value.trim()||null,nombre,entidad:document.getElementById('ef-ent').value,puesto_id:document.getElementById('ef-puesto').value||null,fecha_ingreso,tipo_contrato,fecha_fin_prueba:fin_prueba,curp:document.getElementById('ef-curp').value||null,rfc:document.getElementById('ef-rfc').value||null,nss:document.getElementById('ef-nss').value||null,domicilio:document.getElementById('ef-domicilio').value||null,salario_diario:salarioVal?Number(salarioVal):null,activo:true};
+  const obj={folio:document.getElementById('ef-folio').value.trim()||null,nombre,entidad:document.getElementById('ef-ent').value,puesto_id:document.getElementById('ef-puesto').value||null,fecha_ingreso,tipo_contrato,fecha_fin_prueba:fin_prueba,curp:document.getElementById('ef-curp').value||null,rfc:document.getElementById('ef-rfc').value||null,nss:document.getElementById('ef-nss').value||null,domicilio:document.getElementById('ef-domicilio').value||null,salario_diario:salarioVal?Number(salarioVal):null,activo:true,nomina_fiscal:document.getElementById('ef-nomina-fiscal').checked};
   setLoading('emp-save-btn',true);
   let empId=editEmpId;
   if(editEmpId){
@@ -4337,6 +4353,8 @@ function renderNomina(){
   const timbrarBtn=document.getElementById('nomina-timbrar-btn');
   if(timbrarBtn)timbrarBtn.style.display=isAdmin()?'inline-flex':'none';
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
+  const recibosSimplesBtn=document.getElementById('nomina-recibos-simples-btn');
+  if(recibosSimplesBtn)recibosSimplesBtn.style.display=nominaLineas.some(l=>{const e=empById[l.empleado_id];return e&&e.nomina_fiscal===false&&Number(l.dias_pagados)>0;})?'inline-flex':'none';
   const sorted=[...nominaLineas].sort((a,b)=>{
     const ea=empById[a.empleado_id],eb=empById[b.empleado_id];
     return(ea?ea.nombre:'').localeCompare(eb?eb.nombre:'');
@@ -4380,7 +4398,9 @@ function renderNominaRow(l,e){
     error:{ico:'❌',color:'var(--red)',txt:'Error'},
   };
   const timbre=timbreMap[l.facturacom_status];
-  const timbreCell=timbre
+  const timbreCell=e.nomina_fiscal===false
+    ?`<span style="color:var(--copper-dark);font-size:11px;cursor:help" title="No se timbra fiscalmente (desmarcado en Recursos Humanos) — se le paga con un recibo simple">🧾 Recibo simple</span>`
+    :timbre
     ?`<span style="color:${timbre.color};font-size:11px;cursor:${l.facturacom_mensaje?'help':'default'}" title="${(l.facturacom_mensaje||'').replace(/"/g,'')}">${timbre.ico} ${timbre.txt}</span>`
     :`<span style="color:var(--text3);font-size:11px">—</span>`;
   return`<tr>
@@ -4420,7 +4440,7 @@ function abrirPreviewNomina(){
   if(!isAdmin()||!nominaPeriodo)return;
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
   const filas=nominaLineas.map(l=>{
-    const e=empById[l.empleado_id];if(!e)return null;
+    const e=empById[l.empleado_id];if(!e||e.nomina_fiscal===false)return null; // recibo simple, no entra al timbrado
     const c=nominaCalc(l);
     const faltan=[];
     if(!e.curp?.trim())faltan.push('CURP');
@@ -4687,6 +4707,60 @@ function fmtNominaFecha(iso){
   const d=new Date(iso+'T12:00:00');
   return`${d.getDate()} DE ${NOMINA_MESES[d.getMonth()]} DEL ${d.getFullYear()}`;
 }
+// Recibo para empleados con nomina_fiscal=false (no se timbran ante el SAT
+// pero si se les paga): mismo calculo de salario/prima/ISR/IMSS que a
+// cualquier otro (nomina_lineas de esta semana), mas sus horas extra/
+// retardos/bonificacion/descuento de la semana sabado-viernes que cierra
+// justo un dia antes de que empiece esta semana de nomina (domingo-sabado)
+// -- son la misma quincena de pago, solo que Horas Extra las trackea con un
+// calendario corrido un dia, ver horasExtraDefaultSaturday.
+async function imprimirRecibosNominaSimple(){
+  if(!nominaPeriodo)return;
+  const empById={};empData.forEach(e=>{empById[e.id]=e;});
+  const candidatos=nominaLineas.filter(l=>{const e=empById[l.empleado_id];return e&&e.nomina_fiscal===false&&Number(l.dias_pagados)>0;});
+  if(!candidatos.length){toast('Nadie con recibo simple tiene días pagados esta semana',true);return;}
+  const days=asistWeekDays(nominaWeekStart);
+  const heWeekD=new Date(nominaWeekStart+'T12:00:00');heWeekD.setDate(heWeekD.getDate()-1);
+  const heDays=asistWeekDays(dateToISO(heWeekD));
+  const empIds=candidatos.map(l=>l.empleado_id);
+  const{data:heData}=await sb.from('horas_extra').select('*').eq('entidad',nominaActiveEnt).gte('fecha',heDays[0]).lte('fecha',heDays[6]).in('empleado_id',empIds);
+  const{data:heSemana}=await sb.from('horas_extra_semana').select('*').eq('entidad',nominaActiveEnt).eq('semana_inicio',heDays[0]).in('empleado_id',empIds);
+  const entLabel=(ENTS[nominaActiveEnt]||{label:nominaActiveEnt}).label;
+  const cards=candidatos.map(l=>{
+    const e=empById[l.empleado_id];
+    const c=nominaCalc(l);
+    const rate=(Number(l.salario_diario)||0)/8;
+    const totalHE=(heData||[]).filter(h=>h.empleado_id===e.id).reduce((s,h)=>s+(h.he||0),0);
+    const totalRT=(heData||[]).filter(h=>h.empleado_id===e.id).reduce((s,h)=>s+(h.rt||0),0);
+    const ov=(heSemana||[]).find(o=>o.empleado_id===e.id);
+    const bonif=ov?Number(ov.bonificacion)||0:0,bonifConcepto=ov?ov.bonificacion_concepto||'':'';
+    const descuento=ov?Number(ov.descuento)||0:0,descuentoConcepto=ov?ov.descuento_concepto||'':'';
+    const isr=Number(l.retencion_isr)||0,imss=Number(l.retencion_imss)||0;
+    const total=c.total+(totalHE-totalRT)*rate+bonif-descuento;
+    return`<div class="recibo-card">
+      <div class="recibo-card-hdr"><img class="recibo-card-logo" src="${PA_LOGO}" alt="El Pescador"><h4>Recibo de nómina</h4></div>
+      <div class="rc-sub">${entLabel} · Semana del ${fmtFechaCorta(days[0])} al ${fmtFechaCorta(days[6])}</div>
+      <table>
+        <tr><td><strong>Nombre:</strong></td><td>${e.nombre}</td></tr>
+        <tr><td><strong>Puesto:</strong></td><td>${puestoNombre(e.puesto_id)||''}</td></tr>
+        <tr><td>Días pagados</td><td>${l.dias_pagados}</td></tr>
+        <tr><td>Salario semanal</td><td>${fmxn(c.nominaFiscal)}</td></tr>
+        ${c.primaDominical?`<tr><td>Prima dominical</td><td>${fmxn(c.primaDominical)}</td></tr>`:''}
+        ${isr?`<tr><td>ISR</td><td>-${fmxn(isr)}</td></tr>`:''}
+        ${imss?`<tr><td>IMSS</td><td>-${fmxn(imss)}</td></tr>`:''}
+        ${totalHE?`<tr><td>Horas extra (${totalHE})</td><td>${fmxn(totalHE*rate)}</td></tr>`:''}
+        ${totalRT?`<tr><td>Retardos (${totalRT})</td><td>-${fmxn(totalRT*rate)}</td></tr>`:''}
+        ${bonif?`<tr><td>Bonificación${bonifConcepto?' ('+bonifConcepto+')':''}</td><td>${fmxn(bonif)}</td></tr>`:''}
+        ${descuento?`<tr><td>Descuento${descuentoConcepto?' ('+descuentoConcepto+')':''}</td><td>-${fmxn(descuento)}</td></tr>`:''}
+      </table>
+      <div class="rc-total">TOTAL A ${total<0?'DESCONTAR':'PAGAR'}: ${fmxn(Math.abs(total))}</div>
+      <div class="rc-firma">RECIBÍ — FIRMA DEL EMPLEADO</div>
+    </div>`;
+  }).join('');
+  document.getElementById('print-horasextra').innerHTML=`<div class="recibo-grid">${cards}</div>`;
+  window.print();
+}
+
 function imprimirNominaSemanal(){
   if(!nominaPeriodo){toast('No hay nómina generada para esta semana',true);return;}
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
