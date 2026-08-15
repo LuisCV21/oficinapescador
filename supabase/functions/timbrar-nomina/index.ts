@@ -100,7 +100,12 @@ Deno.serve(async (req) => {
     const db = createClient(supabaseUrl, serviceKey);
 
     const { data: periodo, error: periodoErr } = await db.from("nomina_periodos").select("*").eq("id", periodo_id).single();
-    if (periodoErr || !periodo) return json({ error: "No se encontró el periodo de nómina" }, 404);
+    if (periodoErr || !periodo) {
+      return json({
+        error: "No se encontró el periodo de nómina",
+        debug: { periodo_id, periodoErr: periodoErr ? { message: periodoErr.message, code: (periodoErr as any).code, details: (periodoErr as any).details, hint: (periodoErr as any).hint } : null },
+      }, 404);
+    }
 
     const ent: string = periodo.entidad;
     const apiKey = Deno.env.get(`FACTURACOM_API_KEY_${ent}`);
