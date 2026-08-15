@@ -21,7 +21,11 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    // Ver nota en timbrar-nomina/index.ts: SUPABASE_SERVICE_ROLE_KEY (variable
+    // reservada inyectada por la plataforma) trae la llave nueva "sb_secret_"
+    // en este proyecto, que no da permisos reales -- se usa SERVICE_ROLE_JWT
+    // (secret propio con el JWT clasico de service_role) en su lugar.
+    const serviceKey = Deno.env.get("SERVICE_ROLE_JWT") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     // Cliente con la sesión de quien llama, solo para verificar quién es.
     const callerClient = createClient(supabaseUrl, anonKey, {

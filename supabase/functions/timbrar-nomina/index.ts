@@ -81,7 +81,13 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    // SUPABASE_SERVICE_ROLE_KEY es una variable reservada que inyecta la
+    // plataforma sola; en este proyecto la esta poblando con la llave nueva
+    // formato "sb_secret_..." en vez del JWT clasico de service_role, y con
+    // esa el cliente no obtiene permisos reales (permission denied al leer
+    // nomina_periodos). Se usa en su lugar SERVICE_ROLE_JWT, un secret propio
+    // con el JWT clasico de service_role, que si funciona.
+    const serviceKey = Deno.env.get("SERVICE_ROLE_JWT") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     const callerClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
@@ -100,23 +106,7 @@ Deno.serve(async (req) => {
     const db = createClient(supabaseUrl, serviceKey);
 
     const { data: periodo, error: periodoErr } = await db.from("nomina_periodos").select("*").eq("id", periodo_id).single();
-    if (periodoErr || !periodo) {
-      let jwtPayload: unknown = null;
-      try {
-        const parts = serviceKey.split(".");
-        if (parts.length === 3) jwtPayload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-      } catch (_e) { /* no era un JWT decodificable */ }
-      return json({
-        error: "No se encontró el periodo de nómina",
-        debug: {
-          periodo_id,
-          serviceKeyPrefix: serviceKey ? serviceKey.slice(0, 15) : null,
-          serviceKeyLen: serviceKey ? serviceKey.length : 0,
-          serviceKeyJwtPayload: jwtPayload,
-          periodoErr: periodoErr ? { message: periodoErr.message, code: (periodoErr as any).code, details: (periodoErr as any).details, hint: (periodoErr as any).hint } : null,
-        },
-      }, 404);
-    }
+    if (periodoErr || !periodo) return json({ error: "No se encontró el periodo de nómina" }, 404);
 
     const ent: string = periodo.entidad;
     const apiKey = Deno.env.get(`FACTURACOM_API_KEY_${ent}`);

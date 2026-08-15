@@ -35,7 +35,11 @@ Deno.serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    // Ver nota en timbrar-nomina/index.ts: SUPABASE_SERVICE_ROLE_KEY (variable
+    // reservada inyectada por la plataforma) trae la llave nueva "sb_secret_"
+    // en este proyecto, que no da permisos reales -- se usa SERVICE_ROLE_JWT
+    // (secret propio con el JWT clasico de service_role) en su lugar.
+    const serviceKey = Deno.env.get("SERVICE_ROLE_JWT") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const adminClient = createClient(supabaseUrl, serviceKey);
 
     // Subir el PDF al bucket privado (si vino) -- se guarda solo la ruta,
