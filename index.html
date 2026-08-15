@@ -734,15 +734,21 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   @page{margin:8mm}
   #print-nomina{display:block !important;width:100%;padding:0}
   .recibo-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;font-family:'DM Sans',Arial,sans-serif;border:1px solid #000;border-right:none;border-bottom:none}
-  .recibo-card{border-right:1px solid #000;border-bottom:1px solid #000;overflow:hidden;font-size:11px;color:#000;break-inside:avoid;display:flex;flex-direction:column}
-  .recibo-card-hdr{background:#fff;color:#000;display:flex;align-items:center;gap:9px;padding:8px 12px;border-bottom:2px solid #000}
-  .recibo-card-logo{height:26px;width:26px;object-fit:contain;flex-shrink:0;filter:grayscale(1) contrast(1.4)}
-  .recibo-card h4{margin:0;font-size:12px;font-family:'Fraunces',serif;font-weight:700;color:#000}
-  .recibo-card .rc-sub{font-size:9.5px;color:#000;margin:8px 12px 8px;font-weight:700;letter-spacing:.02em}
-  .recibo-card table{width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:2px;color:#000}
-  .recibo-card td{padding:2px 12px;color:#000}
-  .recibo-card .rc-total{font-weight:800;font-size:12.5px;background:#fff;color:#000;border-top:2px solid #000;padding:6px 12px;margin-top:auto}
-  .recibo-card .rc-firma{margin:22px 12px 10px;border-top:1px solid #000;padding-top:3px;font-size:9px;text-align:center;color:#000}
+  .recibo-card{border-right:1px solid #000;border-bottom:1px solid #000;overflow:hidden;font-size:11.5px;color:#000;break-inside:avoid;display:flex;flex-direction:column;padding:12px 16px;min-height:8.2cm}
+  .recibo-card-title{font-weight:800;font-size:15px;text-align:center;text-transform:uppercase;letter-spacing:.03em;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:8px}
+  .recibo-card-meta{font-size:11.5px;line-height:1.7;margin-bottom:8px}
+  .recibo-card-nombre{font-size:12.5px;font-weight:700;border-top:1.5px solid #000;border-bottom:1.5px solid #000;padding:5px 0;margin-bottom:10px}
+  .recibo-card-nombre span{font-weight:400;margin-left:4px}
+  .rc-table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:0}
+  .rc-table th,.rc-table td{border:1px solid #000;padding:4px 6px;text-align:center}
+  .rc-table th{font-weight:700;background:#fff}
+  .rc-table td.rc-concepto{text-align:left;font-weight:600}
+  .rc-table td.rc-importe{text-align:right;font-family:'DM Mono',monospace}
+  .rc-total-row{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:14px;border:2px solid #000;border-top:none;padding:7px 8px}
+  .rc-firma-area{text-align:center;margin-top:auto;padding-top:26px}
+  .rc-firma-txt{font-weight:800;font-size:12.5px;margin-bottom:30px;letter-spacing:.05em}
+  .rc-firma-line{border-top:1px solid #000;width:75%;margin:0 auto}
+  .rc-firma-label{font-size:9.5px;margin-top:4px;letter-spacing:.03em}
 }
 #print-horasextra{display:none}
 @media print{
@@ -4659,10 +4665,37 @@ function renderRecibosHePreview(empsArg){
     `<button class="btn btn-filled" onclick="imprimirRecibosHorasExtra()">🖨️ Imprimir recibos</button>`;
 }
 
+// Tarjeta de recibo tipo tabla (dias/horas/importe), formato mas "serio" y
+// larguito que el usuario pidio en vez de la tarjeta compacta original --
+// filas es un arreglo de {concepto, dias, horas, importe} en el orden en que
+// se deben imprimir (importe ya viene formateado, con signo si aplica).
+function reciboCardHTML({titulo,semanaLabel,fechaPago,nombre,puesto,filas,totalLabel,totalMonto}){
+  const filasHtml=filas.map(f=>`<tr><td class="rc-concepto">${f.concepto}</td><td>${f.dias??''}</td><td>${f.horas??''}</td><td class="rc-importe">${f.importe}</td></tr>`).join('');
+  return`<div class="recibo-card">
+    <div class="recibo-card-title">${titulo}</div>
+    <div class="recibo-card-meta">
+      <div><strong>Semana:</strong> ${semanaLabel}</div>
+      <div><strong>Fecha de pago:</strong> ${fechaPago}</div>
+    </div>
+    <div class="recibo-card-nombre">${nombre}${puesto?`<span>— ${puesto}</span>`:''}</div>
+    <table class="rc-table">
+      <thead><tr><th></th><th>Días</th><th>Horas</th><th>Importe</th></tr></thead>
+      <tbody>${filasHtml}</tbody>
+    </table>
+    <div class="rc-total-row"><span>${totalLabel}</span><span>${totalMonto}</span></div>
+    <div class="rc-firma-area">
+      <div class="rc-firma-txt">RECIBÍ</div>
+      <div class="rc-firma-line"></div>
+      <div class="rc-firma-label">FIRMA DEL EMPLEADO</div>
+    </div>
+  </div>`;
+}
+
 function imprimirRecibosHorasExtra(){
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
   const days=asistWeekDays(horasExtraWeekStart);
-  const entLabel=(ENTS[horasExtraActiveEnt]||{label:horasExtraActiveEnt}).label;
+  const pagoD=new Date(days[6]+'T12:00:00');pagoD.setDate(pagoD.getDate()+1);
+  const semanaLabel=fmtNominaRango(days[0],days[6]),fechaPago=fmtNominaFecha(dateToISO(pagoD));
   const emps=Object.keys(recibosHeSel).map(id=>empById[id]).filter(Boolean).sort((a,b)=>a.nombre.localeCompare(b.nombre));
   const cards=emps.map(e=>{
     const d=recibosHeDatosEmpleado(e);
@@ -4671,21 +4704,16 @@ function imprimirRecibosHorasExtra(){
     const rate=d.rate,bonifConcepto=d.bonifConcepto,descuentoConcepto=d.descuentoConcepto;
     if(!totalHE&&!totalRT&&!bonif&&!descuento)return''; // todo desmarcado para este empleado, no genera recibo
     const neto=(totalHE-totalRT)*rate+bonif-descuento;
-    return`<div class="recibo-card">
-      <div class="recibo-card-hdr"><img class="recibo-card-logo" src="${PA_LOGO}" alt="El Pescador"><h4>Recibo de horas extra</h4></div>
-      <div class="rc-sub">${entLabel} · Semana del ${fmtFechaCorta(days[0])} al ${fmtFechaCorta(days[6])}</div>
-      <table>
-        <tr><td><strong>Nombre:</strong></td><td>${e.nombre}</td></tr>
-        <tr><td><strong>Puesto:</strong></td><td>${puestoNombre(e.puesto_id)||''}</td></tr>
-        ${totalHE?`<tr><td>Total horas extra</td><td>${totalHE}</td></tr>`:''}
-        ${totalRT?`<tr><td>Total retardos</td><td>${totalRT}</td></tr>`:''}
-        ${totalHE||totalRT?`<tr><td>Tarifa por hora</td><td>${fmxn(rate)}</td></tr>`:''}
-        ${bonif?`<tr><td>Bonificación${bonifConcepto?' ('+bonifConcepto+')':''}</td><td>${fmxn(bonif)}</td></tr>`:''}
-        ${descuento?`<tr><td>Descuento${descuentoConcepto?' ('+descuentoConcepto+')':''}</td><td>-${fmxn(descuento)}</td></tr>`:''}
-      </table>
-      <div class="rc-total">TOTAL A ${neto<0?'DESCONTAR':'PAGAR'}: ${fmxn(Math.abs(neto))}</div>
-      <div class="rc-firma">RECIBÍ — FIRMA DEL EMPLEADO</div>
-    </div>`;
+    const filas=[];
+    if(totalHE)filas.push({concepto:'Horas extra',dias:'',horas:totalHE,importe:fmxn(totalHE*rate)});
+    if(totalRT)filas.push({concepto:'Retardos',dias:'',horas:totalRT,importe:'-'+fmxn(totalRT*rate)});
+    if(bonif)filas.push({concepto:'Bonificación'+(bonifConcepto?' ('+bonifConcepto+')':''),dias:'',horas:'',importe:fmxn(bonif)});
+    if(descuento)filas.push({concepto:'Descuento'+(descuentoConcepto?' ('+descuentoConcepto+')':''),dias:'',horas:'',importe:'-'+fmxn(descuento)});
+    return reciboCardHTML({
+      titulo:'Recibo de horas extra',semanaLabel,fechaPago,
+      nombre:e.nombre,puesto:puestoNombre(e.puesto_id)||'',
+      filas,totalLabel:`TOTAL A ${neto<0?'DESCONTAR':'PAGAR'}`,totalMonto:fmxn(Math.abs(neto)),
+    });
   }).join('');
   document.getElementById('print-horasextra').innerHTML=`<div class="recibo-grid">${cards||'<div class="empty">Nadie tiene horas extra, retardos, bonificación ni descuento que liquidar esta semana</div>'}</div>`;
   window.print();
@@ -4725,7 +4753,7 @@ async function imprimirRecibosNominaSimple(){
   const empIds=candidatos.map(l=>l.empleado_id);
   const{data:heData}=await sb.from('horas_extra').select('*').eq('entidad',nominaActiveEnt).gte('fecha',heDays[0]).lte('fecha',heDays[6]).in('empleado_id',empIds);
   const{data:heSemana}=await sb.from('horas_extra_semana').select('*').eq('entidad',nominaActiveEnt).eq('semana_inicio',heDays[0]).in('empleado_id',empIds);
-  const entLabel=(ENTS[nominaActiveEnt]||{label:nominaActiveEnt}).label;
+  const semanaLabel=fmtNominaRango(days[0],days[6]),fechaPago=fmtNominaFecha(days[6]);
   const cards=candidatos.map(l=>{
     const e=empById[l.empleado_id];
     const c=nominaCalc(l);
@@ -4737,25 +4765,19 @@ async function imprimirRecibosNominaSimple(){
     const descuento=ov?Number(ov.descuento)||0:0,descuentoConcepto=ov?ov.descuento_concepto||'':'';
     const isr=Number(l.retencion_isr)||0,imss=Number(l.retencion_imss)||0;
     const total=c.total+(totalHE-totalRT)*rate+bonif-descuento;
-    return`<div class="recibo-card">
-      <div class="recibo-card-hdr"><img class="recibo-card-logo" src="${PA_LOGO}" alt="El Pescador"><h4>Recibo de nómina</h4></div>
-      <div class="rc-sub">${entLabel} · Semana del ${fmtFechaCorta(days[0])} al ${fmtFechaCorta(days[6])}</div>
-      <table>
-        <tr><td><strong>Nombre:</strong></td><td>${e.nombre}</td></tr>
-        <tr><td><strong>Puesto:</strong></td><td>${puestoNombre(e.puesto_id)||''}</td></tr>
-        <tr><td>Días pagados</td><td>${l.dias_pagados}</td></tr>
-        <tr><td>Salario semanal</td><td>${fmxn(c.nominaFiscal)}</td></tr>
-        ${c.primaDominical?`<tr><td>Prima dominical</td><td>${fmxn(c.primaDominical)}</td></tr>`:''}
-        ${isr?`<tr><td>ISR</td><td>-${fmxn(isr)}</td></tr>`:''}
-        ${imss?`<tr><td>IMSS</td><td>-${fmxn(imss)}</td></tr>`:''}
-        ${totalHE?`<tr><td>Horas extra (${totalHE})</td><td>${fmxn(totalHE*rate)}</td></tr>`:''}
-        ${totalRT?`<tr><td>Retardos (${totalRT})</td><td>-${fmxn(totalRT*rate)}</td></tr>`:''}
-        ${bonif?`<tr><td>Bonificación${bonifConcepto?' ('+bonifConcepto+')':''}</td><td>${fmxn(bonif)}</td></tr>`:''}
-        ${descuento?`<tr><td>Descuento${descuentoConcepto?' ('+descuentoConcepto+')':''}</td><td>-${fmxn(descuento)}</td></tr>`:''}
-      </table>
-      <div class="rc-total">TOTAL A ${total<0?'DESCONTAR':'PAGAR'}: ${fmxn(Math.abs(total))}</div>
-      <div class="rc-firma">RECIBÍ — FIRMA DEL EMPLEADO</div>
-    </div>`;
+    const filas=[{concepto:'Salario',dias:l.dias_pagados,horas:'',importe:fmxn(c.nominaFiscal)}];
+    if(c.primaDominical)filas.push({concepto:'Prima dominical',dias:'',horas:'',importe:fmxn(c.primaDominical)});
+    if(isr)filas.push({concepto:'ISR',dias:'',horas:'',importe:'-'+fmxn(isr)});
+    if(imss)filas.push({concepto:'IMSS',dias:'',horas:'',importe:'-'+fmxn(imss)});
+    if(totalHE)filas.push({concepto:'Horas extra',dias:'',horas:totalHE,importe:fmxn(totalHE*rate)});
+    if(totalRT)filas.push({concepto:'Retardos',dias:'',horas:totalRT,importe:'-'+fmxn(totalRT*rate)});
+    if(bonif)filas.push({concepto:'Bonificación'+(bonifConcepto?' ('+bonifConcepto+')':''),dias:'',horas:'',importe:fmxn(bonif)});
+    if(descuento)filas.push({concepto:'Descuento'+(descuentoConcepto?' ('+descuentoConcepto+')':''),dias:'',horas:'',importe:'-'+fmxn(descuento)});
+    return reciboCardHTML({
+      titulo:'Recibo de nómina',semanaLabel,fechaPago,
+      nombre:e.nombre,puesto:puestoNombre(e.puesto_id)||'',
+      filas,totalLabel:`TOTAL A ${total<0?'DESCONTAR':'PAGAR'}`,totalMonto:fmxn(Math.abs(total)),
+    });
   }).join('');
   document.getElementById('print-horasextra').innerHTML=`<div class="recibo-grid">${cards}</div>`;
   window.print();
