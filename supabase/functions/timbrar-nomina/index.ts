@@ -100,10 +100,38 @@ Deno.serve(async (req) => {
       return json({ error: "No tienes permiso para timbrar nómina" }, 403);
     }
 
-    const { periodo_id, linea_ids } = await req.json().catch(() => ({}));
-    if (!periodo_id) return json({ error: "Falta periodo_id" }, 400);
+    const { periodo_id, linea_ids, verificar_linea_id } = await req.json().catch(() => ({}));
 
     const db = createClient(supabaseUrl, serviceKey);
+
+    // Solo re-consulta el estatus de un timbrado ya enviado, sin crear nada
+    // nuevo en factura.com -- para cuando quedo "pendiente" y se quiere ver
+    // si ya se confirmo, sin arriesgar timbrar dos veces a la misma persona.
+    if (verificar_linea_id) {
+      const { data: l } = await db.from("nomina_lineas").select("*, empleados(id,nombre,facturacom_uid)").eq("id", verificar_linea_id).single();
+      if (!l) return json({ error: "No se encontró la línea de nómina" }, 404);
+      if (!l.facturacom_nomina_uid) return json({ error: "Esta línea no tiene un timbrado enviado para verificar" }, 400);
+      const { data: periodoV } = await db.from("nomina_periodos").select("entidad").eq("id", l.periodo_id).single();
+      const entV: string = periodoV?.entidad || "";
+      const { data: credV } = await db.from("facturacom_credenciales").select("*").eq("entidad", entV).maybeSingle();
+      if (!credV?.api_key || !credV?.secret_key) return json({ error: `Faltan las llaves de factura.com para ${ENT_LABEL[entV] || entV}` }, 500);
+      const headersV = facturacomHeaders(credV.api_key, credV.secret_key);
+      const statusResV = await fetch(`${HOST}/payroll/${l.facturacom_nomina_uid}/view`, { headers: headersV });
+      const statusDataV = await statusResV.json();
+      const registrosV: any[] = statusDataV?.data?.registros || [];
+      const e = l.empleados as any;
+      const reg = registrosV.find((r) => r.data?.id === e.facturacom_uid) || registrosV.find((r) => r.data?.nombre === e.nombre);
+      const timbrada = reg?.status_timbre === "timbrada";
+      const rechazada = reg?.status_timbre && reg.status_timbre !== "timbrada" && reg.status_timbre !== "en fila" && reg.status_timbre !== "pendiente";
+      const status = timbrada ? "timbrada" : (rechazada ? "error" : "pendiente");
+      const mensaje = timbrada
+        ? "Timbrada correctamente"
+        : (reg?.mensaje || `factura.com todavía no confirma el timbrado (status: ${reg?.status_timbre || "sin registro"}).`);
+      await db.from("nomina_lineas").update({ facturacom_status: status, facturacom_mensaje: mensaje, facturacom_uuid: reg?.uuid || null }).eq("id", verificar_linea_id);
+      return json({ ok: true, status, mensaje });
+    }
+
+    if (!periodo_id) return json({ error: "Falta periodo_id" }, 400);
 
     const { data: periodo, error: periodoErr } = await db.from("nomina_periodos").select("*").eq("id", periodo_id).single();
     if (periodoErr || !periodo) return json({ error: "No se encontró el periodo de nómina" }, 404);
@@ -284,8 +312,14 @@ Deno.serve(async (req) => {
       return json({ ok: false, timbrados: 0, resultados });
     }
 
-    // El timbrado es asíncrono, se espera un momento y se consulta el estatus final.
-    await new Promise((r) => setTimeout(r, 6000));
+    // El timbrado es asíncrono y factura.com puede tardar bastante mas de
+    // unos segundos (se vio un caso real quedarse "En fila" en su propio
+    // panel bastante despues). Se espera mas tiempo, pero si aun asi no se
+    // confirma no se marca como "error" -- eso invitaba a reintentar y
+    // arriesgar timbrar dos veces a la misma persona. Se marca "pendiente"
+    // y se guarda el uid del lote para poder volver a consultarlo despues
+    // sin generar un CFDI nuevo.
+    await new Promise((r) => setTimeout(r, 15000));
     const statusRes = await fetch(`${HOST}/payroll/${nominaData.uid}/view`, { headers });
     const statusData = await statusRes.json();
     const registrosStatus: any[] = statusData?.data?.registros || [];
@@ -295,14 +329,18 @@ Deno.serve(async (req) => {
       const e = l.empleados as any;
       const reg = registrosStatus.find((r) => r.data?.id === e.facturacom_uid) || registrosStatus.find((r) => r.data?.nombre === e.nombre);
       const timbrada = reg?.status_timbre === "timbrada";
+      const rechazada = reg?.status_timbre && reg.status_timbre !== "timbrada" && reg.status_timbre !== "en fila" && reg.status_timbre !== "pendiente";
       if (timbrada) timbrados++;
-      const status = timbrada ? "timbrada" : "error";
-      const mensaje = timbrada ? "Timbrada correctamente" : (reg?.mensaje || "No se confirmó el timbrado, revisa en factura.com");
+      const status = timbrada ? "timbrada" : (rechazada ? "error" : "pendiente");
+      const mensaje = timbrada
+        ? "Timbrada correctamente"
+        : (reg?.mensaje || `factura.com todavía no confirma el timbrado (status: ${reg?.status_timbre || "sin registro"}). Usa "Verificar estatus" en unos minutos, no vuelvas a timbrar.`);
       resultados.push({ linea_id: l.id, empleado: e.nombre, status, mensaje });
       await db.from("nomina_lineas").update({
         facturacom_status: status,
         facturacom_mensaje: mensaje,
         facturacom_uuid: reg?.uuid || null,
+        facturacom_nomina_uid: nominaData.uid,
       }).eq("id", l.id);
     }
     await db.from("nomina_periodos").update({ timbrado_en: new Date().toISOString() }).eq("id", periodo_id);
