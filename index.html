@@ -943,12 +943,14 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             <div class="tab" onclick="configTab('cuentas',this)">💳 Métodos de pago</div>
             <div class="tab" onclick="configTab('puestos',this)">🧑‍💼 Puestos</div>
             <div class="tab" onclick="configTab('usuarios',this)" id="tab-usuarios" style="display:none">👤 Usuarios</div>
+            <div class="tab" onclick="configTab('facturacion',this)" id="tab-facturacion" style="display:none">🧾 Facturación</div>
           </div>
           <div style="padding:14px 16px 16px">
             <div id="config-cats-list"></div>
             <div id="config-cuentas-list" style="display:none"></div>
             <div id="config-puestos-list" style="display:none"></div>
             <div id="config-usuarios-list" style="display:none"></div>
+            <div id="config-facturacion-list" style="display:none"></div>
           </div>
         </div>
       </div>
@@ -2465,6 +2467,8 @@ async function initApp(user){
   if(siConfig)siConfig.style.display=isAdmin()?'flex':'none';
   const tabUsuarios=document.getElementById('tab-usuarios');
   if(tabUsuarios)tabUsuarios.style.display=isAdmin()?'block':'none';
+  const tabFacturacion=document.getElementById('tab-facturacion');
+  if(tabFacturacion)tabFacturacion.style.display=isAdmin()?'block':'none';
   await loadAll();
   setupRealtime();
 }
@@ -2910,6 +2914,7 @@ function configTab(tab,el){
   document.getElementById('config-cuentas-list').style.display=tab==='cuentas'?'block':'none';
   document.getElementById('config-puestos-list').style.display=tab==='puestos'?'block':'none';
   document.getElementById('config-usuarios-list').style.display=tab==='usuarios'?'block':'none';
+  document.getElementById('config-facturacion-list').style.display=tab==='facturacion'?'block':'none';
   const sub=document.getElementById('config-sub');
   const addBtn=document.getElementById('config-add-btn');
   if(tab==='cats'){
@@ -2930,6 +2935,10 @@ function configTab(tab,el){
     addBtn.setAttribute('onclick','openPuestoModal()');
     addBtn.style.display='inline-flex';
     renderConfigPuestos();
+  }else if(tab==='facturacion'){
+    sub.textContent='Credenciales de factura.com por sucursal — se usan al timbrar la nómina real';
+    addBtn.style.display='none';
+    renderConfigFacturacion();
   }else{
     sub.textContent='Usuarios con acceso al sistema — quién puede entrar y con qué rol';
     addBtn.textContent='+ Nuevo usuario';
@@ -3050,6 +3059,69 @@ function renderConfigUsuarios(){
       ${!esYo?`<button class="btn-text" onclick="editUsuario('${u.id}')">Editar</button><button class="btn-text ${u.activo===false?'':'red'}" onclick="toggleUsuarioActivo('${u.id}',${u.activo===false})">${u.activo===false?'Reactivar':'Desactivar'}</button>`:''}
     </div>`;
   }).join('');
+}
+// ─── CONFIGURACIÓN: FACTURA.COM (tabla facturacom_credenciales) ────
+let facturacomCredData=[];
+async function loadFacturacomCred(){
+  const{data}=await sb.from('facturacom_credenciales').select('*');
+  facturacomCredData=data||[];
+}
+function facturacomCredFor(ent){return facturacomCredData.find(c=>c.entidad===ent)||{};}
+async function renderConfigFacturacion(){
+  const el=document.getElementById('config-facturacion-list');
+  if(!el)return;
+  if(!isAdmin()){el.innerHTML=`<div class="empty">Solo el administrador puede ver esta sección</div>`;return;}
+  el.innerHTML=`<div class="loading"><div class="spinner"></div>Cargando...</div>`;
+  await loadFacturacomCred();
+  const ents=['PUE','FLO','HOT'];
+  el.innerHTML=`<div style="font-size:12px;color:var(--text2);margin-bottom:14px">
+      Estas son las credenciales que usa el sistema para timbrar la nómina real de cada sucursal ante factura.com.
+      Pégalas exactamente como te las dio factura.com para esa sucursal.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+    ${ents.map(ent=>{
+      const c=facturacomCredFor(ent);
+      const label=(ENTS[ent]||{label:ent}).label;
+      return`<div class="cfgcat-row" style="flex-direction:column;align-items:stretch;gap:10px">
+        <div class="cfgcat-label" style="font-size:14px">${label}</div>
+        <div class="f-grid">
+          <div class="f-row"><label>API Key</label><input type="password" id="fc-${ent}-apikey" value="${c.api_key||''}" style="font-family:var(--mono);font-size:12px" placeholder="F-Api-Key de factura.com"></div>
+          <div class="f-row"><label>Secret Key</label><input type="password" id="fc-${ent}-secretkey" value="${c.secret_key||''}" style="font-family:var(--mono);font-size:12px" placeholder="F-Secret-Key de factura.com"></div>
+        </div>
+        <div class="f-grid">
+          <div class="f-row"><label>Serie</label><input type="text" id="fc-${ent}-serie" value="${c.serie||''}" style="font-family:var(--mono);font-size:12px" placeholder="Ej. 3"></div>
+          <div class="f-row"><label>Registro patronal IMSS</label><input type="text" id="fc-${ent}-patronal" value="${c.patronal||''}" style="font-family:var(--mono);font-size:12px" placeholder="Registro patronal"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-filled" id="fc-${ent}-btn" onclick="guardarFacturacomCred('${ent}')">Guardar ${label}</button>
+          <button class="btn-text" onclick="toggleFacturacomVer('${ent}')" id="fc-${ent}-ver">👁️ Mostrar</button>
+          ${c.updated_at?`<span style="font-size:11px;color:var(--text3)">Última vez guardado: ${new Date(c.updated_at).toLocaleString('es-MX')}</span>`:'<span style="font-size:11px;color:var(--amber)">⚠️ Sin capturar todavía</span>'}
+        </div>
+      </div>`;
+    }).join('')}
+    </div>`;
+}
+function toggleFacturacomVer(ent){
+  const apiEl=document.getElementById(`fc-${ent}-apikey`),secEl=document.getElementById(`fc-${ent}-secretkey`),btn=document.getElementById(`fc-${ent}-ver`);
+  const mostrar=apiEl.type==='password';
+  apiEl.type=mostrar?'text':'password';
+  secEl.type=mostrar?'text':'password';
+  btn.textContent=mostrar?'🙈 Ocultar':'👁️ Mostrar';
+}
+async function guardarFacturacomCred(ent){
+  const api_key=document.getElementById(`fc-${ent}-apikey`).value.trim();
+  const secret_key=document.getElementById(`fc-${ent}-secretkey`).value.trim();
+  const serie=document.getElementById(`fc-${ent}-serie`).value.trim();
+  const patronal=document.getElementById(`fc-${ent}-patronal`).value.trim();
+  const btn=document.getElementById(`fc-${ent}-btn`);
+  if(btn){btn.disabled=true;btn.textContent='Guardando...';}
+  const{error}=await sb.from('facturacom_credenciales').upsert({
+    entidad:ent,api_key,secret_key,serie,patronal,updated_at:new Date().toISOString(),updated_by:currentUser?.id||null,
+  },{onConflict:'entidad'});
+  if(btn){btn.disabled=false;btn.textContent='Guardar '+(ENTS[ent]||{label:ent}).label;}
+  if(error){toast('Error al guardar: '+error.message,true);return;}
+  toast('✓ Credenciales de '+(ENTS[ent]||{label:ent}).label+' guardadas');
+  await loadFacturacomCred();
 }
 function openUsuarioModal(id){
   if(!isAdmin())return;

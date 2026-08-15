@@ -109,12 +109,16 @@ Deno.serve(async (req) => {
     if (periodoErr || !periodo) return json({ error: "No se encontró el periodo de nómina" }, 404);
 
     const ent: string = periodo.entidad;
-    const apiKey = Deno.env.get(`FACTURACOM_API_KEY_${ent}`);
-    const secretKey = Deno.env.get(`FACTURACOM_SECRET_KEY_${ent}`);
-    const serie = Deno.env.get(`FACTURACOM_SERIE_${ent}`);
-    const patronal = Deno.env.get(`FACTURACOM_PATRONAL_${ent}`);
+    // Credenciales editables desde Configuracion (tabla, no secrets de
+    // Supabase) para que un admin las pueda ver/corregir el mismo desde
+    // el sistema en vez de depender de la CLI.
+    const { data: cred } = await db.from("facturacom_credenciales").select("*").eq("entidad", ent).maybeSingle();
+    const apiKey = cred?.api_key;
+    const secretKey = cred?.secret_key;
+    const serie = cred?.serie;
+    const patronal = cred?.patronal;
     if (!apiKey || !secretKey || !serie || !patronal) {
-      return json({ error: `Faltan las llaves de factura.com configuradas para ${ENT_LABEL[ent] || ent}` }, 500);
+      return json({ error: `Faltan las llaves de factura.com configuradas para ${ENT_LABEL[ent] || ent}. Ve a Configuración → Facturación.` }, 500);
     }
     const headers = facturacomHeaders(apiKey, secretKey);
 
