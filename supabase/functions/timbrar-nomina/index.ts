@@ -229,7 +229,7 @@ Deno.serve(async (req) => {
       const prima = l.trabajo_domingo ? salario * 0.25 : 0;
       const subsidio = calcularSubsidioSemanal(salario);
       const percepciones = [{ tipo: "001", clave: "001", descripcion: "Sueldos, salarios rayas y jornales", exento: "0", gravado: sueldo.toFixed(2) }];
-      if (prima > 0) percepciones.push({ tipo: "019", clave: "019", descripcion: "Prima dominical", exento: "0", gravado: prima.toFixed(2) });
+      if (prima > 0) percepciones.push({ tipo: "020", clave: "020", descripcion: "Prima dominical", exento: "0", gravado: prima.toFixed(2) });
       const deducciones = [];
       if (Number(l.retencion_isr) > 0) deducciones.push({ tipo: "002", clave: "002", descripcion: "ISR", importe: Number(l.retencion_isr).toFixed(2) });
       if (Number(l.retencion_imss) > 0) deducciones.push({ tipo: "001", clave: "001", descripcion: "Seguridad social", importe: Number(l.retencion_imss).toFixed(2) });
