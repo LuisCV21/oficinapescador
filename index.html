@@ -4273,11 +4273,24 @@ async function syncNominaSemana(ent,week){
   // Limpieza: una linea que quedo de cuando el empleado si estaba activo en
   // esta sucursal (o cubrio un turno aqui) se queda huerfana para siempre si
   // luego se da de baja o cambia de sucursal -- el ciclo de arriba solo
-  // recorre "activos", nunca revisa ni borra lo que sobra. Se borran nomas
-  // las que no tienen nada pagado esta semana (dias_pagados<=0): si de
-  // verdad se le debe un ultimo pago, dias_pagados>0 y se deja intacta.
-  const activosIds=new Set(activos.map(e=>e.id));
-  const huerfanas=(lineasExist||[]).filter(l=>!activosIds.has(l.empleado_id)&&Number(l.dias_pagados)<=0);
+  // recorre "activos", nunca revisa ni borra lo que sobra.
+  //   - Si el empleado ahora esta registrado en OTRA sucursal, la linea
+  //     nunca debio existir aqui (el timbrado siempre es en su sucursal
+  //     registrada, nunca donde fue a cubrir un turno) -- se borra aunque
+  //     tenga dias_pagados>0, porque esos dias ya se pagan en su sucursal.
+  //   - Si solo se dio de baja (sigue siendo de esta sucursal), se borra
+  //     nomas si no tiene nada pagado esta semana: con dias_pagados>0 puede
+  //     ser un ultimo pago pendiente, se deja intacta.
+  // En ambos casos se protege lo que ya se timbro -- eso nunca se borra.
+  const empById2={};empData.forEach(e=>{empById2[e.id]=e;});
+  const huerfanas=(lineasExist||[]).filter(l=>{
+    if(l.facturacom_status==='timbrada')return false;
+    const emp=empById2[l.empleado_id];
+    if(!emp)return true;
+    if(emp.entidad!==ent)return true;
+    if(!emp.activo&&Number(l.dias_pagados)<=0)return true;
+    return false;
+  });
   if(huerfanas.length)await sb.from('nomina_lineas').delete().in('id',huerfanas.map(l=>l.id));
   return periodo;
 }
