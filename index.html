@@ -1066,8 +1066,8 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
               <button class="btn btn-sm" onclick="goNominaToday()">Esta semana</button>
               <button class="btn-icon" onclick="goNominaWeek(1)" title="Semana siguiente">▶</button>
               <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir nómina</button>
-              <button class="btn btn-sm" style="display:none" onclick="imprimirRecibosNominaSimple()" id="nomina-recibos-simples-btn">🧾 Recibos simples</button>
-              <button class="btn btn-sm" onclick="imprimirRecibosNominaTodos()" id="nomina-recibos-todos-btn">🖨️ Recibos de todos</button>
+              <button class="btn btn-sm" style="display:none" onclick="abrirSelectorRecibos('simple')" id="nomina-recibos-simples-btn">🧾 Recibos simples</button>
+              <button class="btn btn-sm" onclick="abrirSelectorRecibos('todos')" id="nomina-recibos-todos-btn">🖨️ Recibos de todos</button>
               <button class="btn btn-sm btn-filled" style="display:none" onclick="abrirPreviewNomina()" id="nomina-timbrar-btn">🧾 Timbrar nómina</button>
               <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🔄 Recalcular desde cero</button>
             </div>
@@ -1244,6 +1244,14 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   <div class="modal-hdr"><div class="modal-title" id="m-nomina-preview-title">Vista previa de nómina</div><button class="btn-icon" onclick="closeModal('m-nomina-preview')">✕</button></div>
   <div class="modal-body" id="m-nomina-preview-body"></div>
   <div class="modal-ftr" id="m-nomina-preview-ftr"></div>
+</div>
+</div>
+
+<div class="modal-overlay" id="m-recibos-sel">
+<div class="modal" style="max-width:480px">
+  <div class="modal-hdr"><div class="modal-title" id="m-recibos-sel-title">Elegir recibos a imprimir</div><button class="btn-icon" onclick="closeModal('m-recibos-sel')">✕</button></div>
+  <div class="modal-body" id="m-recibos-sel-body"></div>
+  <div class="modal-ftr" id="m-recibos-sel-ftr"></div>
 </div>
 </div>
 
@@ -4929,6 +4937,66 @@ function fmtNominaFecha(iso){
   const d=new Date(iso+'T12:00:00');
   return`${d.getDate()} DE ${NOMINA_MESES[d.getMonth()]} DEL ${d.getFullYear()}`;
 }
+
+// Modal para elegir a quien(es) imprimir antes de mandar a Recibos simples
+// o Recibos de todos -- por default se preseleccionan todos (mismo
+// comportamiento de antes), pero se puede desmarcar o dejar "solo este"
+// para reimprimir/corregir a una sola persona sin generar el resto.
+let recibosSelTipo=null,recibosSelCandidatos=[],recibosSelChecked=new Set();
+function abrirSelectorRecibos(tipo){
+  if(!nominaPeriodo){toast('No hay nómina generada para esta semana',true);return;}
+  const empById={};empData.forEach(e=>{empById[e.id]=e;});
+  const candidatos=nominaLineas.filter(l=>{
+    const e=empById[l.empleado_id];
+    if(!e||Number(l.dias_pagados)<=0)return false;
+    return tipo==='simple'?e.nomina_fiscal===false:true;
+  }).map(l=>({l,e:empById[l.empleado_id]})).sort((a,b)=>a.e.nombre.localeCompare(b.e.nombre));
+  if(!candidatos.length){toast(tipo==='simple'?'Nadie con recibo simple tiene días pagados esta semana':'Nadie tiene días pagados esta semana',true);return;}
+  recibosSelTipo=tipo;
+  recibosSelCandidatos=candidatos;
+  recibosSelChecked=new Set(candidatos.map(c=>c.l.id));
+  renderSelectorRecibos();
+  openModal('m-recibos-sel');
+}
+function toggleReciboSel(lineaId,checked){
+  if(checked)recibosSelChecked.add(lineaId);else recibosSelChecked.delete(lineaId);
+  renderSelectorRecibos();
+}
+function recibosSelMarcarTodos(marcar){
+  recibosSelChecked=marcar?new Set(recibosSelCandidatos.map(c=>c.l.id)):new Set();
+  renderSelectorRecibos();
+}
+function recibosSelSolo(lineaId){
+  recibosSelChecked=new Set([lineaId]);
+  renderSelectorRecibos();
+}
+function renderSelectorRecibos(){
+  document.getElementById('m-recibos-sel-title').textContent=recibosSelTipo==='simple'?'Elegir recibos simples a imprimir':'Elegir recibos a imprimir';
+  document.getElementById('m-recibos-sel-body').innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:6px;max-height:360px;overflow-y:auto">
+      ${recibosSelCandidatos.map(({l,e})=>`
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r);background:var(--surface2);cursor:pointer">
+          <input type="checkbox" ${recibosSelChecked.has(l.id)?'checked':''} onchange="toggleReciboSel('${l.id}',this.checked)">
+          <span style="flex:1;font-size:13px">${e.nombre}</span>
+          <button type="button" class="btn-text" style="font-size:11px" onclick="recibosSelSolo('${l.id}')">solo este</button>
+        </label>`).join('')}
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button class="btn-text" style="font-size:11px" onclick="recibosSelMarcarTodos(true)">Marcar todos</button>
+      <button class="btn-text" style="font-size:11px" onclick="recibosSelMarcarTodos(false)">Desmarcar todos</button>
+    </div>`;
+  document.getElementById('m-recibos-sel-ftr').innerHTML=
+    `<button class="btn" onclick="closeModal('m-recibos-sel')">Cancelar</button>`+
+    `<button class="btn btn-filled" ${recibosSelChecked.size?'':'disabled'} onclick="confirmarImprimirRecibos()">🖨️ Imprimir ${recibosSelChecked.size} seleccionado${recibosSelChecked.size===1?'':'s'}</button>`;
+}
+function confirmarImprimirRecibos(){
+  if(!recibosSelChecked.size)return;
+  const ids=new Set(recibosSelChecked);
+  closeModal('m-recibos-sel');
+  if(recibosSelTipo==='simple')imprimirRecibosNominaSimple(ids);
+  else imprimirRecibosNominaTodos(ids);
+}
+
 // Recibo para empleados con nomina_fiscal=false (no se timbran ante el SAT
 // pero si se les paga): mismo calculo de salario/prima/ISR/IMSS que a
 // cualquier otro (nomina_lineas de esta semana), mas sus horas extra/
@@ -4941,10 +5009,14 @@ function fmtNominaFecha(iso){
 // real no esta disponible (ej. factura.com atorado) y hay que pagarles con
 // un recibo en papel mientras tanto. No toca nomina_fiscal ni el estatus de
 // timbrado de nadie, es solo una impresion.
-function imprimirRecibosNominaTodos(){
+// soloIds (opcional): Set de nomina_lineas.id -- si se manda, solo imprime
+// esas lineas en vez de todas. Se usa cuando se selecciona un subconjunto
+// desde abrirSelectorRecibos (ej. para reimprimir a una sola persona).
+function imprimirRecibosNominaTodos(soloIds){
   if(!nominaPeriodo){toast('No hay nómina generada para esta semana',true);return;}
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
-  const candidatos=nominaLineas.filter(l=>Number(l.dias_pagados)>0&&empById[l.empleado_id]);
+  let candidatos=nominaLineas.filter(l=>Number(l.dias_pagados)>0&&empById[l.empleado_id]);
+  if(soloIds)candidatos=candidatos.filter(l=>soloIds.has(l.id));
   if(!candidatos.length){toast('Nadie tiene días pagados esta semana',true);return;}
   const days=asistWeekDays(nominaWeekStart);
   const semanaLabel=fmtNominaRango(days[0],days[6]),fechaPago=fmtNominaFecha(days[6]);
@@ -4971,10 +5043,12 @@ function imprimirRecibosNominaTodos(){
   window.print();
 }
 
-async function imprimirRecibosNominaSimple(){
+// soloIds: ver comentario en imprimirRecibosNominaTodos.
+async function imprimirRecibosNominaSimple(soloIds){
   if(!nominaPeriodo)return;
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
-  const candidatos=nominaLineas.filter(l=>{const e=empById[l.empleado_id];return e&&e.nomina_fiscal===false&&Number(l.dias_pagados)>0;});
+  let candidatos=nominaLineas.filter(l=>{const e=empById[l.empleado_id];return e&&e.nomina_fiscal===false&&Number(l.dias_pagados)>0;});
+  if(soloIds)candidatos=candidatos.filter(l=>soloIds.has(l.id));
   if(!candidatos.length){toast('Nadie con recibo simple tiene días pagados esta semana',true);return;}
   const days=asistWeekDays(nominaWeekStart);
   const heWeekD=new Date(nominaWeekStart+'T12:00:00');heWeekD.setDate(heWeekD.getDate()-1);
