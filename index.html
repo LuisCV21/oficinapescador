@@ -4328,17 +4328,24 @@ async function syncNominaSemana(ent,week){
     const sugerido=trabajados>0?Math.min(trabajados+1,7):0;
     const existing=lineaByEmp[e.id];
     if(!existing){
-      // Por default se repite el ISR de la semana pasada del mismo empleado
-      // (casi siempre aplica igual). El boton "auto" en la fila permite
-      // recalcularlo con la tarifa SAT si no coincide -- ver calcularIsrSemanal.
-      let retencionIsr=0;
-      const{data:prev}=await sb.from('nomina_lineas').select('retencion_isr,nomina_periodos!inner(semana_inicio,entidad)').eq('empleado_id',e.id).eq('nomina_periodos.entidad',ent).lt('nomina_periodos.semana_inicio',week).order('semana_inicio',{foreignTable:'nomina_periodos',ascending:false}).limit(1);
-      if(prev&&prev[0])retencionIsr=Number(prev[0].retencion_isr)||0;
-      else{
-        const salario=Number(e.salario_diario)||0;
-        retencionIsr=calcularIsrNetoSemanal(salario*sugerido+(trabajoDomingo?salario*0.25:0),salario);
+      // Si no es fiscal (nomina_fiscal=false), la persona no esta dada de
+      // alta ante el SAT ni el IMSS -- no hay base real para retenerle ISR
+      // ni cuota IMSS, se le paga el subtotal completo. Solo a empleados
+      // fiscales se les calcula la retencion con la tarifa SAT / cuota IMSS.
+      let retencionIsr=0,retencionImss=0;
+      if(e.nomina_fiscal!==false){
+        // Por default se repite el ISR de la semana pasada del mismo empleado
+        // (casi siempre aplica igual). El boton "auto" en la fila permite
+        // recalcularlo con la tarifa SAT si no coincide -- ver calcularIsrSemanal.
+        const{data:prev}=await sb.from('nomina_lineas').select('retencion_isr,nomina_periodos!inner(semana_inicio,entidad)').eq('empleado_id',e.id).eq('nomina_periodos.entidad',ent).lt('nomina_periodos.semana_inicio',week).order('semana_inicio',{foreignTable:'nomina_periodos',ascending:false}).limit(1);
+        if(prev&&prev[0])retencionIsr=Number(prev[0].retencion_isr)||0;
+        else{
+          const salario=Number(e.salario_diario)||0;
+          retencionIsr=calcularIsrNetoSemanal(salario*sugerido+(trabajoDomingo?salario*0.25:0),salario);
+        }
+        retencionImss=calcularImssSemanal(e.salario_diario,sugerido,e.fecha_ingreso);
       }
-      nuevas.push({periodo_id:periodo.id,empleado_id:e.id,dias_trabajados:trabajados,dias_pagados:sugerido,trabajo_domingo:trabajoDomingo,salario_diario:e.salario_diario||0,dia_descanso:null,retencion_isr:retencionIsr,retencion_imss:calcularImssSemanal(e.salario_diario,sugerido,e.fecha_ingreso),dias_pagados_manual:false});
+      nuevas.push({periodo_id:periodo.id,empleado_id:e.id,dias_trabajados:trabajados,dias_pagados:sugerido,trabajo_domingo:trabajoDomingo,salario_diario:e.salario_diario||0,dia_descanso:null,retencion_isr:retencionIsr,retencion_imss:retencionImss,dias_pagados_manual:false});
     }else{
       const upd={};
       if(existing.dias_trabajados!==trabajados)upd.dias_trabajados=trabajados;
@@ -4944,7 +4951,12 @@ function imprimirRecibosNominaTodos(){
   const cards=candidatos.map(l=>{
     const e=empById[l.empleado_id];
     const c=nominaCalc(l);
-    const isr=Number(l.retencion_isr)||0,imss=Number(l.retencion_imss)||0;
+    // Sin nomina_fiscal la persona no esta dada de alta ante el SAT/IMSS --
+    // aunque la linea tenga algo capturado en retencion_isr/imss, aqui nunca
+    // se le descuenta (no hay base real para esa retencion).
+    const noFiscal=e.nomina_fiscal===false;
+    const isr=noFiscal?0:Number(l.retencion_isr)||0,imss=noFiscal?0:Number(l.retencion_imss)||0;
+    const total=noFiscal?c.subtotal:c.total;
     const filas=[{concepto:'Salario',dias:l.dias_pagados,horas:'',importe:fmxn(c.nominaFiscal)}];
     if(c.primaDominical)filas.push({concepto:'Prima dominical',dias:'',horas:'',importe:fmxn(c.primaDominical)});
     if(isr)filas.push({concepto:'ISR',dias:'',horas:'',importe:'-'+fmxn(isr)});
@@ -4952,7 +4964,7 @@ function imprimirRecibosNominaTodos(){
     return reciboCardHTML({
       titulo:'Recibo de nómina',semanaLabel,fechaPago,entidad:nominaActiveEnt,
       nombre:e.nombre,puesto:puestoNombre(e.puesto_id)||'',
-      filas,totalLabel:`TOTAL A ${c.total<0?'DESCONTAR':'PAGAR'}`,totalMonto:fmxn(Math.abs(c.total)),
+      filas,totalLabel:`TOTAL A ${total<0?'DESCONTAR':'PAGAR'}`,totalMonto:fmxn(Math.abs(total)),
     });
   }).join('');
   document.getElementById('print-horasextra').innerHTML=`<div class="recibo-grid">${cards}</div>`;
@@ -4980,12 +4992,12 @@ async function imprimirRecibosNominaSimple(){
     const ov=(heSemana||[]).find(o=>o.empleado_id===e.id);
     const bonif=ov?Number(ov.bonificacion)||0:0,bonifConcepto=ov?ov.bonificacion_concepto||'':'';
     const descuento=ov?Number(ov.descuento)||0:0,descuentoConcepto=ov?ov.descuento_concepto||'':'';
-    const isr=Number(l.retencion_isr)||0,imss=Number(l.retencion_imss)||0;
-    const total=c.total+(totalHE-totalRT)*rate+bonif-descuento;
+    // Todos los candidatos aqui son nomina_fiscal=false (no dados de alta
+    // ante el SAT/IMSS) -- aunque la linea tenga algo capturado en
+    // retencion_isr/imss, nunca se le descuenta, no hay base real para eso.
+    const total=c.subtotal+(totalHE-totalRT)*rate+bonif-descuento;
     const filas=[{concepto:'Salario',dias:l.dias_pagados,horas:'',importe:fmxn(c.nominaFiscal)}];
     if(c.primaDominical)filas.push({concepto:'Prima dominical',dias:'',horas:'',importe:fmxn(c.primaDominical)});
-    if(isr)filas.push({concepto:'ISR',dias:'',horas:'',importe:'-'+fmxn(isr)});
-    if(imss)filas.push({concepto:'IMSS',dias:'',horas:'',importe:'-'+fmxn(imss)});
     if(totalHE)filas.push({concepto:'Horas extra',dias:'',horas:totalHE,importe:fmxn(totalHE*rate)});
     if(totalRT)filas.push({concepto:'Retardos',dias:'',horas:totalRT,importe:'-'+fmxn(totalRT*rate)});
     if(bonif)filas.push({concepto:'Bonificación'+(bonifConcepto?' ('+bonifConcepto+')':''),dias:'',horas:'',importe:fmxn(bonif)});
