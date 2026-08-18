@@ -1238,6 +1238,15 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 </div>
 </div>
 
+<!-- MODAL CORREGIR MÉTODO DE PAGO DE UN FOLIO -->
+<div class="modal-overlay" id="m-correccion-pago">
+<div class="modal" style="max-width:420px">
+  <div class="modal-hdr"><div class="modal-title" id="m-correccion-pago-title">Corregir método de pago</div><button class="btn-icon" onclick="closeModal('m-correccion-pago')">✕</button></div>
+  <div class="modal-body" id="m-correccion-pago-body"></div>
+  <div class="modal-ftr" id="m-correccion-pago-ftr"></div>
+</div>
+</div>
+
 <!-- MODAL VISTA PREVIA DE TIMBRADO DE NÓMINA -->
 <div class="modal-overlay" id="m-nomina-preview">
 <div class="modal" style="max-width:760px">
@@ -2388,7 +2397,7 @@ function isAdmin(){return currentPerfil&&currentPerfil.rol==='admin';}
 function puedeTimbrarNomina(){return currentPerfil&&(currentPerfil.rol==='admin'||currentPerfil.rol==='oficinista');}
 function canDelete(){return isAdmin();}
 function showIfAdmin(html){return isAdmin()?html:'';}
-let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[],cortesData=[];
+let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[],cortesData=[],correccionesData=[];
 let currentEnt=localStorage.getItem('ep_obl_ent')||null,currentRhEnt=null;
 let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null,editCatId=null,editCuentaId=null,editPuestoId=null,editUsuarioId=null;
 let cuentasPagoData=[],puestosData=[],usuariosData=[];
@@ -2484,12 +2493,16 @@ async function initApp(user){
 
 // ─── LOAD DATA ────────────────────────────────────────────────
 async function loadAll(){
-  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadUsuarios(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger(),loadCortes()]);
+  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadUsuarios(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger(),loadCortes(),loadCorrecciones()]);
   renderAll();
 }
 async function loadCortes(){
   const {data}=await sb.from('cortes_caja').select('*').order('cierre',{ascending:false});
   cortesData=data||[];
+}
+async function loadCorrecciones(){
+  const {data}=await sb.from('correcciones_pago_pendientes').select('*').order('creada_at',{ascending:false});
+  correccionesData=data||[];
 }
 async function loadBalances(){
   const {data}=await sb.from('balances_mensuales').select('*').order('fecha_corte',{ascending:false}).order('created_at',{ascending:false});
@@ -7441,6 +7454,24 @@ function openCorteDetail(id){
     ${row('<b>Actual</b>',`<b>${fmxn(actual)}</b>`)}
   `;
 
+  // Folios de pago del corte -- si un folio dice "Efectivo" pero en
+  // realidad fue "Debito" (o al revés), aquí se deja la corrección para
+  // que Pescador POS la jale y la aplique solo al abrir turno.
+  const pagosDetalle=d.pagos_detalle||[];
+  const pagosHtml=!pagosDetalle.length
+    ? '<div class="acc-row-val" style="color:var(--text3)">Sin detalle de folios en este corte</div>'
+    : pagosDetalle.map(p=>{
+        const corr=correccionDe(c.sucursal,p.folio);
+        let estado='';
+        if(corr&&corr.aplicada)estado=`<span style="color:var(--green);font-size:11px"> ✓ corregido a ${corr.forma_pago_correcta}</span>`;
+        else if(corr)estado=`<span style="color:var(--orange,#e67e22);font-size:11px"> ⏳ pendiente → ${corr.forma_pago_correcta}</span>`;
+        const btn=corr&&!corr.aplicada
+          ?`<button class="btn-icon" title="Cancelar corrección pendiente" onclick="cancelarCorreccionPago('${corr.id}')">✕</button>`
+          :`<button class="btn-icon" title="Corregir método de pago" onclick="openCorreccionModal('${c.sucursal}',${p.folio},${c.turno_id})">✎</button>`;
+        return `<div class="acc-row"><span class="acc-row-label">Folio ${p.folio} · ${p.forma_pago}${estado}</span>`+
+          `<span class="acc-row-val">${fmxn(p.monto)} ${btn}</span></div>`;
+      }).join('');
+
   document.getElementById('m-corte-detail-title').textContent=`Corte ${c.sucursal||''} · Turno #${c.turno_id}`;
   document.getElementById('m-corte-detail-body').innerHTML=`
     <div class="modal-sec">Periodo</div>
@@ -7483,6 +7514,9 @@ function openCorteDetail(id){
     ${bloqueAnterior('Detalle de vales',detVales,cu.anterior_vales,d.saldo_vales)}
     ${bloqueAnterior('Detalle de baucher',detBaucher,cu.anterior_baucher,d.saldo_baucher)}
     ${bloqueAnterior('Detalle de bodega',detBodega,cu.anterior_bodega,d.saldo_bodega)}
+
+    <div class="modal-sec">Folios de pago</div>
+    ${pagosHtml}
   `;
   const btnPdf=c.pdf_path
     ?`<button class="btn btn-filled" onclick="verCortePdf('${c.pdf_path}')">📄 Ver PDF</button>`
@@ -7496,6 +7530,54 @@ async function verCortePdf(pdfPath){
   const {data,error}=await sb.storage.from('cortes-pdf').createSignedUrl(pdfPath,3600);
   if(error||!data){toast('No se pudo abrir el PDF: '+(error?.message||'sin datos'),true);return;}
   window.open(data.signedUrl,'_blank');
+}
+
+// ─── CORRECCIÓN DE MÉTODO DE PAGO (folios de un corte) ───────────────────
+// Oficina deja aquí la corrección; Pescador POS (sistema aparte, sin
+// servidor expuesto) la jala solo al abrir turno vía la Edge Function
+// pos-correcciones-pago y la aplica con corregir_forma_pago().
+const FORMAS_PAGO_POS=['Efectivo','Debito','Credito','Transferencia'];
+
+function correccionDe(sucursal,folio){
+  return correccionesData.find(c=>c.sucursal===sucursal&&c.folio===folio);
+}
+
+function openCorreccionModal(sucursal,folio,turnoId){
+  document.getElementById('m-correccion-pago-title').textContent=`Corregir folio ${folio} — ${sucursal}`;
+  document.getElementById('m-correccion-pago-body').innerHTML=`
+    <div class="f-row"><label>Forma de pago correcta <span class="req">*</span></label>
+      <select id="cp-forma">${FORMAS_PAGO_POS.map(f=>`<option value="${f}">${f}</option>`).join('')}</select>
+    </div>
+    <div class="f-row"><label>Motivo (opcional)</label><input type="text" id="cp-motivo" placeholder="ej. cajera capturó Efectivo por error"/></div>
+  `;
+  document.getElementById('m-correccion-pago-ftr').innerHTML=
+    `<button class="btn" onclick="closeModal('m-correccion-pago')">Cancelar</button>`+
+    `<button class="btn btn-filled" id="cp-save-btn" onclick="guardarCorreccionPago('${sucursal}',${folio},${turnoId==null?'null':turnoId})">Guardar</button>`;
+  openModal('m-correccion-pago');
+}
+
+async function guardarCorreccionPago(sucursal,folio,turnoId){
+  const btn=document.getElementById('cp-save-btn');
+  btn.disabled=true;
+  const forma=document.getElementById('cp-forma').value;
+  const motivo=document.getElementById('cp-motivo').value.trim()||null;
+  const creadaPor=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina';
+  const {error}=await sb.from('correcciones_pago_pendientes').insert({
+    sucursal,folio,turno_id:turnoId,forma_pago_correcta:forma,motivo,creada_por:creadaPor,
+  });
+  if(error){btn.disabled=false;toast('No se pudo guardar: '+error.message,true);return;}
+  closeModal('m-correccion-pago');
+  toast('Corrección guardada — se aplicará en el POS al abrir turno');
+  await loadCorrecciones();
+  if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();
+}
+
+async function cancelarCorreccionPago(id){
+  if(!confirm('¿Cancelar esta corrección pendiente? El folio se queda como está.'))return;
+  const {error}=await sb.from('correcciones_pago_pendientes').delete().eq('id',id);
+  if(error){toast('No se pudo cancelar: '+error.message,true);return;}
+  await loadCorrecciones();
+  if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();
 }
 
 function renderBalanceList(){
@@ -8168,6 +8250,7 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'uniformes'},async()=>{await loadEmpleados();})
     .on('postgres_changes',{event:'*',schema:'public',table:'directorio'},async()=>{await loadDirectorio();if(document.getElementById('page-directorio').classList.contains('active'))renderDirectorio();})
     .on('postgres_changes',{event:'*',schema:'public',table:'cortes_caja'},async()=>{await loadCortes();if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'correcciones_pago_pendientes'},async()=>{await loadCorrecciones();if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();})
     .on('postgres_changes',{event:'*',schema:'public',table:'balances_mensuales'},async()=>{await loadBalances();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='luis')renderBalanceList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'balances_kateryn'},async()=>{await loadBalancesKat();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='kat')renderBalanceKatList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'nomina_ledger'},async()=>{await loadNominaLedger();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='nomina')renderNominaLedgerList();})
