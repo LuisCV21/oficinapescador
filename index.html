@@ -537,6 +537,39 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .acc-url:hover{text-decoration:underline}
 .acc-footer{display:flex;gap:5px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
 
+/* ── CORTE DE CAJA (estilo reporte, calcado del PDF que imprime el POS) ── */
+.corte-hdr-info{display:flex;flex-wrap:wrap;gap:4px 20px;font-size:11px;color:var(--text2);margin-bottom:14px}
+.corte-hdr-info b{color:var(--text);font-weight:600}
+.corte-sec{font-size:11px;font-weight:700;color:var(--slate);text-transform:uppercase;letter-spacing:.05em;
+  margin:18px 0 6px;padding-bottom:4px;border-bottom:2px solid var(--copper)}
+.corte-card{width:100%;border-collapse:collapse;border:1.5px solid var(--copper);border-radius:6px;
+  overflow:hidden;margin-bottom:4px;font-size:12px}
+.corte-card-hdr{background:var(--copper);color:#fff;font-size:11px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.03em;padding:6px 12px}
+.corte-row td{padding:5px 12px;border-bottom:1px solid var(--border)}
+.corte-row:last-child td{border-bottom:none}
+.corte-row-label{color:var(--text2);font-size:11.5px}
+.corte-row-val{text-align:right;font-family:var(--mono);font-size:12px;color:var(--text)}
+.corte-row-sep td{border-bottom:2px solid var(--copper)}
+.corte-tbl{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:10px}
+.corte-tbl th{background:var(--slate);color:#fff;font-size:9.5px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.03em;padding:5px 8px;text-align:left}
+.corte-tbl th.num{text-align:right}
+.corte-tbl td{padding:5px 8px;border-bottom:1px solid var(--border);font-family:var(--mono);color:var(--text)}
+.corte-tbl td.num{text-align:right}
+.corte-tbl tr:nth-child(even) td{background:var(--surface2)}
+.corte-tbl .corte-empty{font-family:var(--font);color:var(--text3);font-style:italic;text-align:center;padding:10px}
+.corte-badge{display:inline-flex;align-items:center;gap:3px;font-size:9.5px;font-weight:700;
+  padding:2px 7px;border-radius:999px;margin-left:6px;white-space:nowrap;font-family:var(--font)}
+.corte-badge.pend{background:var(--amber-light);color:var(--amber)}
+.corte-badge.ok{background:var(--green-light);color:var(--green)}
+.corte-iconbtn{width:22px;height:22px;border-radius:5px;border:1px solid var(--border2);background:var(--surface);
+  color:var(--text3);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;
+  vertical-align:middle;margin-left:6px}
+.corte-iconbtn:hover{border-color:var(--copper);color:var(--copper);background:var(--copper-light)}
+.corte-iconbtn[disabled]{opacity:.35;cursor:default}
+.corte-iconbtn[disabled]:hover{border-color:var(--border2);color:var(--text3);background:var(--surface)}
+
 /* ── REPO ── */
 .repo-path{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);margin-bottom:16px;flex-wrap:wrap}
 .repo-seg{cursor:pointer;color:var(--copper);font-weight:600}
@@ -7413,14 +7446,30 @@ function renderCortes(){
   }).join('');
 }
 
+// Helpers de estilo "reporte" -- calcan las tarjetas/tablas del PDF que
+// imprime el POS (_fr/_card/_sec en src/impresion/corte_pdf.py), con la
+// paleta cobre/pizarra propia de Oficina en vez del naranja del ticket.
+function pdfRow(label,valor,{color,bold,sep}={}){
+  const style=(bold?'font-weight:700;':'')+(color?`color:${color};`:'');
+  return `<tr class="corte-row${sep?' corte-row-sep':''}"><td class="corte-row-label">${label}</td>`+
+    `<td class="corte-row-val" style="${style}">${valor}</td></tr>`;
+}
+function pdfCard(titulo,filas){
+  return `<table class="corte-card"><tr><td colspan="2" class="corte-card-hdr">${titulo}</td></tr>${filas}</table>`;
+}
+function pdfSec(titulo){ return `<div class="corte-sec">${titulo}</div>`; }
+function pdfTabla(headers,rowsHtml,vacio){
+  const th=headers.map(h=>`<th${h.num?' class="num"':''}>${h.label}</th>`).join('');
+  return `<table class="corte-tbl"><thead><tr>${th}</tr></thead><tbody>`+
+    (rowsHtml||`<tr><td colspan="${headers.length}" class="corte-empty">${vacio}</td></tr>`)+
+    `</tbody></table>`;
+}
+
 function openCorteDetail(id){
   const c=cortesData.find(x=>x.id===id);
   if(!c)return;
   const d=c.datos||{};
   const cu=d.cuadre||{};
-  const row=(label,val)=>`<div class="acc-row"><span class="acc-row-label">${label}</span><span class="acc-row-val">${val}</span></div>`;
-  const ventasHtml=Object.entries(d.ventas_por_forma||{}).map(([k,v])=>row(k,fmxn(v))).join('')
-    ||'<div class="acc-row-val" style="color:var(--text3)">Sin datos</div>';
   const difCuadra=Math.abs(Number(cu.diferencia_cuadre||0))<0.5;
 
   const desglose=d.movimientos_desglose||[];
@@ -7430,93 +7479,93 @@ function openCorteDetail(id){
   const detBaucher = desglose.filter(m=>m.medio==='baucher');
   const detBodega  = desglose.filter(m=>m.categoria==='bodega');
 
-  // Lista simple de gastos (concepto + medio, monto) -- siempre salida de dinero
-  const gastosList=(movs)=>{
-    if(!movs.length)return'<div class="acc-row-val" style="color:var(--text3)">Sin movimientos</div>';
-    return movs.map(m=>row(m.concepto+(m.medio==='baucher'?' (Baucher)':''),fmxn(m.monto))).join('');
-  };
-  // Lista de movimientos con saldo arrastrado (vales/baucher/bodega): colorea
+  // Tabla simple de gastos (concepto + medio, monto) -- siempre salida de dinero
+  const tablaGastos=(movs)=>pdfTabla(
+    [{label:'Concepto'},{label:'Monto',num:true}],
+    movs.map((m,i)=>`<tr><td>${m.concepto}${m.medio==='baucher'?' (Baucher)':''}</td><td class="num">${fmxn(m.monto)}</td></tr>`).join(''),
+    'Sin movimientos',
+  );
+  // Filas de movimientos con saldo arrastrado (vales/baucher/bodega): colorea
   // por si entra o sale del saldo, según medio+tipo (mismo criterio que el PDF)
-  const saldoList=(movs)=>{
-    if(!movs.length)return'<div class="acc-row-val" style="color:var(--text3)">Sin movimientos este turno</div>';
-    return movs.map(m=>{
-      const esBaucher=m.medio==='baucher';
-      const esEntrada=esBaucher?m.tipo==='deposito':m.tipo==='retiro';
-      const color=esEntrada?'var(--green)':'var(--red)';
-      const tag=esBaucher?' (Baucher)':'';
-      return row(m.concepto+tag,`<span style="color:${color}">${fmxn(m.monto)}</span>`);
-    }).join('');
-  };
-  const bloqueAnterior=(titulo,movs,anterior,actual)=>`
-    <div class="modal-sec">${titulo}</div>
-    ${row('Anterior',fmxn(anterior))}
-    ${saldoList(movs)}
-    ${row('<b>Actual</b>',`<b>${fmxn(actual)}</b>`)}
-  `;
+  const filasSaldo=(movs)=>movs.map(m=>{
+    const esBaucher=m.medio==='baucher';
+    const esEntrada=esBaucher?m.tipo==='deposito':m.tipo==='retiro';
+    const color=esEntrada?'var(--green)':'var(--red)';
+    return pdfRow(m.concepto+(esBaucher?' (Baucher)':''),fmxn(m.monto),{color});
+  }).join('');
+  const bloqueAnterior=(titulo,movs,anterior,actual)=>pdfSec(titulo)+pdfCard('',
+    pdfRow('Anterior',fmxn(anterior))+
+    (movs.length?filasSaldo(movs):pdfRow('<span style="color:var(--text3);font-style:italic">Sin movimientos este turno</span>',''))+
+    pdfRow('Actual',fmxn(actual),{bold:true,sep:true})
+  );
 
   // Folios de pago del corte -- si un folio dice "Efectivo" pero en
   // realidad fue "Debito" (o al revés), aquí se deja la corrección para
   // que Pescador POS la jale y la aplique solo al abrir turno.
   const pagosDetalle=d.pagos_detalle||[];
-  const pagosHtml=!pagosDetalle.length
-    ? '<div class="acc-row-val" style="color:var(--text3)">Sin detalle de folios en este corte</div>'
-    : pagosDetalle.map(p=>{
-        const corr=correccionDe(c.sucursal,p.folio);
-        let estado='';
-        if(corr&&corr.aplicada)estado=`<span style="color:var(--green);font-size:11px"> ✓ corregido a ${corr.forma_pago_correcta}</span>`;
-        else if(corr)estado=`<span style="color:var(--orange,#e67e22);font-size:11px"> ⏳ pendiente → ${corr.forma_pago_correcta}</span>`;
-        const btn=corr&&!corr.aplicada
-          ?`<button class="btn-icon" title="Cancelar corrección pendiente" onclick="cancelarCorreccionPago('${corr.id}')">✕</button>`
-          :`<button class="btn-icon" title="Corregir método de pago" onclick="openCorreccionModal('${c.sucursal}',${p.folio},${c.turno_id})">✎</button>`;
-        return `<div class="acc-row"><span class="acc-row-label">Folio ${p.folio} · ${p.forma_pago}${estado}</span>`+
-          `<span class="acc-row-val">${fmxn(p.monto)} ${btn}</span></div>`;
-      }).join('');
+  const filasFolios=pagosDetalle.map((p,i)=>{
+    const corr=correccionDe(c.sucursal,p.folio);
+    let estado='';
+    if(corr&&corr.aplicada)estado=`<span class="corte-badge ok">✓ corregido a ${corr.forma_pago_correcta}</span>`;
+    else if(corr)estado=`<span class="corte-badge pend">⏳ pendiente → ${corr.forma_pago_correcta}</span>`;
+    const btn=corr&&!corr.aplicada
+      ?`<button class="corte-iconbtn" title="Cancelar corrección pendiente" onclick="cancelarCorreccionPago('${corr.id}')">✕</button>`
+      :`<button class="corte-iconbtn" ${corr?'disabled':''} title="Corregir método de pago" onclick="openCorreccionModal('${c.sucursal}',${p.folio},${c.turno_id})">✎</button>`;
+    return `<tr><td>${p.folio}</td><td>${p.forma_pago}${estado}</td><td class="num">${fmxn(p.monto)}</td><td style="text-align:center">${btn}</td></tr>`;
+  }).join('');
 
   document.getElementById('m-corte-detail-title').textContent=`Corte ${c.sucursal||''} · Turno #${c.turno_id}`;
   document.getElementById('m-corte-detail-body').innerHTML=`
-    <div class="modal-sec">Periodo</div>
-    ${row('Apertura',fmtFechaHora(c.apertura))}
-    ${row('Cierre',fmtFechaHora(c.cierre))}
+    <div class="corte-hdr-info">
+      <span>Apertura: <b>${fmtFechaHora(c.apertura)}</b></span>
+      <span>Cierre: <b>${fmtFechaHora(c.cierre)}</b></span>
+    </div>
 
-    <div class="modal-sec">Ventas por forma de pago</div>
-    ${ventasHtml}
-    ${row('Total',`<b>${fmxn(c.total_ventas)}</b>`)}
+    ${pdfSec('Ventas por forma de pago')}
+    ${pdfCard('',
+      Object.entries(d.ventas_por_forma||{}).map(([k,v])=>pdfRow(k,fmxn(v))).join('')+
+      pdfRow('Total',`<b>${fmxn(c.total_ventas)}</b>`,{sep:true})
+    )}
 
-    <div class="modal-sec">Efectivo contado</div>
-    ${row('Monedas',fmxn(d.efectivo_monedas))}
-    ${row('Billetes',fmxn(d.efectivo_billetes))}
+    ${pdfSec('Cuadre del corte')}
+    ${pdfCard('',
+      pdfRow('Bodega',fmxn(d.saldo_bodega))+
+      pdfRow('Baucher',fmxn(d.saldo_baucher))+
+      pdfRow('Monedas',fmxn(d.efectivo_monedas))+
+      pdfRow('Billetes',fmxn(d.efectivo_billetes))+
+      pdfRow('Vales',fmxn(d.saldo_vales))+
+      pdfRow('TOTAL CAJA',fmxn(cu.primer_total_caja),{color:'var(--copper)',bold:true,sep:true})+
+      pdfRow('+ Gastos',fmxn(cu.gastos_totales),{color:'var(--red)'})+
+      pdfRow('TOTAL CAJA',fmxn(cu.segundo_total_caja),{bold:true,sep:true})
+    )}
 
-    <div class="modal-sec">Cuadre del corte</div>
-    ${row('Bodega',fmxn(d.saldo_bodega))}
-    ${row('Baucher',fmxn(d.saldo_baucher))}
-    ${row('Monedas',fmxn(d.efectivo_monedas))}
-    ${row('Billetes',fmxn(d.efectivo_billetes))}
-    ${row('Vales',fmxn(d.saldo_vales))}
-    ${row('<b>Total Caja</b>',`<b>${fmxn(cu.primer_total_caja)}</b>`)}
-    ${row('+ Gastos',fmxn(cu.gastos_totales))}
-    ${row('<b>Total Caja</b>',`<b>${fmxn(cu.segundo_total_caja)}</b>`)}
+    ${pdfSec('Cuadre del día — anterior / tira')}
+    ${pdfCard('',
+      pdfRow('Anterior de caja',fmxn(cu.anterior_caja))+
+      pdfRow('+ Tira (venta total)',fmxn(cu.tira),{color:'var(--green)'})+
+      pdfRow('= Total esperado',fmxn(cu.esperado),{bold:true,sep:true})+
+      pdfRow('Total Caja (segundo)',fmxn(cu.segundo_total_caja))+
+      pdfRow('Diferencia',difCuadra?'Cuadra exacto':fmxnSigned(cu.diferencia_cuadre),{color:difCuadra?'var(--green)':'var(--red)',bold:true,sep:true})
+    )}
 
-    <div class="modal-sec">Cuadre del día — anterior / tira</div>
-    ${row('Anterior de caja',fmxn(cu.anterior_caja))}
-    ${row('+ Tira (venta total)',fmxn(cu.tira))}
-    ${row('= Total esperado',fmxn(cu.esperado))}
-    ${row('Total Caja (segundo)',fmxn(cu.segundo_total_caja))}
-    ${row('<b>Diferencia</b>',`<b style="color:${difCuadra?'var(--green)':'var(--red)'}">${difCuadra?'Cuadra exacto':fmxnSigned(cu.diferencia_cuadre)}</b>`)}
+    ${pdfSec('Gastos de mercancía')}
+    ${tablaGastos(gastosMerc)}
+    ${gastosMerc.length?pdfCard('',pdfRow('Total',`<b>${fmxn(gastosMerc.reduce((s,m)=>s+Number(m.monto||0),0))}</b>`,{sep:true})):''}
 
-    <div class="modal-sec">Gastos de mercancía</div>
-    ${gastosList(gastosMerc)}
-    ${gastosMerc.length?row('<b>Total</b>',`<b>${fmxn(gastosMerc.reduce((s,m)=>s+Number(m.monto||0),0))}</b>`):''}
-
-    <div class="modal-sec">Gastos diversos</div>
-    ${gastosList(gastosDiv)}
-    ${gastosDiv.length?row('<b>Total</b>',`<b>${fmxn(gastosDiv.reduce((s,m)=>s+Number(m.monto||0),0))}</b>`):''}
+    ${pdfSec('Gastos diversos')}
+    ${tablaGastos(gastosDiv)}
+    ${gastosDiv.length?pdfCard('',pdfRow('Total',`<b>${fmxn(gastosDiv.reduce((s,m)=>s+Number(m.monto||0),0))}</b>`,{sep:true})):''}
 
     ${bloqueAnterior('Detalle de vales',detVales,cu.anterior_vales,d.saldo_vales)}
     ${bloqueAnterior('Detalle de baucher',detBaucher,cu.anterior_baucher,d.saldo_baucher)}
     ${bloqueAnterior('Detalle de bodega',detBodega,cu.anterior_bodega,d.saldo_bodega)}
 
-    <div class="modal-sec">Folios de pago</div>
-    ${pagosHtml}
+    ${pdfSec('Folios de pago')}
+    ${pdfTabla(
+      [{label:'Folio'},{label:'Forma de pago'},{label:'Monto',num:true},{label:''}],
+      filasFolios,
+      'Sin detalle de folios en este corte',
+    )}
   `;
   const btnPdf=c.pdf_path
     ?`<button class="btn btn-filled" onclick="verCortePdf('${c.pdf_path}')">📄 Ver PDF</button>`
