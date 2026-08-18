@@ -559,6 +559,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .corte-tbl td.num{text-align:right}
 .corte-tbl tr:nth-child(even) td{background:var(--surface2)}
 .corte-tbl .corte-empty{font-family:var(--font);color:var(--text3);font-style:italic;text-align:center;padding:10px}
+.corte-subtitulo{font-size:11px;font-weight:700;margin:0 0 4px}
 .corte-badge{display:inline-flex;align-items:center;gap:3px;font-size:9.5px;font-weight:700;
   padding:2px 7px;border-radius:999px;margin-left:6px;white-space:nowrap;font-family:var(--font)}
 .corte-badge.pend{background:var(--amber-light);color:var(--amber)}
@@ -7464,6 +7465,119 @@ function pdfTabla(headers,rowsHtml,vacio){
     (rowsHtml||`<tr><td colspan="${headers.length}" class="corte-empty">${vacio}</td></tr>`)+
     `</tbody></table>`;
 }
+function pdfSubtitulo(titulo,color){ return `<p class="corte-subtitulo" style="color:${color}">${titulo}</p>`; }
+function horaCorta(iso){ return (iso||'').slice(11,16); }
+
+// Sección "Incidencias de seguridad" -- calcada de _build_security_section
+// en src/impresion/corte_pdf.py (POS). Requiere que el POS mande
+// corte.cuentas + bloqueos_productos + traspasos_detalle +
+// cancelaciones_cfdi (agregado 2026-08-18, antes Oficina no recibía esto
+// a propósito). Regresa '' si no hay ninguna incidencia en el turno.
+function buildIncidencias(d){
+  const cuentas=d.cuentas||[];
+  const allCancelados=[],allCambios=[],allDescuentos=[],allFolios=[],allReaperturas=[];
+  cuentas.forEach(c=>{
+    const folio=c.folio||String(c.id||'');
+    const mesa=c.mesa||c.nombre||'';
+    if(c.estado==='cancelada'){
+      if(c.items_cuenta_cancelada&&c.items_cuenta_cancelada.length)allFolios.push({...c,_folio:folio,_mesa:mesa});
+      return;
+    }
+    (c.cancelados_detalle||c.cancelados||[]).forEach(it=>allCancelados.push({...it,_folio:folio,_mesa:mesa}));
+    (c.cambios_detalle||[]).forEach(cm=>allCambios.push({...cm,_folio:folio,_mesa:mesa}));
+    (c.descuentos_detalle||[]).forEach(dt=>allDescuentos.push({...dt,_folio:folio,_mesa:mesa}));
+    (c.reaperturas||[]).forEach(r=>allReaperturas.push({...r,_folio:folio,_mesa:mesa}));
+  });
+  const bloqueos=d.bloqueos_productos||[];
+  const traspasos=d.traspasos_detalle||[];
+  const cfdiCancel=d.cancelaciones_cfdi||[];
+
+  if(!allCancelados.length&&!allCambios.length&&!allDescuentos.length&&!allFolios.length
+     &&!allReaperturas.length&&!bloqueos.length&&!traspasos.length&&!cfdiCancel.length)return'';
+
+  let html=pdfSec('⛔ Incidencias de seguridad')+
+    `<p style="font-size:11px;color:var(--text3);margin:-4px 0 12px">`+
+    `${allFolios.length} cuenta(s) cancelada(s) · ${allCancelados.length} cancelación(es) de producto · `+
+    `${allCambios.length} cambio(s) de platillo · ${allDescuentos.length} descuento(s) · `+
+    `${allReaperturas.length} reapertura(s) — cualquier incidencia debe ser justificada por el responsable de turno.</p>`;
+
+  if(allFolios.length){
+    let totalPot=0;
+    const rows=allFolios.map(c=>{
+      const canc=c.cancelacion_cuenta||{};
+      const items=(c.items_cuenta_cancelada||[]).map(it=>`${it.descripcion} ×${it.cantidad}`).join(', ')||'Sin productos registrados';
+      const pot=c.total_potencial_cancelado||0;totalPot+=pot;
+      const lugar=(c._mesa&&c.nombre&&c._mesa!==c.nombre)?`${c._mesa} — ${c.nombre}`:(c._mesa||c.nombre||'');
+      return `<tr><td>${lugar}</td><td>${items}</td><td class="num">${fmxn(pot)}</td>`+
+        `<td style="color:var(--red)">${canc.razon||'Sin motivo registrado'}</td><td>${canc.usuario_nombre||'—'}</td>`+
+        `<td style="text-align:center">${horaCorta(canc.fecha)}</td></tr>`;
+    }).join('')+`<tr><td colspan="2" style="font-weight:700">TOTAL POTENCIAL PERDIDO</td>`+
+      `<td class="num" style="font-weight:700;color:var(--red)">${fmxn(totalPot)}</td><td colspan="3"></td></tr>`;
+    html+=pdfSubtitulo('⚠ Cuentas canceladas — requieren justificación','var(--red)')+
+      pdfTabla([{label:'Cuenta/Mesa'},{label:'Contenía'},{label:'Monto',num:true},{label:'Motivo'},{label:'Canceló'},{label:'Hora'}],rows);
+  }
+
+  if(allCancelados.length){
+    const rows=allCancelados.map(it=>`<tr><td>${it._folio}</td><td>${it._mesa}</td><td>${it.descripcion||'—'}</td>`+
+      `<td style="text-align:center">${it.cantidad||1}</td><td class="num">${fmxn(it.precio_unitario)}</td>`+
+      `<td style="color:var(--red)">${it.razon_cancelacion||it.razon||'Sin motivo registrado'}</td>`+
+      `<td>${it.usuario_nombre||'—'}</td><td style="text-align:center">${horaCorta(it.fecha_captura)}</td></tr>`).join('');
+    html+=pdfSubtitulo('⛔ Cancelaciones de producto','var(--red)')+
+      pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Producto cancelado'},{label:'Cant'},{label:'Precio',num:true},{label:'Motivo'},{label:'Canceló'},{label:'Hora'}],rows);
+  }
+
+  if(allReaperturas.length){
+    const rows=allReaperturas.map(r=>`<tr><td>${r._folio}</td><td>${r._mesa}</td>`+
+      `<td style="color:var(--red)">${r.razon||'Sin motivo registrado'}</td><td>${r.usuario_nombre||'—'}</td>`+
+      `<td style="text-align:center">${horaCorta(r.fecha)}</td></tr>`).join('');
+    html+=pdfSubtitulo('⚠ Reaperturas de cuenta','var(--red)')+
+      pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Motivo'},{label:'Reabrió'},{label:'Hora'}],rows);
+  }
+
+  if(allCambios.length){
+    const rows=allCambios.map(cm=>`<tr><td>${cm._folio}</td><td>${cm._mesa}</td><td>${cm.descripcion||'—'}</td>`+
+      `<td style="color:var(--copper)">${cm.razon||'Sin motivo registrado'}</td><td>${cm.usuario_nombre||'—'}</td>`+
+      `<td style="text-align:center">${horaCorta(cm.fecha)}</td></tr>`).join('');
+    html+=pdfSubtitulo('⇄ Cambios de platillo','var(--copper)')+
+      pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Descripción del cambio'},{label:'Motivo'},{label:'Usuario'},{label:'Hora'}],rows);
+  }
+
+  if(allDescuentos.length){
+    let totalDto=0;
+    const rows=allDescuentos.map(dt=>{
+      const precio=dt.precio_unitario||0,cant=dt.cantidad||1,monto=dt.descuento||0;
+      totalDto+=monto;
+      const pct=(precio&&cant)?Math.round(monto/(precio*cant)*100):0;
+      return `<tr><td>${dt._folio}</td><td>${dt._mesa}</td><td>${dt.descripcion||'—'}</td>`+
+        `<td style="text-align:center">${cant}</td><td class="num">${fmxn(precio)}</td>`+
+        `<td class="num" style="color:var(--purple);font-weight:700">${fmxn(monto)} <span style="font-weight:400;font-size:9.5px">(${pct}%)</span></td>`+
+        `<td class="num">${fmxn(precio*cant-monto)}</td><td style="text-align:center">${horaCorta(dt.fecha_captura)}</td></tr>`;
+    }).join('')+`<tr><td colspan="5" style="font-weight:700">TOTAL DESCUENTOS</td>`+
+      `<td class="num" style="font-weight:700;color:var(--purple)">${fmxn(totalDto)}</td><td colspan="2"></td></tr>`;
+    html+=pdfSubtitulo('✓ Descuentos aplicados','var(--purple)')+
+      pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Producto'},{label:'Cant'},{label:'Precio',num:true},{label:'Descuento',num:true},{label:'Cobrado',num:true},{label:'Hora'}],rows);
+  }
+
+  if(bloqueos.length){
+    const rows=bloqueos.map(b=>`<tr><td style="text-align:center">${horaCorta(b.fecha)}</td><td>${b.descripcion||''}</td><td>${b.usuario_nombre||'—'}</td></tr>`).join('');
+    html+=pdfSubtitulo('🔒 Cambios de disponibilidad de productos','var(--purple)')+
+      pdfTabla([{label:'Hora'},{label:'Acción'},{label:'Usuario'}],rows);
+  }
+
+  if(traspasos.length){
+    const rows=traspasos.map(t=>`<tr><td style="text-align:center">${horaCorta(t.fecha)}</td><td>${t.descripcion||''}</td><td>${t.usuario_nombre||'—'}</td></tr>`).join('');
+    html+=pdfSubtitulo('⇆ Traspasos de producto entre cuentas/mesas','var(--teal)')+
+      pdfTabla([{label:'Hora'},{label:'Detalle'},{label:'Autorizó'}],rows);
+  }
+
+  if(cfdiCancel.length){
+    const rows=cfdiCancel.map(f=>`<tr><td style="text-align:center">${horaCorta(f.fecha)}</td><td>${f.descripcion||''}</td><td>${f.usuario_nombre||'—'}</td></tr>`).join('');
+    html+=pdfSubtitulo('❌ Facturas (CFDI) canceladas','var(--red)')+
+      pdfTabla([{label:'Hora'},{label:'Detalle'},{label:'Autorizó'}],rows);
+  }
+
+  return html;
+}
 
 function openCorteDetail(id){
   const c=cortesData.find(x=>x.id===id);
@@ -7566,6 +7680,8 @@ function openCorteDetail(id){
       filasFolios,
       'Sin detalle de folios en este corte',
     )}
+
+    ${buildIncidencias(d)}
   `;
   const btnPdf=c.pdf_path
     ?`<button class="btn btn-filled" onclick="verCortePdf('${c.pdf_path}')">📄 Ver PDF</button>`
