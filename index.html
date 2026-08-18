@@ -7413,6 +7413,17 @@ function fmtDiaMes(iso){
   if(isNaN(d))return'';
   return d.toLocaleDateString('es-MX',{day:'numeric',month:'long'});
 }
+function fmtDiaSec(iso){
+  if(!iso)return'Sin fecha';
+  const d=new Date(iso);
+  if(isNaN(d))return'Sin fecha';
+  const hoy=new Date(), ayer=new Date(); ayer.setDate(hoy.getDate()-1);
+  const mismoDia=(a,b)=>a.toDateString()===b.toDateString();
+  if(mismoDia(d,hoy))return'Hoy';
+  if(mismoDia(d,ayer))return'Ayer';
+  let s=d.toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'});
+  return s.charAt(0).toUpperCase()+s.slice(1).replace(',','');
+}
 function renderCorteTabs(){
   const bar=document.getElementById('cortes-tabs-bar');
   if(!bar)return;
@@ -7440,13 +7451,22 @@ function renderCortes(){
       (currentCorteSuc==='TODAS'?'Sin cortes recibidos aún':'Sin cortes de '+currentCorteSuc+' aún');
     el.innerHTML=`<div class="empty"><div class="empty-ico">🧾</div>${msg}</div>`;return;
   }
-  el.innerHTML=list.map(c=>{
-    const dif=Number(c.diferencia_cuadre||0);
-    const cuadra=Math.abs(dif)<0.5;
-    const difColor=cuadra?'var(--green)':'var(--red)';
-    const difTxt=cuadra?'Cuadra':fmxnSigned(dif);
-    const titulo=`Corte ${corteSucLabel(c.sucursal)} ${fmtDiaMes(c.cierre||c.apertura)}`;
-    return`<div class="acc-card" style="cursor:pointer;background:${corteBg(c.sucursal,10)};border-left:4px solid ${corteSucColor(c.sucursal)}" onclick="openCorteDetail('${c.id}')">
+  const grupos=new Map();
+  list.forEach(c=>{
+    const key=(c.cierre||c.apertura||'').slice(0,10)||'?';
+    if(!grupos.has(key))grupos.set(key,[]);
+    grupos.get(key).push(c);
+  });
+  let out='';
+  for(const items of grupos.values()){
+    out+=`<div class="sec-lbl" style="grid-column:1/-1">${fmtDiaSec(items[0].cierre||items[0].apertura)}</div>`;
+    out+=items.map(c=>{
+      const dif=Number(c.diferencia_cuadre||0);
+      const cuadra=Math.abs(dif)<0.5;
+      const difColor=cuadra?'var(--green)':'var(--red)';
+      const difTxt=cuadra?'Cuadra':fmxnSigned(dif);
+      const titulo=`Corte ${corteSucLabel(c.sucursal)} ${fmtDiaMes(c.cierre||c.apertura)}`;
+      return`<div class="acc-card" style="cursor:pointer;background:${corteBg(c.sucursal,10)};border-left:4px solid ${corteSucColor(c.sucursal)}" onclick="openCorteDetail('${c.id}')">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <div>
           <div style="font-weight:600;font-size:14px">${titulo}${c.pdf_path?' 📄':''}</div>
@@ -7458,7 +7478,9 @@ function renderCortes(){
         </div>
       </div>
     </div>`;
-  }).join('');
+    }).join('');
+  }
+  el.innerHTML=out;
 }
 
 // Helpers de estilo "reporte" -- calcan las tarjetas/tablas del PDF que
