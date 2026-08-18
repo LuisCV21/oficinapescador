@@ -5709,10 +5709,10 @@ function renderVehCard(v){
   // Build docs section
   let docsHtml='';
   DOC_TYPES_VEH.forEach(tipo=>{
-    const doc=docs.find(d=>d.tipo===tipo);
+    const docsTipo=docs.filter(d=>d.tipo===tipo);
     const icon=DOC_ICONS_VEH[tipo]||'📄';
     const label=DOC_LABELS_FULL[tipo]||tipo;
-    if(!doc){
+    if(!docsTipo.length){
       docsHtml+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border)">
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:15px;opacity:.4">${icon}</span>
@@ -5724,24 +5724,30 @@ function renderVehCard(v){
         </div>
       </div>`;
     } else {
-      const dias=doc.fecha_vencimiento?Math.round((new Date(doc.fecha_vencimiento+'T12:00:00')-hoy)/86400000):null;
-      const vencCls=dias===null?'background:var(--green-light);color:var(--green)':dias<0?'background:var(--red-light);color:var(--red)':dias<=30?'background:var(--amber-light);color:var(--amber)':'background:var(--green-light);color:var(--green)';
-      const vencLabel=dias===null?'✓ Sin vencimiento':dias<0?'Vencido hace '+Math.abs(dias)+'d':dias<=30?'Vence en '+dias+'d':'Vigente — '+fmt(doc.fecha_vencimiento);
-      const sp=doc.storage_path.replace(/'/g,"\'");
-      const sn=doc.nombre_archivo.replace(/'/g,"\'");
-      docsHtml+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border)">
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:15px">${icon}</span>
-          <div>
-            <div style="font-size:12px;font-weight:500;color:var(--text)">${label}</div>
-            <div style="font-size:10px;color:var(--text3)">${doc.nombre_archivo}</div>
+      docsTipo.forEach((doc,i)=>{
+        const dias=doc.fecha_vencimiento?Math.round((new Date(doc.fecha_vencimiento+'T12:00:00')-hoy)/86400000):null;
+        const vencCls=dias===null?'background:var(--green-light);color:var(--green)':dias<0?'background:var(--red-light);color:var(--red)':dias<=30?'background:var(--amber-light);color:var(--amber)':'background:var(--green-light);color:var(--green)';
+        const vencLabel=dias===null?'✓ Sin vencimiento':dias<0?'Vencido hace '+Math.abs(dias)+'d':dias<=30?'Vence en '+dias+'d':'Vigente — '+fmt(doc.fecha_vencimiento);
+        const sp=doc.storage_path.replace(/'/g,"\'");
+        const sn=doc.nombre_archivo.replace(/'/g,"\'");
+        const numLabel=docsTipo.length>1?` <span style="color:var(--text3);font-weight:400">(${i+1}/${docsTipo.length})</span>`:'';
+        docsHtml+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:15px">${icon}</span>
+            <div>
+              <div style="font-size:12px;font-weight:500;color:var(--text)">${label}${numLabel}</div>
+              <div style="font-size:10px;color:var(--text3)">${doc.nombre_archivo}</div>
+            </div>
           </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <span style="font-size:10px;padding:2px 8px;border-radius:8px;font-weight:600;${vencCls}">${vencLabel}</span>
-          <button class="btn-text" style="font-size:11px" onclick="viewFile('${sp}','${sn}','vehiculos')">Ver</button>
-          <label style="font-size:11px;color:var(--text2);font-weight:600;cursor:pointer;font-family:var(--font)" title="Reemplazar">↻<input type="file" style="display:none" accept="image/*,.pdf" onchange="uploadDocFromCard('${v.id}','${tipo}',this)"></label>
-        </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:10px;padding:2px 8px;border-radius:8px;font-weight:600;${vencCls}">${vencLabel}</span>
+            <button class="btn-text" style="font-size:11px" onclick="viewFile('${sp}','${sn}','vehiculos')">Ver</button>
+            <button class="btn-text red" style="font-size:11px" onclick="eliminarDocVehiculo('${doc.id}','${sp}')" title="Eliminar">✕</button>
+          </div>
+        </div>`;
+      });
+      docsHtml+=`<div style="display:flex;align-items:center;justify-content:flex-end;padding:6px 14px;border-bottom:1px solid var(--border)">
+        <label style="font-size:11px;color:var(--copper);font-weight:600;cursor:pointer;font-family:var(--font)">+ Agregar otro<input type="file" style="display:none" accept="image/*,.pdf" onchange="uploadDocFromCard('${v.id}','${tipo}',this)"></label>
       </div>`;
     }
   });
@@ -5958,9 +5964,17 @@ async function uploadDocFromCard(vehId,tipo,input){
     fecha_vencimiento=prompt('¿Fecha de vencimiento? (AAAA-MM-DD) — opcional, Enter para omitir:');
     if(fecha_vencimiento&&!/^\d{4}-\d{2}-\d{2}$/.test(fecha_vencimiento))fecha_vencimiento=null;
   }
-  await sb.from('documentos_vehiculo').delete().eq('vehiculo_id',vehId).eq('tipo',tipo);
   await sb.from('documentos_vehiculo').insert({vehiculo_id:vehId,tipo,nombre_archivo:file.name,storage_path:path,fecha_vencimiento:fecha_vencimiento||null,size_bytes:file.size,mime_type:file.type});
   toast('✓ Documento subido correctamente');
+  await loadVehiculos();
+  renderFlotilla();
+}
+async function eliminarDocVehiculo(docId,storagePath){
+  if(!confirm('¿Eliminar este documento?'))return;
+  const{error:se}=await sb.storage.from('vehiculos').remove([storagePath]);
+  if(se){toast('Error al eliminar: '+se.message,true);return;}
+  await sb.from('documentos_vehiculo').delete().eq('id',docId);
+  toast('Documento eliminado');
   await loadVehiculos();
   renderFlotilla();
 }
