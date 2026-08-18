@@ -7395,14 +7395,17 @@ function fmtFechaCorta(dateStr){
 }
 
 let currentCorteSuc='TODAS';
-function corteSucColor(nombre){
-  const found=Object.values(ENTS).find(e=>e.label.toLowerCase()===String(nombre||'').toLowerCase());
-  return found?found.color:'#8a8a8a';
+function corteSucEnt(nombre){
+  // Cada sucursal manda su propio nombre tal cual lo tenga capturado en su
+  // BD local (ej. Puebla se manda a sí misma como "Av. Puebla", el hotel
+  // como "Real de Poza Hotel") -- no coincide exacto con el label corto de
+  // ENTS, así que se busca la palabra clave DENTRO del nombre en vez de
+  // exigir que sean idénticos.
+  const n=String(nombre||'').toLowerCase();
+  return Object.values(ENTS).find(e=>n.includes(e.label.toLowerCase()));
 }
-function corteSucLabel(nombre){
-  const found=Object.values(ENTS).find(e=>e.label.toLowerCase()===String(nombre||'').toLowerCase());
-  return found?found.label:(nombre||'');
-}
+function corteSucColor(nombre){ return (corteSucEnt(nombre)||{}).color||'#8a8a8a'; }
+function corteSucLabel(nombre){ return (corteSucEnt(nombre)||{}).label||(nombre||''); }
 function corteBg(nombre,pct){ return `color-mix(in srgb, ${corteSucColor(nombre)} ${pct}%, var(--surface))`; }
 function fmtDiaMes(iso){
   if(!iso)return'';
