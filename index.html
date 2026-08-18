@@ -7399,6 +7399,17 @@ function corteSucColor(nombre){
   const found=Object.values(ENTS).find(e=>e.label.toLowerCase()===String(nombre||'').toLowerCase());
   return found?found.color:'#8a8a8a';
 }
+function corteSucLabel(nombre){
+  const found=Object.values(ENTS).find(e=>e.label.toLowerCase()===String(nombre||'').toLowerCase());
+  return found?found.label:(nombre||'');
+}
+function corteBg(nombre,pct){ return `color-mix(in srgb, ${corteSucColor(nombre)} ${pct}%, var(--surface))`; }
+function fmtDiaMes(iso){
+  if(!iso)return'';
+  const d=new Date(iso);
+  if(isNaN(d))return'';
+  return d.toLocaleDateString('es-MX',{day:'numeric',month:'long'});
+}
 function renderCorteTabs(){
   const bar=document.getElementById('cortes-tabs-bar');
   if(!bar)return;
@@ -7431,11 +7442,11 @@ function renderCortes(){
     const cuadra=Math.abs(dif)<0.5;
     const difColor=cuadra?'var(--green)':'var(--red)';
     const difTxt=cuadra?'Cuadra':fmxnSigned(dif);
-    const sucTag=currentCorteSuc==='TODAS'?`<span class="ent-dot" style="background:${corteSucColor(c.sucursal)};margin-right:5px"></span>${c.sucursal||''} · `:'';
-    return`<div class="acc-card" style="cursor:pointer" onclick="openCorteDetail('${c.id}')">
+    const titulo=`Corte ${corteSucLabel(c.sucursal)} ${fmtDiaMes(c.cierre||c.apertura)}`;
+    return`<div class="acc-card" style="cursor:pointer;background:${corteBg(c.sucursal,10)};border-left:4px solid ${corteSucColor(c.sucursal)}" onclick="openCorteDetail('${c.id}')">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <div>
-          <div style="font-weight:600;font-size:14px;display:flex;align-items:center">${sucTag}${fmtFechaHora(c.cierre||c.apertura)}${c.pdf_path?' 📄':''}</div>
+          <div style="font-weight:600;font-size:14px">${titulo}${c.pdf_path?' 📄':''}</div>
           <div style="font-size:11px;color:var(--text2);margin-top:2px">Turno #${c.turno_id} · Venta total ${fmxn(c.total_ventas)}</div>
         </div>
         <div style="text-align:right">
