@@ -288,7 +288,14 @@ Deno.serve(async (req) => {
 
     // 4. Armar y timbrar la nómina con FechaFromAPI (evita el error de
     // desfase de reloj del servidor, ver memoria project_facturacom_nomina_sandbox_fecha).
-    const fechaFromApi = new Date().toISOString().slice(0, 19);
+    // OJO: tiene que ser la hora LOCAL de Mexico, no UTC -- new Date().toISOString()
+    // regresa UTC (6 horas adelantada a Veracruz/Puebla) mientras conserva un formato
+    // que parece hora local, lo que mandaba una fecha adelantada disfrazada de correcta.
+    const fechaFromApi = new Intl.DateTimeFormat("sv-SE", {
+      timeZone: "America/Mexico_City",
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    }).format(new Date()).replace(" ", "T");
     const registros = listosConUid.map((l) => {
       const e = l.empleados as any;
       const salario = Number(l.salario_diario) || 0;
