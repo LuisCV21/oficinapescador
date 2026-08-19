@@ -1281,6 +1281,15 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 </div>
 </div>
 
+<!-- MODAL CORREGIR SALDOS "ANTERIOR" (CAJA/BODEGA/VALES/BAUCHER) -->
+<div class="modal-overlay" id="m-correccion-anterior">
+<div class="modal" style="max-width:440px">
+  <div class="modal-hdr"><div class="modal-title" id="m-correccion-anterior-title">Corregir anterior</div><button class="btn-icon" onclick="closeModal('m-correccion-anterior')">✕</button></div>
+  <div class="modal-body" id="m-correccion-anterior-body"></div>
+  <div class="modal-ftr" id="m-correccion-anterior-ftr"></div>
+</div>
+</div>
+
 <!-- MODAL VISTA PREVIA DE TIMBRADO DE NÓMINA -->
 <div class="modal-overlay" id="m-nomina-preview">
 <div class="modal" style="max-width:760px">
@@ -2431,7 +2440,7 @@ function isAdmin(){return currentPerfil&&currentPerfil.rol==='admin';}
 function puedeTimbrarNomina(){return currentPerfil&&(currentPerfil.rol==='admin'||currentPerfil.rol==='oficinista');}
 function canDelete(){return isAdmin();}
 function showIfAdmin(html){return isAdmin()?html:'';}
-let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[],cortesData=[],correccionesData=[];
+let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[],cortesData=[],correccionesData=[],correccionesAnteriorData=[];
 let currentEnt=localStorage.getItem('ep_obl_ent')||null,currentRhEnt=null;
 let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null,editCatId=null,editCuentaId=null,editPuestoId=null,editUsuarioId=null;
 let cuentasPagoData=[],puestosData=[],usuariosData=[];
@@ -2527,7 +2536,7 @@ async function initApp(user){
 
 // ─── LOAD DATA ────────────────────────────────────────────────
 async function loadAll(){
-  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadUsuarios(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger(),loadCortes(),loadCorrecciones()]);
+  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadUsuarios(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger(),loadCortes(),loadCorrecciones(),loadCorreccionesAnterior()]);
   renderAll();
 }
 async function loadCortes(){
@@ -2537,6 +2546,10 @@ async function loadCortes(){
 async function loadCorrecciones(){
   const {data}=await sb.from('correcciones_pago_pendientes').select('*').order('creada_at',{ascending:false});
   correccionesData=data||[];
+}
+async function loadCorreccionesAnterior(){
+  const {data}=await sb.from('correcciones_anterior_pendientes').select('*').order('creada_at',{ascending:false});
+  correccionesAnteriorData=data||[];
 }
 async function loadBalances(){
   const {data}=await sb.from('balances_mensuales').select('*').order('fecha_corte',{ascending:false}).order('created_at',{ascending:false});
@@ -7736,8 +7749,13 @@ function openCorteDetail(id){
   const btnPdf=c.pdf_path
     ?`<button class="btn btn-filled" onclick="verCortePdf('${c.pdf_path}')">📄 Ver PDF</button>`
     :'';
+  const preAnterior={
+    caja:Math.round(((d.efectivo_monedas||0)+(d.efectivo_billetes||0)+(d.saldo_bodega||0)+(d.saldo_baucher||0)+(d.saldo_vales||0))*100)/100,
+    bodega:d.saldo_bodega||0, vales:d.saldo_vales||0, baucher:d.saldo_baucher||0,
+  };
+  const btnAnterior=`<button class="btn" title="Corregir los saldos con los que arranca el próximo turno de ${c.sucursal}" onclick='openCorreccionAnteriorModal(${JSON.stringify(c.sucursal)},${JSON.stringify(preAnterior)})'>✎ Corregir anterior</button>`;
   document.getElementById('m-corte-detail-ftr').innerHTML=
-    btnPdf+'<button class="btn" onclick="closeModal(\'m-corte-detail\')">Cerrar</button>';
+    btnPdf+btnAnterior+'<button class="btn" onclick="closeModal(\'m-corte-detail\')">Cerrar</button>';
   openModal('m-corte-detail');
 }
 
@@ -7792,6 +7810,61 @@ async function cancelarCorreccionPago(id){
   const {error}=await sb.from('correcciones_pago_pendientes').delete().eq('id',id);
   if(error){toast('No se pudo cancelar: '+error.message,true);return;}
   await loadCorrecciones();
+  if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();
+}
+
+// ─── CORRECCIÓN DE SALDOS "ANTERIOR" (caja/bodega/vales/baucher) ─────────
+// Igual que la corrección de folios: Oficina la deja aquí, Pescador POS la
+// jala y la aplica sola al abrir turno (o al turno ya abierto) vía
+// set_override_anterior(), sin que alguien tenga que ir en persona.
+function correccionAnteriorPendienteDe(sucursal){
+  return correccionesAnteriorData.find(c=>c.sucursal===sucursal&&!c.aplicada);
+}
+
+function openCorreccionAnteriorModal(sucursal,pre){
+  const p=pre||{caja:0,bodega:0,vales:0,baucher:0};
+  const pendiente=correccionAnteriorPendienteDe(sucursal);
+  document.getElementById('m-correccion-anterior-title').textContent=`Corregir anterior — ${sucursal}`;
+  document.getElementById('m-correccion-anterior-body').innerHTML=`
+    ${pendiente?`<div style="background:var(--amber-light,#fff3cd);color:var(--amber,#856404);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:12px">Ya hay una corrección pendiente de ${fmtFechaHora(pendiente.creada_at)} sin aplicar todavía — guardar aquí la reemplaza. <a href="#" onclick="event.preventDefault();cancelarCorreccionAnterior('${pendiente.id}');closeModal('m-correccion-anterior')" style="color:inherit;text-decoration:underline">Cancelarla en vez de reemplazarla</a></div>`:''}
+    <div class="f-row"><label>Anterior de caja <span class="req">*</span></label><input type="number" step="0.01" id="ca-caja" value="${p.caja}"/></div>
+    <div class="f-row"><label>Anterior de bodega</label><input type="number" step="0.01" id="ca-bodega" value="${p.bodega}"/></div>
+    <div class="f-row"><label>Anterior de vales</label><input type="number" step="0.01" id="ca-vales" value="${p.vales}"/></div>
+    <div class="f-row"><label>Anterior de baucher</label><input type="number" step="0.01" id="ca-baucher" value="${p.baucher}"/></div>
+    <div class="f-row"><label>Motivo (opcional)</label><input type="text" id="ca-motivo" placeholder="ej. cajera capturó mal el baucher del cierre"/></div>
+    <div style="font-size:11.5px;color:var(--text3);margin-top:4px">Se aplica sola la próxima vez que ${sucursal} abra turno (o de inmediato si ya tiene uno abierto y sincroniza).</div>
+  `;
+  document.getElementById('m-correccion-anterior-ftr').innerHTML=
+    `<button class="btn" onclick="closeModal('m-correccion-anterior')">Cancelar</button>`+
+    `<button class="btn btn-filled" id="ca-save-btn" onclick="guardarCorreccionAnterior('${sucursal}')">Guardar</button>`;
+  openModal('m-correccion-anterior');
+}
+
+async function guardarCorreccionAnterior(sucursal){
+  const btn=document.getElementById('ca-save-btn');
+  btn.disabled=true;
+  const caja=parseFloat(document.getElementById('ca-caja').value);
+  const bodega=parseFloat(document.getElementById('ca-bodega').value)||0;
+  const vales=parseFloat(document.getElementById('ca-vales').value)||0;
+  const baucher=parseFloat(document.getElementById('ca-baucher').value)||0;
+  if(isNaN(caja)){btn.disabled=false;toast('El anterior de caja es obligatorio',true);return;}
+  const motivo=document.getElementById('ca-motivo').value.trim()||null;
+  const creadaPor=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina';
+  const {error}=await sb.from('correcciones_anterior_pendientes').insert({
+    sucursal,anterior_caja:caja,anterior_bodega:bodega,anterior_vales:vales,anterior_baucher:baucher,motivo,creada_por:creadaPor,
+  });
+  if(error){btn.disabled=false;toast('No se pudo guardar: '+error.message,true);return;}
+  closeModal('m-correccion-anterior');
+  toast('Corrección de anterior guardada — se aplicará en el POS al abrir turno');
+  await loadCorreccionesAnterior();
+  if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();
+}
+
+async function cancelarCorreccionAnterior(id){
+  if(!confirm('¿Cancelar esta corrección de anterior pendiente?'))return;
+  const {error}=await sb.from('correcciones_anterior_pendientes').delete().eq('id',id);
+  if(error){toast('No se pudo cancelar: '+error.message,true);return;}
+  await loadCorreccionesAnterior();
   if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();
 }
 
@@ -8466,6 +8539,7 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'directorio'},async()=>{await loadDirectorio();if(document.getElementById('page-directorio').classList.contains('active'))renderDirectorio();})
     .on('postgres_changes',{event:'*',schema:'public',table:'cortes_caja'},async()=>{await loadCortes();if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();})
     .on('postgres_changes',{event:'*',schema:'public',table:'correcciones_pago_pendientes'},async()=>{await loadCorrecciones();if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'correcciones_anterior_pendientes'},async()=>{await loadCorreccionesAnterior();if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();})
     .on('postgres_changes',{event:'*',schema:'public',table:'balances_mensuales'},async()=>{await loadBalances();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='luis')renderBalanceList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'balances_kateryn'},async()=>{await loadBalancesKat();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='kat')renderBalanceKatList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'nomina_ledger'},async()=>{await loadNominaLedger();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='nomina')renderNominaLedgerList();})
