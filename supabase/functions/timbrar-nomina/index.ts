@@ -55,6 +55,16 @@ const DOMICILIO_EMPRESA: Record<string, {
 
 const TIPO_CONTRATO_SAT: Record<string, string> = { indeterminado: "01", obra: "02", prueba: "05" };
 
+// CFDI 4.0 exige que DomicilioFiscalReceptor coincida con el codigo postal
+// registrado ante el SAT para el RFC del empleado (error CFDI40148 si no
+// coincide) -- no puede ser el domicilio de la empresa. Se saca del domicilio
+// libre que ya se captura en Recursos Humanos (empleados.domicilio).
+function extraerCP(domicilio: string | null | undefined): string | null {
+  if (!domicilio) return null;
+  const m = domicilio.match(/C\.?\s*P\.?\s*(\d{5})/i);
+  return m ? m[1] : null;
+}
+
 // Subsidio para el empleo, decreto DOF 31/12/2025 vigente en 2026: cuota fija
 // mensual (sin tabla escalonada), completa si el trabajador no rebasa el
 // limite mensual, prorrateada a la semana igual que en el front-end
@@ -184,7 +194,7 @@ Deno.serve(async (req) => {
     // poder probar con un empleado antes de mandar el resto).
     let lineasQuery = db
       .from("nomina_lineas")
-      .select("*, empleados(id,nombre,curp,rfc,nss,salario_diario,puesto_id,fecha_ingreso,tipo_contrato,facturacom_uid)")
+      .select("*, empleados(id,nombre,curp,rfc,nss,salario_diario,puesto_id,fecha_ingreso,tipo_contrato,facturacom_uid,domicilio)")
       .eq("periodo_id", periodo_id);
     if (Array.isArray(linea_ids) && linea_ids.length) lineasQuery = lineasQuery.in("id", linea_ids);
     const { data: lineas, error: lineasErr } = await lineasQuery;
@@ -205,6 +215,7 @@ Deno.serve(async (req) => {
       if (!e.rfc?.trim()) faltan.push("RFC");
       if (!e.nss?.trim()) faltan.push("NSS");
       if (!e.fecha_ingreso) faltan.push("fecha de ingreso");
+      if (!e.facturacom_uid && !extraerCP(e.domicilio)) faltan.push("código postal en el domicilio");
       if (Number(l.dias_pagados) <= 0) faltan.push("días pagados en 0");
       if (faltan.length) {
         resultados.push({ linea_id: l.id, empleado: e.nombre, status: "datos_incompletos", mensaje: "Falta: " + faltan.join(", ") });
@@ -261,7 +272,7 @@ Deno.serve(async (req) => {
           curp: e.curp,
           imss: e.nss,
           rfc: e.rfc,
-          calle: dom.calle, colonia: dom.colonia, no_ext: dom.no_ext, cp: dom.cp, municipio: dom.municipio, estado: dom.estado,
+          calle: dom.calle, colonia: dom.colonia, no_ext: dom.no_ext, cp: extraerCP(e.domicilio) || dom.cp, municipio: dom.municipio, estado: dom.estado,
           tipo_contrato: TIPO_CONTRATO_SAT[e.tipo_contrato] || "01",
           asimilados: "0",
           sindicalizado: "No",
@@ -288,7 +299,14 @@ Deno.serve(async (req) => {
 
     // 4. Armar y timbrar la nómina con FechaFromAPI (evita el error de
     // desfase de reloj del servidor, ver memoria project_facturacom_nomina_sandbox_fecha).
-    const fechaFromApi = new Date().toISOString().slice(0, 19);
+    // OJO: tiene que ser la hora LOCAL de Mexico, no UTC -- new Date().toISOString()
+    // regresa UTC (6 horas adelantada a Veracruz/Puebla) mientras conserva un formato
+    // que parece hora local, lo que mandaba una fecha adelantada disfrazada de correcta.
+    const fechaFromApi = new Intl.DateTimeFormat("sv-SE", {
+      timeZone: "America/Mexico_City",
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    }).format(new Date()).replace(" ", "T");
     const registros = listosConUid.map((l) => {
       const e = l.empleados as any;
       const salario = Number(l.salario_diario) || 0;
