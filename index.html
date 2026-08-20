@@ -564,6 +564,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   padding:2px 7px;border-radius:999px;margin-left:6px;white-space:nowrap;font-family:var(--font)}
 .corte-badge.pend{background:var(--amber-light);color:var(--amber)}
 .corte-badge.ok{background:var(--green-light);color:var(--green)}
+.corte-badge.futura{background:var(--teal-light);color:var(--teal)}
 .corte-iconbtn{width:22px;height:22px;border-radius:5px;border:1px solid var(--border2);background:var(--surface);
   color:var(--text3);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;
   vertical-align:middle;margin-left:6px}
@@ -744,6 +745,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   padding:14px 18px;margin-bottom:14px;flex-wrap:wrap}
 .nomina-banner-txt{font-size:13px;color:var(--copper-dark);font-weight:600}
 .nomina-table-wrap{overflow-x:auto;background:var(--surface);border-radius:var(--rl);border:1px solid var(--border);box-shadow:var(--shadow)}
+@keyframes nomSlideFromRight{from{opacity:0;transform:translateX(22px)}to{opacity:1;transform:translateX(0)}}
+@keyframes nomSlideFromLeft{from{opacity:0;transform:translateX(-22px)}to{opacity:1;transform:translateX(0)}}
+.nom-slide-right{animation:nomSlideFromRight .24s ease-out}
+.nom-slide-left{animation:nomSlideFromLeft .24s ease-out}
 .nomina-table{width:100%;border-collapse:collapse;font-size:12px;min-width:1180px}
 .nomina-table th{background:var(--surface2);color:var(--text2);text-transform:uppercase;
   font-size:9.5px;letter-spacing:.03em;padding:8px 6px;border-bottom:1px solid var(--border);white-space:nowrap}
@@ -4340,15 +4345,33 @@ async function clearAsistDia(){
 let nominaActiveEnt='PUE',nominaWeekStart=null,nominaPeriodo=null,nominaLineas=[];
 const NOMINA_DESCANSOS=['DOMINGO','LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO','VARIADOS'];
 
+let nominaSlideDir=null;
 function goNominaWeek(delta){
   const d=new Date(nominaWeekStart+'T12:00:00');
   d.setDate(d.getDate()+delta*7);
   nominaWeekStart=dateToISO(d);
+  nominaSlideDir=delta>0?'right':'left';
   loadNomina().then(renderNomina);
 }
 function goNominaToday(){
+  const anterior=nominaWeekStart;
   nominaWeekStart=asistDefaultSunday();
+  nominaSlideDir=anterior&&nominaWeekStart>anterior?'right':anterior&&nominaWeekStart<anterior?'left':null;
   loadNomina().then(renderNomina);
+}
+// Que tan lejos esta weekStart de la semana de hoy, para el badge de color
+// junto al titulo -- sin esto, cambiar de semana solo movia una leyenda de
+// texto y no se notaba a simple vista que ya no estabas viendo la semana
+// actual.
+function nominaSemanaRelativa(weekStart){
+  const hoy=asistDefaultSunday();
+  const diffDias=Math.round((new Date(weekStart+'T12:00:00')-new Date(hoy+'T12:00:00'))/86400000);
+  const diffSemanas=Math.round(diffDias/7);
+  if(diffSemanas===0)return{texto:'Semana actual',clase:'ok'};
+  if(diffSemanas===-1)return{texto:'Semana pasada',clase:'pend'};
+  if(diffSemanas<-1)return{texto:`Hace ${-diffSemanas} semanas`,clase:'pend'};
+  if(diffSemanas===1)return{texto:'Semana que viene',clase:'futura'};
+  return{texto:`Dentro de ${diffSemanas} semanas`,clase:'futura'};
 }
 
 async function loadNomina(){
@@ -4563,8 +4586,17 @@ function calcularImssSemanal(salarioDiario,diasPagados,fechaIngreso){
 
 function renderNomina(){
   const days=asistWeekDays(nominaWeekStart);
-  document.getElementById('nomina-week-label').textContent='Semana del '+fmtFechaCorta(days[0])+' al '+fmtFechaCorta(days[6]);
+  const rel=nominaSemanaRelativa(nominaWeekStart);
+  document.getElementById('nomina-week-label').innerHTML=
+    'Semana del '+fmtFechaCorta(days[0])+' al '+fmtFechaCorta(days[6])+
+    `<span class="corte-badge ${rel.clase}">${rel.texto}</span>`;
   const el=document.getElementById('nomina-content');
+  if(nominaSlideDir){
+    el.classList.remove('nom-slide-right','nom-slide-left');
+    void el.offsetWidth;
+    el.classList.add(nominaSlideDir==='right'?'nom-slide-right':'nom-slide-left');
+    nominaSlideDir=null;
+  }
   const printTablaBtn=document.getElementById('nomina-print-tabla-btn');
   const delBtn=document.getElementById('nomina-del-btn');
   if(!nominaPeriodo){
