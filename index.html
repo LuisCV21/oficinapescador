@@ -1063,7 +1063,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
           <div class="tab" data-ent="HOT" onclick="switchModuloEnt('HOT')">Hotel</div>
           <div class="tab" data-ent="FLO" onclick="switchModuloEnt('FLO')">Florida</div>
         </div>
-        <div class="page-hdr" style="margin-top:10px">
+        <div class="page-hdr" style="margin-top:10px;margin-bottom:10px;align-items:center">
           <div class="page-sub" id="modulo-week-label"></div>
           <div style="display:flex;gap:8px;align-items:center">
             <button class="btn-icon" onclick="goModuloWeek(-1)" title="Semana anterior">◀</button>
@@ -1071,46 +1071,37 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             <button class="btn-icon" onclick="goModuloWeek(1)" title="Semana siguiente">▶</button>
           </div>
         </div>
-        <div class="tabs-bar" id="nya-sub-tabs" style="margin-top:8px">
+        <div class="tabs-bar" id="nya-sub-tabs">
           <div class="tab active" data-sub="asistencia" onclick="switchModuloTab('asistencia')">📅 Asistencia</div>
           <div class="tab" data-sub="horasextra" onclick="switchModuloTab('horasextra')">⏱️ Horas extra</div>
           <div class="tab" data-sub="nomina" onclick="switchModuloTab('nomina')">💵 Nómina</div>
         </div>
 
         <div class="modulo-sub" id="sub-asistencia">
-          <div class="page-hdr" style="margin-top:16px">
-            <div></div>
-            <div style="display:flex;gap:8px;align-items:center">
-              <button class="btn btn-sm" onclick="printAsistencia()">🖨️ Imprimir</button>
-            </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;margin:12px 0 10px">
+            <button class="btn btn-sm" onclick="printAsistencia()">🖨️ Imprimir</button>
           </div>
           <div class="asist-legend" id="asist-legend"></div>
           <div style="overflow-x:auto;margin:14px 0 30px" id="asist-grid-wrap"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
 
         <div class="modulo-sub" id="sub-horasextra" style="display:none">
-          <div class="page-hdr" style="margin-top:16px">
-            <div></div>
-            <div style="display:flex;gap:8px;align-items:center">
-              <button class="btn btn-sm" onclick="imprimirHorasExtra()">📊 Imprimir</button>
-              <button class="btn btn-sm" onclick="abrirPreviewRecibosHorasExtra()">🖨️ Recibos</button>
-            </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;margin:12px 0 10px">
+            <button class="btn btn-sm" onclick="imprimirHorasExtra()">📊 Imprimir</button>
+            <button class="btn btn-sm" onclick="abrirPreviewRecibosHorasExtra()">🖨️ Recibos</button>
           </div>
           <div style="overflow-x:auto;margin:14px 0" id="horasextra-grid-wrap"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
 
         <div class="modulo-sub" id="sub-nomina" style="display:none">
-          <div class="page-hdr" style="margin-top:16px">
-            <div></div>
-            <div style="display:flex;gap:8px;align-items:center">
-              <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir reporte de nómina</button>
-              <button class="btn btn-sm" style="display:none" onclick="abrirSelectorRecibos('simple')" id="nomina-recibos-simples-btn">🧾 Recibos simples</button>
-              <button class="btn btn-sm" onclick="abrirSelectorRecibos('todos')" id="nomina-recibos-todos-btn">🖨️ Recibos simples para todos</button>
-              <button class="btn btn-sm" style="display:none" onclick="abrirSelectorRecibos('timbrados')" id="nomina-recibos-timbrados-btn" title="Descarga en un solo PDF el recibo oficial compacto (con folio fiscal, QR y sellos reales) de los empleados que elijas de entre los ya timbrados esta semana, listo para firmar">📄 Imprimir nómina CFDI</button>
-              <button class="btn btn-sm" style="display:none" onclick="recalcularTodaLaNomina(this)" id="nomina-recalcular-btn" title="Vuelve a calcular el ISR y el IMSS de cada línea con la tarifa SAT según los días pagados actuales de esta semana (no toca factura.com, solo la captura local)">🔁 Recalcular ISR/IMSS</button>
-              <button class="btn btn-sm btn-filled" style="display:none" onclick="abrirPreviewNomina()" id="nomina-timbrar-btn">🧾 Timbrar nómina</button>
-              <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🔄 Recalcular desde cero</button>
-            </div>
+          <div style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0 10px">
+            <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir reporte de nómina</button>
+            <button class="btn btn-sm" style="display:none" onclick="abrirSelectorRecibos('simple')" id="nomina-recibos-simples-btn">🧾 Recibos simples</button>
+            <button class="btn btn-sm" onclick="abrirSelectorRecibos('todos')" id="nomina-recibos-todos-btn">🖨️ Recibos simples para todos</button>
+            <button class="btn btn-sm" style="display:none" onclick="abrirSelectorRecibos('timbrados')" id="nomina-recibos-timbrados-btn" title="Descarga en un solo PDF el recibo oficial compacto (con folio fiscal, QR y sellos reales) de los empleados que elijas de entre los ya timbrados esta semana, listo para firmar">📄 Imprimir nómina CFDI</button>
+            <button class="btn btn-sm" style="display:none" onclick="recalcularTodaLaNomina(this)" id="nomina-recalcular-btn" title="Vuelve a calcular el ISR y el IMSS de cada línea con la tarifa SAT según los días pagados actuales de esta semana (no toca factura.com, solo la captura local)">🔁 Recalcular ISR/IMSS</button>
+            <button class="btn btn-sm btn-filled" style="display:none" onclick="abrirPreviewNomina()" id="nomina-timbrar-btn">🧾 Timbrar nómina</button>
+            <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🔄 Recalcular desde cero</button>
           </div>
           <div id="nomina-content" style="margin:14px 0"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
