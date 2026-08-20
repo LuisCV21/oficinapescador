@@ -53,14 +53,42 @@ Deno.serve(async (req) => {
       return new Response(xmlText, { headers: { ...corsHeaders, "Content-Type": "text/plain" } });
     }
 
-    // Numeros reales del caso Maira (periodo 09-15 ago 2026): sueldo 2212.00,
-    // ISR causado 158.02, subsidio calculado 123.47 -> ISR retenido 34.54,
-    // IMSS 55.13. Con la logica vieja el "Otros Pagos" mandaba 123.47
-    // completos (total 2245.80); con la corregida debe mandar 0.00 (total
-    // 2122.33, igual que el recibo oficial de Aspel).
-    const sueldo = 2212.00, isrRetenido = 34.54, imss = 55.13, subsidioCalculado = 123.47;
-    const subsidioViejoBug = subsidioCalculado; // lo que mandaba el codigo con el bug
-    const subsidioCorregido = 0.00; // lo que debe mandar ya arreglado (isrCausado 158.02 > subsidio)
+    // Numeros configurables por request (default = caso real de Maira,
+    // periodo 09-15 ago 2026) para poder probar otros tramos de sueldo sin
+    // redeploy. isrCausado y subsidioEfectivo se calculan aqui mismo con la
+    // MISMA formula que ya trae timbrar-nomina/index.ts, para comparar
+    // contra lo que de verdad se timbra en sandbox.
+    const sueldo = Number(bodyIn.sueldo) || 2212.00;
+    const isrRetenido = bodyIn.isrRetenido != null ? Number(bodyIn.isrRetenido) : 34.54;
+    const imss = bodyIn.imss != null ? Number(bodyIn.imss) : 55.13;
+    const salarioDiario = Number(bodyIn.salarioDiario) || 316;
+    const dias = Number(bodyIn.dias) || 7;
+
+    const SUBSIDIO_MENSUAL = 536.22, SUBSIDIO_LIMITE_MENSUAL = 11492.66;
+    function calcularSubsidioSemanal(sd: number) {
+      const limiteDiario = SUBSIDIO_LIMITE_MENSUAL / 30.4;
+      if (sd <= 0 || sd > limiteDiario) return 0;
+      return Math.round(((SUBSIDIO_MENSUAL / 30.4) * 7) * 100) / 100;
+    }
+    const TARIFA = [
+      { limInf: 0.01, limSup: 194.46, cuota: 0, pct: 1.92 },
+      { limInf: 194.47, limSup: 1650.67, cuota: 3.71, pct: 6.40 },
+      { limInf: 1650.68, limSup: 2900.87, cuota: 96.95, pct: 10.88 },
+      { limInf: 2900.88, limSup: 3372.11, cuota: 232.96, pct: 16.00 },
+      { limInf: 3372.12, limSup: 4037.32, cuota: 308.35, pct: 17.92 },
+      { limInf: 4037.33, limSup: 8142.75, cuota: 427.56, pct: 21.36 },
+      { limInf: 8142.76, limSup: 12834.08, cuota: 1304.45, pct: 23.52 },
+    ];
+    function calcularIsrCausado(base: number) {
+      if (base <= 0) return 0;
+      const b = TARIFA.find((r) => base >= r.limInf && base <= r.limSup) || TARIFA[TARIFA.length - 1];
+      return Math.round((b.cuota + (base - b.limInf) * (b.pct / 100)) * 100) / 100;
+    }
+    const subsidioCalculado = calcularSubsidioSemanal(salarioDiario);
+    const isrCausado = calcularIsrCausado(sueldo);
+    const subsidioViejoBug = subsidioCalculado; // lo que mandaba el codigo con el bug: siempre el subsidio completo
+    const subsidioCorregido = Math.max(0, Math.round((subsidioCalculado - isrCausado) * 100) / 100); // ya arreglado
+    pasos.calculo_esperado = { sueldo, salarioDiario, dias, isrCausado, subsidioCalculado, subsidioCorregido, isrRetenido, imss, totalEsperado: Math.round((sueldo + subsidioCorregido - isrRetenido - imss) * 100) / 100 };
 
     const grupoRes = await fetch(`${HOST}/payroll/employee/group/create`, {
       method: "POST", headers, body: JSON.stringify({ grupo: `Prueba sustitucion ${Date.now()}` }),
@@ -91,13 +119,16 @@ Deno.serve(async (req) => {
     const empleadoUid = empleadoData.data.uid;
 
     const hoy = new Date().toISOString().slice(0, 10);
+    // NOM96: el CFDI de nomina rechaza cualquier Deduccion con Importe <= 0
+    // -- igual que ya hace timbrar-nomina/index.ts, aqui tambien se omiten
+    // las deducciones en cero en vez de mandarlas con "0.00".
+    const deducciones = [];
+    if (isrRetenido > 0) deducciones.push({ tipo: "002", clave: "002", descripcion: "ISR", importe: isrRetenido.toFixed(2) });
+    if (imss > 0) deducciones.push({ tipo: "001", clave: "001", descripcion: "Seguridad social", importe: imss.toFixed(2) });
     const registroBase = (subsidio: number, cfdiRelacionados?: { TipoRelacion: string; UUID: string[] }) => ({
-      data: { id: empleadoUid, nombre: "MAIRA PRUEBA SANDBOX", puesto: "AYUDANTE GENERAL", dias: 7 },
+      data: { id: empleadoUid, nombre: "MAIRA PRUEBA SANDBOX", puesto: "AYUDANTE GENERAL", dias },
       percepciones: [{ tipo: "001", clave: "001", descripcion: "Sueldos, salarios rayas y jornales", exento: "0", gravado: sueldo.toFixed(2) }],
-      deducciones: [
-        { tipo: "002", clave: "002", descripcion: "ISR", importe: isrRetenido.toFixed(2) },
-        { tipo: "001", clave: "001", descripcion: "Seguridad social", importe: imss.toFixed(2) },
-      ],
+      deducciones,
       otrospagos: [{
         tipo: "002", clave: "002", descripcion: "Subsidio al empleo", importe: subsidio.toFixed(2),
         SubsidioAlEmpleo: { SubsidioCausado: subsidioCalculado.toFixed(2) },
@@ -108,7 +139,7 @@ Deno.serve(async (req) => {
     // 1. Timbra la "original" reproduciendo el bug (subsidio completo en Otros Pagos)
     const origRes = await fetch(`${HOST}/payroll/create`, {
       method: "POST", headers, body: JSON.stringify({
-        grupo: grupoData.uid, fecha_pago: hoy, num_dias: 7, inicial: hoy, final: hoy, tipo_nomina: "O",
+        grupo: grupoData.uid, fecha_pago: hoy, num_dias: dias, inicial: hoy, final: hoy, tipo_nomina: "O",
         descripcion: "PRUEBA original con bug (subsidio duplicado)", serie: 5503481,
         concepto: "Pago de nómina de prueba", identificador: `OFICINA-PRUEBA-ORIG-${Date.now()}`,
         version_cfdi: "4.0", registros: [registroBase(subsidioViejoBug)],
@@ -130,7 +161,7 @@ Deno.serve(async (req) => {
     // 2. Timbra la "sustituta" ya con la logica corregida (subsidio 0.00 en Otros Pagos)
     const nuevaRes = await fetch(`${HOST}/payroll/create`, {
       method: "POST", headers, body: JSON.stringify({
-        grupo: grupoData.uid, fecha_pago: hoy, num_dias: 7, inicial: hoy, final: hoy, tipo_nomina: "O",
+        grupo: grupoData.uid, fecha_pago: hoy, num_dias: dias, inicial: hoy, final: hoy, tipo_nomina: "O",
         descripcion: `PRUEBA sustituta corregida — sustituye folio ${origReg.uuid}`, serie: 5503481,
         concepto: "Pago de nómina de prueba (corrección)", identificador: `OFICINA-PRUEBA-SUST-${Date.now()}`,
         version_cfdi: "4.0",
@@ -163,9 +194,12 @@ Deno.serve(async (req) => {
     return json({
       ok: cancelData.response === "success",
       resumen: {
+        esperado: pasos.calculo_esperado,
+        original_total: origReg.total, sustituta_total: nuevaReg.total,
         original_uuid: origReg.uuid, original_item_uid: origReg.uid,
         sustituta_uuid: nuevaReg.uuid, sustituta_item_uid: nuevaReg.uid,
         cancelacion_exitosa: cancelData.response === "success",
+        coincideConEsperado: Number(nuevaReg.total) === (pasos.calculo_esperado as any)?.totalEsperado,
       },
       pasos,
     });

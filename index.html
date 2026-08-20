@@ -1102,6 +1102,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
               <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir nómina</button>
               <button class="btn btn-sm" style="display:none" onclick="abrirSelectorRecibos('simple')" id="nomina-recibos-simples-btn">🧾 Recibos simples</button>
               <button class="btn btn-sm" onclick="abrirSelectorRecibos('todos')" id="nomina-recibos-todos-btn">🖨️ Recibos de todos</button>
+              <button class="btn btn-sm" style="display:none" onclick="descargarRecibosTimbrados(this)" id="nomina-recibos-timbrados-btn" title="Descarga en un solo PDF el recibo oficial compacto (con folio fiscal, QR y sellos reales) de cada empleado ya timbrado esta semana, listo para firmar">📄 Recibos timbrados (PDF)</button>
               <button class="btn btn-sm" style="display:none" onclick="recalcularTodaLaNomina(this)" id="nomina-recalcular-btn" title="Vuelve a calcular el ISR y el IMSS de cada línea con la tarifa SAT según los días pagados actuales de esta semana (no toca factura.com, solo la captura local)">🔁 Recalcular ISR/IMSS</button>
               <button class="btn btn-sm btn-filled" style="display:none" onclick="abrirPreviewNomina()" id="nomina-timbrar-btn">🧾 Timbrar nómina</button>
               <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🔄 Recalcular desde cero</button>
@@ -4584,6 +4585,8 @@ function renderNomina(){
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
   const recibosSimplesBtn=document.getElementById('nomina-recibos-simples-btn');
   if(recibosSimplesBtn)recibosSimplesBtn.style.display=nominaLineas.some(l=>{const e=empById[l.empleado_id];return e&&e.nomina_fiscal===false&&Number(l.dias_pagados)>0;})?'inline-flex':'none';
+  const recibosTimbradosBtn=document.getElementById('nomina-recibos-timbrados-btn');
+  if(recibosTimbradosBtn)recibosTimbradosBtn.style.display=nominaLineas.some(l=>l.facturacom_status==='timbrada')?'inline-flex':'none';
   const sorted=[...nominaLineas].sort((a,b)=>{
     const ea=empById[a.empleado_id],eb=empById[b.empleado_id];
     return(ea?ea.nombre:'').localeCompare(eb?eb.nombre:'');
@@ -4826,6 +4829,44 @@ async function sustituirLineaTimbrada(lineaId,btn){
     console.error(e);
   }finally{
     if(btn){btn.disabled=false;btn.textContent='🛠️ Cancelar y corregir';}
+  }
+}
+
+// Descarga UN SOLO PDF con el recibo compacto (logo, colores de la marca,
+// firma) de cada empleado ya timbrado esta semana -- generado del lado del
+// servidor a partir del XML real del CFDI (folio, QR y sellos autenticos,
+// no inventados). Ver supabase/functions/generar-recibos-compactos.
+async function descargarRecibosTimbrados(btn){
+  if(!nominaPeriodo)return;
+  if(btn){btn.disabled=true;btn.textContent='Generando...';}
+  try{
+    const{data:{session}}=await sb.auth.getSession();
+    const resp=await fetch(SUPA_URL+'/functions/v1/generar-recibos-compactos',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+      body:JSON.stringify({periodo_id:nominaPeriodo.id})
+    });
+    if(resp.headers.get('Content-Type')!=='application/pdf'){
+      const out=await resp.json().catch(()=>({}));
+      toast('Error: '+(out.error||resp.statusText),true);
+      return;
+    }
+    const errores=resp.headers.get('X-Errores');
+    const blob=await resp.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=`recibos_nomina_${nominaActiveEnt}_${nominaPeriodo.semana_inicio}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),10000);
+    toast(errores?'✓ PDF descargado, pero hubo avisos: '+decodeURIComponent(errores):'✓ PDF descargado');
+  }catch(e){
+    toast('Error de red al generar los recibos',true);
+    console.error(e);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='📄 Recibos timbrados (PDF)';}
   }
 }
 
