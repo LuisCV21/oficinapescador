@@ -337,7 +337,7 @@ Deno.serve(async (req) => {
       return json({ error: "No tienes permiso para descargar recibos" }, 403);
     }
 
-    const { periodo_id } = await req.json().catch(() => ({}));
+    const { periodo_id, linea_ids } = await req.json().catch(() => ({}));
     if (!periodo_id) return json({ error: "Falta periodo_id" }, 400);
 
     const db = createClient(supabaseUrl, serviceKey);
@@ -349,9 +349,14 @@ Deno.serve(async (req) => {
     if (!cred?.api_key || !cred?.secret_key) return json({ error: `Faltan las llaves de factura.com para ${ENT_LABEL[ent] || ent}` }, 500);
     const headers = facturacomHeaders(cred.api_key, cred.secret_key);
 
-    const { data: lineas } = await db.from("nomina_lineas")
+    // linea_ids es opcional: si viene (desde el selector "elegir a quién"),
+    // solo se incluyen esas lineas en el PDF en vez de todas las timbradas
+    // del periodo.
+    let lineasQuery = db.from("nomina_lineas")
       .select("*, empleados(nombre,rfc,curp,nss,puesto_id,facturacom_uid)")
       .eq("periodo_id", periodo_id).eq("facturacom_status", "timbrada");
+    if (Array.isArray(linea_ids) && linea_ids.length) lineasQuery = lineasQuery.in("id", linea_ids);
+    const { data: lineas } = await lineasQuery;
     if (!lineas || !lineas.length) return json({ error: "No hay líneas timbradas en este periodo" }, 400);
 
     const { data: puestos } = await db.from("puestos").select("id,nombre");

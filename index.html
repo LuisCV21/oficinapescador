@@ -1102,7 +1102,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
               <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir nómina</button>
               <button class="btn btn-sm" style="display:none" onclick="abrirSelectorRecibos('simple')" id="nomina-recibos-simples-btn">🧾 Recibos simples</button>
               <button class="btn btn-sm" onclick="abrirSelectorRecibos('todos')" id="nomina-recibos-todos-btn">🖨️ Recibos de todos</button>
-              <button class="btn btn-sm" style="display:none" onclick="descargarRecibosTimbrados(this)" id="nomina-recibos-timbrados-btn" title="Descarga en un solo PDF el recibo oficial compacto (con folio fiscal, QR y sellos reales) de cada empleado ya timbrado esta semana, listo para firmar">📄 Recibos timbrados (PDF)</button>
+              <button class="btn btn-sm" style="display:none" onclick="abrirSelectorRecibos('timbrados')" id="nomina-recibos-timbrados-btn" title="Descarga en un solo PDF el recibo oficial compacto (con folio fiscal, QR y sellos reales) de los empleados que elijas de entre los ya timbrados esta semana, listo para firmar">📄 Recibos timbrados (PDF)</button>
               <button class="btn btn-sm" style="display:none" onclick="recalcularTodaLaNomina(this)" id="nomina-recalcular-btn" title="Vuelve a calcular el ISR y el IMSS de cada línea con la tarifa SAT según los días pagados actuales de esta semana (no toca factura.com, solo la captura local)">🔁 Recalcular ISR/IMSS</button>
               <button class="btn btn-sm btn-filled" style="display:none" onclick="abrirPreviewNomina()" id="nomina-timbrar-btn">🧾 Timbrar nómina</button>
               <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🔄 Recalcular desde cero</button>
@@ -4836,7 +4836,10 @@ async function sustituirLineaTimbrada(lineaId,btn){
 // firma) de cada empleado ya timbrado esta semana -- generado del lado del
 // servidor a partir del XML real del CFDI (folio, QR y sellos autenticos,
 // no inventados). Ver supabase/functions/generar-recibos-compactos.
-async function descargarRecibosTimbrados(btn){
+// soloIds (opcional): Set de nomina_lineas.id -- si se manda, solo incluye
+// esas líneas en el PDF (se usa cuando se elige un subconjunto desde el
+// selector, ej. para descargar/reimprimir a una sola persona).
+async function descargarRecibosTimbrados(btn,soloIds){
   if(!nominaPeriodo)return;
   if(btn){btn.disabled=true;btn.textContent='Generando...';}
   try{
@@ -4844,7 +4847,7 @@ async function descargarRecibosTimbrados(btn){
     const resp=await fetch(SUPA_URL+'/functions/v1/generar-recibos-compactos',{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
-      body:JSON.stringify({periodo_id:nominaPeriodo.id})
+      body:JSON.stringify({periodo_id:nominaPeriodo.id,linea_ids:soloIds?Array.from(soloIds):undefined})
     });
     if(resp.headers.get('Content-Type')!=='application/pdf'){
       const out=await resp.json().catch(()=>({}));
@@ -5112,10 +5115,12 @@ function abrirSelectorRecibos(tipo){
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
   const candidatos=nominaLineas.filter(l=>{
     const e=empById[l.empleado_id];
-    if(!e||Number(l.dias_pagados)<=0)return false;
+    if(!e)return false;
+    if(tipo==='timbrados')return l.facturacom_status==='timbrada';
+    if(Number(l.dias_pagados)<=0)return false;
     return tipo==='simple'?e.nomina_fiscal===false:true;
   }).map(l=>({l,e:empById[l.empleado_id]})).sort((a,b)=>a.e.nombre.localeCompare(b.e.nombre));
-  if(!candidatos.length){toast(tipo==='simple'?'Nadie con recibo simple tiene días pagados esta semana':'Nadie tiene días pagados esta semana',true);return;}
+  if(!candidatos.length){toast(tipo==='timbrados'?'Nadie tiene un CFDI timbrado esta semana':tipo==='simple'?'Nadie con recibo simple tiene días pagados esta semana':'Nadie tiene días pagados esta semana',true);return;}
   recibosSelTipo=tipo;
   recibosSelCandidatos=candidatos;
   recibosSelChecked=new Set(candidatos.map(c=>c.l.id));
@@ -5135,7 +5140,7 @@ function recibosSelSolo(lineaId){
   renderSelectorRecibos();
 }
 function renderSelectorRecibos(){
-  document.getElementById('m-recibos-sel-title').textContent=recibosSelTipo==='simple'?'Elegir recibos simples a imprimir':'Elegir recibos a imprimir';
+  document.getElementById('m-recibos-sel-title').textContent=recibosSelTipo==='simple'?'Elegir recibos simples a imprimir':recibosSelTipo==='timbrados'?'Elegir recibos timbrados a descargar':'Elegir recibos a imprimir';
   document.getElementById('m-recibos-sel-body').innerHTML=`
     <div style="display:flex;flex-direction:column;gap:6px;max-height:360px;overflow-y:auto">
       ${recibosSelCandidatos.map(({l,e})=>`
@@ -5149,15 +5154,17 @@ function renderSelectorRecibos(){
       <button class="btn-text" style="font-size:11px" onclick="recibosSelMarcarTodos(true)">Marcar todos</button>
       <button class="btn-text" style="font-size:11px" onclick="recibosSelMarcarTodos(false)">Desmarcar todos</button>
     </div>`;
+  const etiquetaBtn=recibosSelTipo==='timbrados'?'📄 Descargar':'🖨️ Imprimir';
   document.getElementById('m-recibos-sel-ftr').innerHTML=
     `<button class="btn" onclick="closeModal('m-recibos-sel')">Cancelar</button>`+
-    `<button class="btn btn-filled" ${recibosSelChecked.size?'':'disabled'} onclick="confirmarImprimirRecibos()">🖨️ Imprimir ${recibosSelChecked.size} seleccionado${recibosSelChecked.size===1?'':'s'}</button>`;
+    `<button class="btn btn-filled" ${recibosSelChecked.size?'':'disabled'} onclick="confirmarImprimirRecibos()">${etiquetaBtn} ${recibosSelChecked.size} seleccionado${recibosSelChecked.size===1?'':'s'}</button>`;
 }
 function confirmarImprimirRecibos(){
   if(!recibosSelChecked.size)return;
   const ids=new Set(recibosSelChecked);
   closeModal('m-recibos-sel');
   if(recibosSelTipo==='simple')imprimirRecibosNominaSimple(ids);
+  else if(recibosSelTipo==='timbrados')descargarRecibosTimbrados(null,ids);
   else imprimirRecibosNominaTodos(ids);
 }
 
