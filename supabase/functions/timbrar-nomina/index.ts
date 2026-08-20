@@ -82,6 +82,38 @@ function calcularSubsidioSemanal(salarioDiario: number): number {
   return Math.round(((SUBSIDIO_EMPLEO_MENSUAL_2026 / 30.4) * 7) * 100) / 100;
 }
 
+// Tarifa oficial de ISR para pagos semanales (periodo de 7 dias), Anexo 8 de
+// la RMF 2026 (DOF 28/12/2025, seccion B.II) -- copia exacta de la tabla que
+// usa el front-end (index.html, ISR_TARIFA_SEMANAL_2026) para poder saber
+// aqui, del lado del servidor, cuanto ISR se causo ANTES de aplicar el
+// subsidio. Se necesita para el caso de abajo: el subsidio para el empleo
+// primero se usa como credito contra el ISR causado; solo el sobrante que el
+// ISR no alcanza a absorber se le paga al trabajador en efectivo ("Otros
+// Pagos" en el CFDI). Antes esta funcion mandaba el subsidio completo como
+// Otros Pagos sin checar el ISR causado, duplicando el credito (una vez
+// bajando el ISR, otra vez como efectivo) -- ver memoria/incidente real con
+// Maira Anayeli Bautista Lazcano (nomina timbrada de mas por $123.47).
+const ISR_TARIFA_SEMANAL_2026 = [
+  { limInf: 0.01, limSup: 194.46, cuota: 0, pct: 1.92 },
+  { limInf: 194.47, limSup: 1650.67, cuota: 3.71, pct: 6.40 },
+  { limInf: 1650.68, limSup: 2900.87, cuota: 96.95, pct: 10.88 },
+  { limInf: 2900.88, limSup: 3372.11, cuota: 232.96, pct: 16.00 },
+  { limInf: 3372.12, limSup: 4037.32, cuota: 308.35, pct: 17.92 },
+  { limInf: 4037.33, limSup: 8142.75, cuota: 427.56, pct: 21.36 },
+  { limInf: 8142.76, limSup: 12834.08, cuota: 1304.45, pct: 23.52 },
+  { limInf: 12834.09, limSup: 24502.45, cuota: 2407.86, pct: 30.00 },
+  { limInf: 24502.46, limSup: 32669.91, cuota: 5908.35, pct: 32.00 },
+  { limInf: 32669.92, limSup: 98009.66, cuota: 8521.94, pct: 34.00 },
+  { limInf: 98009.67, limSup: Infinity, cuota: 30737.49, pct: 35.00 },
+];
+function calcularIsrCausadoSemanal(baseGravable: number): number {
+  const base = Number(baseGravable) || 0;
+  if (base <= 0) return 0;
+  const b = ISR_TARIFA_SEMANAL_2026.find((r) => base >= r.limInf && base <= r.limSup) ||
+    ISR_TARIFA_SEMANAL_2026[ISR_TARIFA_SEMANAL_2026.length - 1];
+  return Math.round((b.cuota + (base - b.limInf) * (b.pct / 100)) * 100) / 100;
+}
+
 // Salario diario integrado (SBC) para dar de alta al empleado en
 // factura.com -- mismo calculo que ya usa index.html/calcularFactorIntegracion
 // para el IMSS retenido: integra aguinaldo (15 dias) y la prima vacacional de
@@ -313,7 +345,13 @@ Deno.serve(async (req) => {
       const diasPagados = Number(l.dias_pagados) || 0;
       const sueldo = salario * diasPagados;
       const prima = l.trabajo_domingo ? salario * 0.25 : 0;
-      const subsidio = calcularSubsidioSemanal(salario);
+      const subsidioCalculado = calcularSubsidioSemanal(salario);
+      // El subsidio primero se acredita contra el ISR causado; solo lo que
+      // sobra (si el subsidio es mayor al ISR causado) se le paga en efectivo
+      // al trabajador. Con los salarios de esta nomina, lo normal es que el
+      // ISR causado sea mayor al subsidio y el sobrante en efectivo sea $0.
+      const isrCausado = calcularIsrCausadoSemanal(sueldo + prima);
+      const subsidioEfectivo = Math.max(0, Math.round((subsidioCalculado - isrCausado) * 100) / 100);
       const percepciones = [{ tipo: "001", clave: "001", descripcion: "Sueldos, salarios rayas y jornales", exento: "0", gravado: sueldo.toFixed(2) }];
       if (prima > 0) percepciones.push({ tipo: "020", clave: "020", descripcion: "Prima dominical", exento: "0", gravado: prima.toFixed(2) });
       const deducciones = [];
@@ -323,10 +361,10 @@ Deno.serve(async (req) => {
         data: { id: e.facturacom_uid, nombre: e.nombre, puesto: puestoNombre(e.puesto_id), dias: diasPagados },
         percepciones,
         deducciones,
-        otrospagos: [{
-          tipo: "002", clave: "002", descripcion: "Subsidio al empleo", importe: subsidio.toFixed(2),
-          SubsidioAlEmpleo: { SubsidioCausado: subsidio.toFixed(2) },
-        }],
+        otrospagos: subsidioCalculado > 0 ? [{
+          tipo: "002", clave: "002", descripcion: "Subsidio al empleo", importe: subsidioEfectivo.toFixed(2),
+          SubsidioAlEmpleo: { SubsidioCausado: subsidioCalculado.toFixed(2) },
+        }] : [],
       };
     });
 
