@@ -1099,10 +1099,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
               <button class="btn-icon" onclick="goNominaWeek(-1)" title="Semana anterior">◀</button>
               <button class="btn btn-sm" onclick="goNominaToday()">Esta semana</button>
               <button class="btn-icon" onclick="goNominaWeek(1)" title="Semana siguiente">▶</button>
-              <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir nómina</button>
+              <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir reporte de nómina</button>
               <button class="btn btn-sm" style="display:none" onclick="abrirSelectorRecibos('simple')" id="nomina-recibos-simples-btn">🧾 Recibos simples</button>
-              <button class="btn btn-sm" onclick="abrirSelectorRecibos('todos')" id="nomina-recibos-todos-btn">🖨️ Recibos de todos</button>
-              <button class="btn btn-sm" style="display:none" onclick="abrirSelectorRecibos('timbrados')" id="nomina-recibos-timbrados-btn" title="Descarga en un solo PDF el recibo oficial compacto (con folio fiscal, QR y sellos reales) de los empleados que elijas de entre los ya timbrados esta semana, listo para firmar">📄 Recibos timbrados (PDF)</button>
+              <button class="btn btn-sm" onclick="abrirSelectorRecibos('todos')" id="nomina-recibos-todos-btn">🖨️ Recibos simples para todos</button>
+              <button class="btn btn-sm" style="display:none" onclick="abrirSelectorRecibos('timbrados')" id="nomina-recibos-timbrados-btn" title="Descarga en un solo PDF el recibo oficial compacto (con folio fiscal, QR y sellos reales) de los empleados que elijas de entre los ya timbrados esta semana, listo para firmar">📄 Imprimir nómina CFDI</button>
               <button class="btn btn-sm" style="display:none" onclick="recalcularTodaLaNomina(this)" id="nomina-recalcular-btn" title="Vuelve a calcular el ISR y el IMSS de cada línea con la tarifa SAT según los días pagados actuales de esta semana (no toca factura.com, solo la captura local)">🔁 Recalcular ISR/IMSS</button>
               <button class="btn btn-sm btn-filled" style="display:none" onclick="abrirPreviewNomina()" id="nomina-timbrar-btn">🧾 Timbrar nómina</button>
               <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🔄 Recalcular desde cero</button>
@@ -4869,7 +4869,7 @@ async function descargarRecibosTimbrados(btn,soloIds){
     toast('Error de red al generar los recibos',true);
     console.error(e);
   }finally{
-    if(btn){btn.disabled=false;btn.textContent='📄 Recibos timbrados (PDF)';}
+    if(btn){btn.disabled=false;btn.textContent='📄 Imprimir nómina CFDI';}
   }
 }
 
