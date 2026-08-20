@@ -1102,6 +1102,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
               <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir nómina</button>
               <button class="btn btn-sm" style="display:none" onclick="abrirSelectorRecibos('simple')" id="nomina-recibos-simples-btn">🧾 Recibos simples</button>
               <button class="btn btn-sm" onclick="abrirSelectorRecibos('todos')" id="nomina-recibos-todos-btn">🖨️ Recibos de todos</button>
+              <button class="btn btn-sm" style="display:none" onclick="recalcularTodaLaNomina(this)" id="nomina-recalcular-btn" title="Vuelve a calcular el ISR y el IMSS de cada línea con la tarifa SAT según los días pagados actuales de esta semana (no toca factura.com, solo la captura local)">🔁 Recalcular ISR/IMSS</button>
               <button class="btn btn-sm btn-filled" style="display:none" onclick="abrirPreviewNomina()" id="nomina-timbrar-btn">🧾 Timbrar nómina</button>
               <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🔄 Recalcular desde cero</button>
             </div>
@@ -4578,6 +4579,8 @@ function renderNomina(){
   delBtn.style.display=isAdmin()?'inline-flex':'none';
   const timbrarBtn=document.getElementById('nomina-timbrar-btn');
   if(timbrarBtn)timbrarBtn.style.display=puedeTimbrarNomina()?'inline-flex':'none';
+  const recalcularBtn=document.getElementById('nomina-recalcular-btn');
+  if(recalcularBtn)recalcularBtn.style.display=puedeTimbrarNomina()?'inline-flex':'none';
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
   const recibosSimplesBtn=document.getElementById('nomina-recibos-simples-btn');
   if(recibosSimplesBtn)recibosSimplesBtn.style.display=nominaLineas.some(l=>{const e=empById[l.empleado_id];return e&&e.nomina_fiscal===false&&Number(l.dias_pagados)>0;})?'inline-flex':'none';
@@ -4851,6 +4854,35 @@ async function recalcularImssLinea(lineaId){
   const e=empData.find(x=>x.id===l.empleado_id);
   const imss=calcularImssSemanal(l.salario_diario,l.dias_pagados,e&&e.fecha_ingreso);
   await updateLineaField(lineaId,'retencion_imss',imss);
+}
+// Vuelve a calcular ISR e IMSS de TODAS las líneas de la semana con la
+// tarifa SAT vigente, para las que ya no coincidan con lo capturado (ej.
+// porque quedó el valor de la semana pasada sin actualizar al cambiar los
+// días pagados de esta semana). Solo toca nomina_lineas en Supabase, nunca
+// llama a factura.com -- es completamente seguro de correr las veces que
+// haga falta antes de timbrar.
+async function recalcularTodaLaNomina(btn){
+  if(btn){btn.disabled=true;btn.textContent='Recalculando...';}
+  try{
+    let actualizadas=0;
+    for(const l of nominaLineas){
+      const e=empData.find(x=>x.id===l.empleado_id);
+      const c=nominaCalc(l);
+      const isrAuto=calcularIsrNetoSemanal(c.subtotal,l.salario_diario);
+      const imssAuto=calcularImssSemanal(l.salario_diario,l.dias_pagados,e&&e.fecha_ingreso);
+      const cambia=Math.abs((Number(l.retencion_isr)||0)-isrAuto)>0.5||Math.abs((Number(l.retencion_imss)||0)-imssAuto)>0.5;
+      if(!cambia)continue;
+      await updateLineaField(l.id,'retencion_isr',isrAuto);
+      await updateLineaField(l.id,'retencion_imss',imssAuto);
+      actualizadas++;
+    }
+    toast(actualizadas?`✓ Se recalcularon ${actualizadas} línea(s)`:'Todas las líneas ya estaban al día');
+  }catch(e){
+    toast('Error al recalcular',true);
+    console.error(e);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='🔁 Recalcular ISR/IMSS';}
+  }
 }
 
 async function generarNomina(){
