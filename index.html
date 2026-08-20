@@ -1063,6 +1063,14 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
           <div class="tab" data-ent="HOT" onclick="switchModuloEnt('HOT')">Hotel</div>
           <div class="tab" data-ent="FLO" onclick="switchModuloEnt('FLO')">Florida</div>
         </div>
+        <div class="page-hdr" style="margin-top:10px">
+          <div class="page-sub" id="modulo-week-label"></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn-icon" onclick="goModuloWeek(-1)" title="Semana anterior">◀</button>
+            <button class="btn btn-sm" onclick="goModuloToday()">Esta semana</button>
+            <button class="btn-icon" onclick="goModuloWeek(1)" title="Semana siguiente">▶</button>
+          </div>
+        </div>
         <div class="tabs-bar" id="nya-sub-tabs" style="margin-top:8px">
           <div class="tab active" data-sub="asistencia" onclick="switchModuloTab('asistencia')">📅 Asistencia</div>
           <div class="tab" data-sub="horasextra" onclick="switchModuloTab('horasextra')">⏱️ Horas extra</div>
@@ -1071,11 +1079,8 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 
         <div class="modulo-sub" id="sub-asistencia">
           <div class="page-hdr" style="margin-top:16px">
-            <div class="page-sub" id="asist-week-label"></div>
+            <div></div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="btn-icon" onclick="goAsistWeek(-1)" title="Semana anterior">◀</button>
-              <button class="btn btn-sm" onclick="goAsistToday()">Esta semana</button>
-              <button class="btn-icon" onclick="goAsistWeek(1)" title="Semana siguiente">▶</button>
               <button class="btn btn-sm" onclick="printAsistencia()">🖨️ Imprimir</button>
             </div>
           </div>
@@ -1085,11 +1090,8 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 
         <div class="modulo-sub" id="sub-horasextra" style="display:none">
           <div class="page-hdr" style="margin-top:16px">
-            <div class="page-sub" id="horasextra-week-label"></div>
+            <div></div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="btn-icon" onclick="goHorasExtraWeek(-1)" title="Semana anterior">◀</button>
-              <button class="btn btn-sm" onclick="goHorasExtraToday()">Esta semana</button>
-              <button class="btn-icon" onclick="goHorasExtraWeek(1)" title="Semana siguiente">▶</button>
               <button class="btn btn-sm" onclick="imprimirHorasExtra()">📊 Imprimir</button>
               <button class="btn btn-sm" onclick="abrirPreviewRecibosHorasExtra()">🖨️ Recibos</button>
             </div>
@@ -1099,11 +1101,8 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 
         <div class="modulo-sub" id="sub-nomina" style="display:none">
           <div class="page-hdr" style="margin-top:16px">
-            <div class="page-sub" id="nomina-week-label"></div>
+            <div></div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="btn-icon" onclick="goNominaWeek(-1)" title="Semana anterior">◀</button>
-              <button class="btn btn-sm" onclick="goNominaToday()">Esta semana</button>
-              <button class="btn-icon" onclick="goNominaWeek(1)" title="Semana siguiente">▶</button>
               <button class="btn btn-sm" onclick="imprimirNominaSemanal()" id="nomina-print-tabla-btn" style="display:none">📊 Imprimir reporte de nómina</button>
               <button class="btn btn-sm" style="display:none" onclick="abrirSelectorRecibos('simple')" id="nomina-recibos-simples-btn">🧾 Recibos simples</button>
               <button class="btn btn-sm" onclick="abrirSelectorRecibos('todos')" id="nomina-recibos-todos-btn">🖨️ Recibos simples para todos</button>
@@ -4155,20 +4154,69 @@ function switchModuloTab(tab){
   document.querySelectorAll('.modulo-sub').forEach(el=>{el.style.display=el.id==='sub-'+tab?'block':'none';});
   reloadModuloActivo();
 }
-function reloadModuloActivo(){
-  if(moduloActivoTab==='asistencia')loadAsistencia().then(renderAsistGrid);
-  else if(moduloActivoTab==='horasextra')loadHorasExtra().then(renderHorasExtraGrid);
-  else if(moduloActivoTab==='nomina')loadNomina().then(renderNomina);
+// Semana compartida por las 3 pestañas (Asistencia, Horas Extra, Nómina):
+// un solo control arriba (junto a Puebla/Hotel/Florida) mueve a las tres a
+// la vez, en vez de que cada una tuviera su propio "◀ Esta semana ▶" por
+// separado (antes se podían quedar desincronizadas sin darse cuenta).
+// Asistencia y Nómina comparten exactamente el mismo rango domingo-sábado;
+// Horas Extra sigue calculando su propio rango sábado-viernes corrido un
+// día hacia atrás (mismo criterio que ya usaba imprimirRecibosNominaSimple
+// para relacionar una nómina con su horas-extra correspondiente), asi que
+// avanza junto con las otras dos aunque por dentro apunte a otras fechas.
+let moduloWeekStart=null,moduloSlideDir=null;
+function syncModuloWeek(){
+  if(!moduloWeekStart)moduloWeekStart=asistDefaultSunday();
+  asistWeekStart=moduloWeekStart;
+  nominaWeekStart=moduloWeekStart;
+  const heD=new Date(moduloWeekStart+'T12:00:00');heD.setDate(heD.getDate()-1);
+  horasExtraWeekStart=dateToISO(heD);
 }
-function goAsistWeek(delta){
-  const d=new Date(asistWeekStart+'T12:00:00');
+function moduloSemanaRelativa(weekStart){
+  const hoy=asistDefaultSunday();
+  const diffDias=Math.round((new Date(weekStart+'T12:00:00')-new Date(hoy+'T12:00:00'))/86400000);
+  const diffSemanas=Math.round(diffDias/7);
+  if(diffSemanas===0)return{texto:'Semana actual',clase:'ok'};
+  if(diffSemanas===-1)return{texto:'Semana pasada',clase:'pend'};
+  if(diffSemanas<-1)return{texto:`Hace ${-diffSemanas} semanas`,clase:'pend'};
+  if(diffSemanas===1)return{texto:'Semana que viene',clase:'futura'};
+  return{texto:`Dentro de ${diffSemanas} semanas`,clase:'futura'};
+}
+function renderModuloWeekLabel(){
+  const days=asistWeekDays(moduloWeekStart);
+  const rel=moduloSemanaRelativa(moduloWeekStart);
+  const el=document.getElementById('modulo-week-label');
+  if(el)el.innerHTML='Semana del '+fmtFechaCorta(days[0])+' al '+fmtFechaCorta(days[6])+`<span class="corte-badge ${rel.clase}">${rel.texto}</span>`;
+}
+function goModuloWeek(delta){
+  if(!moduloWeekStart)moduloWeekStart=asistDefaultSunday();
+  const d=new Date(moduloWeekStart+'T12:00:00');
   d.setDate(d.getDate()+delta*7);
-  asistWeekStart=dateToISO(d);
-  loadAsistencia().then(renderAsistGrid);
+  moduloWeekStart=dateToISO(d);
+  moduloSlideDir=delta>0?'right':'left';
+  reloadModuloActivo();
 }
-function goAsistToday(){
-  asistWeekStart=asistDefaultSunday();
-  loadAsistencia().then(renderAsistGrid);
+function goModuloToday(){
+  if(!moduloWeekStart)moduloWeekStart=asistDefaultSunday();
+  const anterior=moduloWeekStart;
+  moduloWeekStart=asistDefaultSunday();
+  moduloSlideDir=moduloWeekStart>anterior?'right':moduloWeekStart<anterior?'left':null;
+  reloadModuloActivo();
+}
+function reloadModuloActivo(){
+  syncModuloWeek();
+  renderModuloWeekLabel();
+  const panel=document.getElementById('sub-'+moduloActivoTab);
+  const aplicarSlide=()=>{
+    if(moduloSlideDir&&panel){
+      panel.classList.remove('nom-slide-right','nom-slide-left');
+      void panel.offsetWidth;
+      panel.classList.add(moduloSlideDir==='right'?'nom-slide-right':'nom-slide-left');
+    }
+    moduloSlideDir=null;
+  };
+  if(moduloActivoTab==='asistencia')loadAsistencia().then(()=>{renderAsistGrid();aplicarSlide();});
+  else if(moduloActivoTab==='horasextra')loadHorasExtra().then(()=>{renderHorasExtraGrid();aplicarSlide();});
+  else if(moduloActivoTab==='nomina')loadNomina().then(()=>{renderNomina();aplicarSlide();});
 }
 
 function renderAsistLegend(){
@@ -4213,7 +4261,6 @@ function renderAsistGrid(){
   }
 
   document.getElementById('asist-grid-wrap').innerHTML=`<table class="asist-table"><thead>${thead}</thead><tbody>${rows}</tbody><tfoot>${tfoot}</tfoot></table>`;
-  document.getElementById('asist-week-label').textContent='Semana del '+fmtFechaCorta(days[0])+' al '+fmtFechaCorta(days[6]);
 }
 
 // ─── IMPRESIÓN SEMANAL ──────────────────────────────────────────
@@ -4345,34 +4392,6 @@ async function clearAsistDia(){
 let nominaActiveEnt='PUE',nominaWeekStart=null,nominaPeriodo=null,nominaLineas=[];
 const NOMINA_DESCANSOS=['DOMINGO','LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO','VARIADOS'];
 
-let nominaSlideDir=null;
-function goNominaWeek(delta){
-  const d=new Date(nominaWeekStart+'T12:00:00');
-  d.setDate(d.getDate()+delta*7);
-  nominaWeekStart=dateToISO(d);
-  nominaSlideDir=delta>0?'right':'left';
-  loadNomina().then(renderNomina);
-}
-function goNominaToday(){
-  const anterior=nominaWeekStart;
-  nominaWeekStart=asistDefaultSunday();
-  nominaSlideDir=anterior&&nominaWeekStart>anterior?'right':anterior&&nominaWeekStart<anterior?'left':null;
-  loadNomina().then(renderNomina);
-}
-// Que tan lejos esta weekStart de la semana de hoy, para el badge de color
-// junto al titulo -- sin esto, cambiar de semana solo movia una leyenda de
-// texto y no se notaba a simple vista que ya no estabas viendo la semana
-// actual.
-function nominaSemanaRelativa(weekStart){
-  const hoy=asistDefaultSunday();
-  const diffDias=Math.round((new Date(weekStart+'T12:00:00')-new Date(hoy+'T12:00:00'))/86400000);
-  const diffSemanas=Math.round(diffDias/7);
-  if(diffSemanas===0)return{texto:'Semana actual',clase:'ok'};
-  if(diffSemanas===-1)return{texto:'Semana pasada',clase:'pend'};
-  if(diffSemanas<-1)return{texto:`Hace ${-diffSemanas} semanas`,clase:'pend'};
-  if(diffSemanas===1)return{texto:'Semana que viene',clase:'futura'};
-  return{texto:`Dentro de ${diffSemanas} semanas`,clase:'futura'};
-}
 
 async function loadNomina(){
   if(!nominaWeekStart)nominaWeekStart=asistDefaultSunday();
@@ -4586,17 +4605,7 @@ function calcularImssSemanal(salarioDiario,diasPagados,fechaIngreso){
 
 function renderNomina(){
   const days=asistWeekDays(nominaWeekStart);
-  const rel=nominaSemanaRelativa(nominaWeekStart);
-  document.getElementById('nomina-week-label').innerHTML=
-    'Semana del '+fmtFechaCorta(days[0])+' al '+fmtFechaCorta(days[6])+
-    `<span class="corte-badge ${rel.clase}">${rel.texto}</span>`;
   const el=document.getElementById('nomina-content');
-  if(nominaSlideDir){
-    el.classList.remove('nom-slide-right','nom-slide-left');
-    void el.offsetWidth;
-    el.classList.add(nominaSlideDir==='right'?'nom-slide-right':'nom-slide-left');
-    nominaSlideDir=null;
-  }
   const printTablaBtn=document.getElementById('nomina-print-tabla-btn');
   const delBtn=document.getElementById('nomina-del-btn');
   if(!nominaPeriodo){
@@ -5445,16 +5454,6 @@ async function loadHorasExtra(){
   horasExtraData=data||[];
   horasExtraOverrides=overrides||[];
 }
-function goHorasExtraWeek(delta){
-  const d=new Date(horasExtraWeekStart+'T12:00:00');
-  d.setDate(d.getDate()+delta*7);
-  horasExtraWeekStart=dateToISO(d);
-  loadHorasExtra().then(renderHorasExtraGrid);
-}
-function goHorasExtraToday(){
-  horasExtraWeekStart=horasExtraDefaultSaturday();
-  loadHorasExtra().then(renderHorasExtraGrid);
-}
 function horasExtraRate(e){return e&&e.salario_diario?Number(e.salario_diario)/8:0;}
 function horasExtraOverrideFor(empId){return horasExtraOverrides.find(o=>o.empleado_id===empId)||null;}
 function horasExtraEffectiveRate(e){
@@ -5502,7 +5501,6 @@ async function updateHorasExtraDescuentoConcepto(empId,value){
 
 function renderHorasExtraGrid(){
   const days=asistWeekDays(horasExtraWeekStart);
-  document.getElementById('horasextra-week-label').textContent='Semana del '+fmtFechaCorta(days[0])+' al '+fmtFechaCorta(days[6]);
   const activeIds=new Set(empData.filter(e=>e.entidad===horasExtraActiveEnt&&e.activo).map(e=>e.id));
   const weekEmpIds=new Set(horasExtraData.map(h=>h.empleado_id));
   const emps=empData.filter(e=>activeIds.has(e.id)||weekEmpIds.has(e.id)).sort((a,b)=>a.nombre.localeCompare(b.nombre));
