@@ -198,7 +198,10 @@ Deno.serve(async (req) => {
       const mensaje = timbrada
         ? "Timbrada correctamente"
         : (reg?.mensaje || `factura.com todavía no confirma el timbrado (status: ${reg?.status_timbre || "sin registro"}).`);
-      await db.from("nomina_lineas").update({ facturacom_status: status, facturacom_mensaje: mensaje, facturacom_uuid: reg?.uuid || null }).eq("id", verificar_linea_id);
+      await db.from("nomina_lineas").update({
+        facturacom_status: status, facturacom_mensaje: mensaje,
+        facturacom_uuid: reg?.uuid || null, facturacom_item_uid: reg?.uid || null,
+      }).eq("id", verificar_linea_id);
       return json({ ok: true, status, mensaje });
     }
 
@@ -427,6 +430,7 @@ Deno.serve(async (req) => {
         facturacom_status: status,
         facturacom_mensaje: mensaje,
         facturacom_uuid: reg?.uuid || null,
+        facturacom_item_uid: reg?.uid || null,
         facturacom_nomina_uid: nominaData.uid,
       }).eq("id", l.id);
     }

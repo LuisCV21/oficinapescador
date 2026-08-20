@@ -4723,7 +4723,7 @@ function renderNominaPreviewModal(){
         <td>${fmxn(f.l.retencion_imss)}</td>
         <td><b>${fmxn(f.c.total)}</b></td>
         <td>${f.yaEnviada?(f.l.facturacom_status==='timbrada'?`<span style="color:var(--green);font-size:11px">✅ Ya timbrada</span>`:f.l.facturacom_status==='error'?`<span style="color:var(--red);font-size:11px;cursor:help" title="${(f.l.facturacom_mensaje||'').replace(/"/g,'')}">❌ Sin confirmar (revisa antes de reenviar)</span>`:`<span style="color:var(--amber);font-size:11px;cursor:help" title="${(f.l.facturacom_mensaje||'').replace(/"/g,'')}">⏳ Pendiente en factura.com</span>`):f.faltan.length?`<span style="color:var(--amber);font-size:11px" title="Falta: ${f.faltan.join(', ')}">⚠️ Falta: ${f.faltan.join(', ')}</span>`:`<span style="color:var(--green);font-size:11px">✅ Listo</span>`}</td>
-        <td>${f.yaEnviada?`<button class="btn-text" style="font-size:10px" onclick="verificarEstatusLinea('${f.l.id}',this)">🔁 Verificar</button>`:f.faltan.length?'':`<button class="btn-text" style="font-size:10px" onclick="nominaPreviewSoloEsta('${f.l.id}')">Solo esta</button>`}</td>
+        <td>${f.yaEnviada?`<button class="btn-text" style="font-size:10px" onclick="verificarEstatusLinea('${f.l.id}',this)">🔁 Verificar</button>${isAdmin()&&f.l.facturacom_status==='timbrada'?` <button class="btn-text red" style="font-size:10px" onclick="sustituirLineaTimbrada('${f.l.id}',this)" title="Cancela este CFDI y timbra uno nuevo con los datos actuales de esta línea">🛠️ Cancelar y corregir</button>`:''}`:f.faltan.length?'':`<button class="btn-text" style="font-size:10px" onclick="nominaPreviewSoloEsta('${f.l.id}')">Solo esta</button>`}</td>
       </tr>`).join('')}</tbody>
     </table>
     </div>
@@ -4792,6 +4792,37 @@ async function verificarEstatusLinea(lineaId,btn){
     console.error(e);
   }finally{
     if(btn){btn.disabled=false;btn.textContent='🔁 Verificar';}
+  }
+}
+
+// Cancela un CFDI de nomina ya timbrado por error y lo sustituye por uno
+// nuevo con los datos correctos de esta misma linea (ver
+// supabase/functions/sustituir-nomina-linea). Es una accion fiscal real
+// ante el SAT, no se puede deshacer con un clic -- por eso pide confirmar,
+// y solo esta disponible para lineas que ya estan timbradas.
+async function sustituirLineaTimbrada(lineaId,btn){
+  if(!confirm('Esto cancela el CFDI de nómina que ya está timbrado ante el SAT y lo sustituye por uno nuevo con los datos correctos. No se puede deshacer. ¿Confirmar?'))return;
+  if(btn){btn.disabled=true;btn.textContent='Corrigiendo...';}
+  try{
+    const{data:{session}}=await sb.auth.getSession();
+    const resp=await fetch(SUPA_URL+'/functions/v1/sustituir-nomina-linea',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+      body:JSON.stringify({linea_id:lineaId})
+    });
+    const out=await resp.json();
+    console.log('[sustituir-nomina-linea]',out);
+    if(!resp.ok&&out.status!=='pendiente'){toast('Error: '+(out.error||out.mensaje||resp.statusText),true);return;}
+    if(out.status==='sustituido')toast(`✓ Corregido: folio ${out.folio_anterior} cancelado, nuevo folio ${out.folio_nuevo}`);
+    else if(out.status==='pendiente')toast('⏳ '+out.mensaje);
+    else toast('❌ '+(out.mensaje||'No se pudo corregir'),true);
+    await loadNomina();
+    if(document.getElementById('m-nomina-preview').classList.contains('show'))abrirPreviewNomina();
+  }catch(e){
+    toast('Error de red al corregir',true);
+    console.error(e);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='🛠️ Cancelar y corregir';}
   }
 }
 
