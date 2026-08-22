@@ -55,6 +55,42 @@ const DOMICILIO_EMPRESA: Record<string, {
 
 const TIPO_CONTRATO_SAT: Record<string, string> = { indeterminado: "01", obra: "02", prueba: "05" };
 
+// Separa "nombre completo" (como se captura en Recursos Humanos, en un solo
+// campo libre) en nombre(s) de pila / apellido paterno / apellido materno
+// para factura.com, que los pide por separado. factura.com valida el nombre
+// del empleado contra el que el SAT tiene registrado para su RFC -- si el
+// paterno/materno no coinciden (por ejemplo un segundo nombre de pila mandado
+// como si fuera el apellido paterno), rechaza el timbrado.
+// Se asume que SIEMPRE las ultimas dos palabras son los apellidos (paterno,
+// materno) y todo lo anterior son nombres de pila -- así "Maira Anayeli
+// Bautista Lazcano" da nombre="MAIRA ANAYELI", paterno="BAUTISTA",
+// materno="LAZCANO" en vez de partir por la mitad a la primera palabra.
+// Esto falla cuando el apellido MATERNO (no el nombre de pila) es compuesto
+// -- ej. "San Martín", "de la Cruz" -- porque no hay forma de distinguirlo de
+// un nombre de pila compuesto solo con el texto libre. Para esos casos
+// puntuales, confirmados a mano contra la CSF del empleado, se usa el
+// override de abajo en vez de la heurística.
+const SEPARACION_NOMBRE_OVERRIDE: Record<string, { paterno: string; materno: string }> = {
+  "DULCE ESTEPHANY RAMÍREZ SAN MARTÍN": { paterno: "RAMÍREZ", materno: "SAN MARTÍN" },
+};
+function separarNombreCompleto(nombreCompleto: string): { nombre: string; paterno: string; materno: string } {
+  const partes = String(nombreCompleto).trim().toUpperCase().split(/\s+/).filter(Boolean);
+  const completo = partes.join(" ");
+  const override = SEPARACION_NOMBRE_OVERRIDE[completo];
+  if (override) {
+    const sufijo = `${override.paterno} ${override.materno}`.trim().split(/\s+/);
+    const nombre = partes.slice(0, partes.length - sufijo.length).join(" ");
+    return { nombre, paterno: override.paterno, materno: override.materno };
+  }
+  if (partes.length <= 1) return { nombre: partes[0] || "", paterno: "", materno: "" };
+  if (partes.length === 2) return { nombre: partes[0], paterno: partes[1], materno: "" };
+  return {
+    nombre: partes.slice(0, -2).join(" "),
+    paterno: partes[partes.length - 2],
+    materno: partes[partes.length - 1],
+  };
+}
+
 // CFDI 4.0 exige que DomicilioFiscalReceptor coincida con el codigo postal
 // registrado ante el SAT para el RFC del empleado (error CFDI40148 si no
 // coincide) -- no puede ser el domicilio de la empresa. Se saca del domicilio
@@ -290,15 +326,15 @@ Deno.serve(async (req) => {
     for (const l of listos) {
       const e = l.empleados as any;
       if (e.facturacom_uid) continue;
-      const partes = String(e.nombre).trim().split(/\s+/);
+      const { nombre: nombrePila, paterno, materno } = separarNombreCompleto(e.nombre);
       const salarioIntegrado = calcularSalarioIntegrado(e.salario_diario, e.fecha_ingreso);
       const empleadoRes = await fetch(`${HOST}/payroll/employee/create`, {
         method: "POST", headers, body: JSON.stringify({
           grupo: grupoUid,
           no_empleado: e.id.slice(0, 8),
-          nombre: partes[0] || e.nombre,
-          paterno: partes[1] || "",
-          materno: partes.slice(2).join(" ") || "",
+          nombre: nombrePila,
+          paterno,
+          materno,
           metodo_pago: "01", // Efectivo (antes 03=Transferencia, incorrecto -- se paga en efectivo)
           periodo: "02", // Semanal (antes 04=Quincenal, incorrecto -- la nomina que se timbra es semanal)
           regimen: "02",
@@ -361,7 +397,7 @@ Deno.serve(async (req) => {
       if (Number(l.retencion_isr) > 0) deducciones.push({ tipo: "002", clave: "002", descripcion: "ISR", importe: Number(l.retencion_isr).toFixed(2) });
       if (Number(l.retencion_imss) > 0) deducciones.push({ tipo: "001", clave: "001", descripcion: "Seguridad social", importe: Number(l.retencion_imss).toFixed(2) });
       return {
-        data: { id: e.facturacom_uid, nombre: e.nombre, puesto: puestoNombre(e.puesto_id), dias: diasPagados },
+        data: { id: e.facturacom_uid, nombre: String(e.nombre).trim().toUpperCase(), puesto: puestoNombre(e.puesto_id), dias: diasPagados },
         percepciones,
         deducciones,
         otrospagos: subsidioCalculado > 0 ? [{

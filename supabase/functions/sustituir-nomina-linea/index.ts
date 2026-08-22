@@ -173,7 +173,7 @@ Deno.serve(async (req) => {
           version_cfdi: "4.0",
           FechaFromAPI: fechaFromApi,
           registros: [{
-            data: { id: e.facturacom_uid, nombre: e.nombre, puesto: puestoNombre(e.puesto_id), dias: diasPagados },
+            data: { id: e.facturacom_uid, nombre: String(e.nombre).trim().toUpperCase(), puesto: puestoNombre(e.puesto_id), dias: diasPagados },
             percepciones,
             deducciones,
             otrospagos: subsidioCalculado > 0 ? [{
