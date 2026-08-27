@@ -7742,7 +7742,14 @@ function ventasMesFilas(){
   let filas=[];
   cortes.forEach(c=>{
     const pagos=(c.datos&&c.datos.pagos_detalle)||[];
-    pagos.forEach(p=>filas.push({sucursal:c.sucursal,turno_id:c.turno_id,...p}));
+    // corteFecha es respaldo para ordenar cuando el pago no trae su propia
+    // fecha (cortes de antes de mandarla) -- sin esto, un corte viejo sin
+    // fecha se trataba como "el más antiguo posible" (cadena vacía), lo cual
+    // se ve mal en cuanto una sucursal ya manda fecha por pago y otra
+    // todavía no: lo de HOY de la sucursal atrasada saldría ordenado como
+    // si fuera de hace semanas.
+    const corteFecha=c.cierre||c.apertura||'';
+    pagos.forEach(p=>filas.push({sucursal:c.sucursal,turno_id:c.turno_id,corteFecha,...p}));
   });
   if(soloNoFact)filas=filas.filter(p=>!p.facturado);
   if(formaPago)filas=filas.filter(p=>(p.forma_pago||'').toLowerCase()===formaPago);
@@ -7750,7 +7757,8 @@ function ventasMesFilas(){
   // no traen con qué ordenar por hora -- sin este respaldo por folio
   // quedaban revueltos (909 antes que 908, etc.), pareciendo folios
   // repetidos aunque cada uno solo aparece una vez.
-  filas.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(Number(b.folio||0)-Number(a.folio||0)));
+  const fechaOrden=p=>p.fecha||p.corteFecha||'';
+  filas.sort((a,b)=>fechaOrden(b).localeCompare(fechaOrden(a))||(Number(b.folio||0)-Number(a.folio||0)));
   return filas;
 }
 
