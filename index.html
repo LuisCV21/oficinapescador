@@ -900,6 +900,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <span class="sb-item-icon">🧾</span>
         <span class="sb-item-label">Cortes de caja</span>
       </div>
+      <div class="sb-item" onclick="showPage('ventasmes')" id="si-ventasmes">
+        <span class="sb-item-icon">📈</span>
+        <span class="sb-item-label">Ventas del mes</span>
+      </div>
       <div class="sb-sep"></div>
       <div class="sb-item" onclick="showPage('archivos')" id="si-archivos">
         <span class="sb-item-icon">🗂️</span>
@@ -1172,6 +1176,35 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             <div class="lcount" id="corte-count"></div>
           </div>
           <div class="acc-grid" id="cortes-list" style="padding:16px"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+        </div>
+      </div>
+
+      <!-- VENTAS DEL MES -->
+      <div class="page" id="page-ventasmes">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">Ventas del mes</div>
+            <div class="page-sub">Un renglón por folio de venta cobrado, sacado directo de los cortes que ya manda Pescador POS -- para cruzar contra Factura.com sin esperar el Excel</div>
+          </div>
+        </div>
+        <div class="tabs-wrap">
+          <div class="tabs-bar" id="vm-tabs-bar"></div>
+          <div class="toolbar">
+            <div class="toolbar-l" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+                Del <input type="date" id="vm-desde" onchange="renderVentasMes()">
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+                Al <input type="date" id="vm-hasta" onchange="renderVentasMes()">
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer">
+                <input type="checkbox" id="vm-solo-nofact" onchange="renderVentasMes()"> Solo sin facturar
+              </label>
+              <button class="btn btn-filled btn-sm" onclick="exportVentasMesCSV()">⬇️ Exportar Excel</button>
+            </div>
+            <div class="lcount" id="vm-count"></div>
+          </div>
+          <div style="padding:0 16px 16px;overflow-x:auto" id="vm-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
       </div>
 
@@ -2628,6 +2661,7 @@ function showPage(id){
   else if(id==='flotilla')renderFlotilla();
   else if(id==='balance')switchBalTab(balActiveTab);
   else if(id==='cortes')renderCortes();
+  else if(id==='ventasmes')renderVentasMes();
   else if(id==='nominayasist')reloadModuloActivo();
   else if(id==='config'){
     if(configTabCurrent==='cuentas')renderConfigCuentas();
@@ -7660,6 +7694,110 @@ function renderCortes(){
     }).join('');
   }
   el.innerHTML=out;
+}
+
+// ─── VENTAS DEL MES ──────────────────────────────────────────
+// Un renglón por folio de venta (mismos datos.pagos_detalle que ya trae
+// cada corte, aplanados a través de todos los cortes del rango elegido) --
+// pensado para que las secretarias puedan cruzar contra el reporte de
+// Factura.com sin que Luis tenga que exportar el Excel del POS a mano.
+let currentVMSuc='TODAS';
+function renderVMTabs(){
+  const bar=document.getElementById('vm-tabs-bar');
+  if(!bar)return;
+  const sucs=[...new Set(cortesData.map(c=>c.sucursal).filter(Boolean))].sort();
+  if(currentVMSuc!=='TODAS'&&!sucs.includes(currentVMSuc))currentVMSuc='TODAS';
+  let html=`<div class="tab ${currentVMSuc==='TODAS'?'active':''}" onclick="switchVMSuc('TODAS')">📈 Todas</div>`;
+  sucs.forEach(s=>{
+    html+=`<div class="tab ${currentVMSuc===s?'active':''}" onclick="switchVMSuc('${s.replace(/'/g,"\\'")}')"><span class="ent-dot" style="background:${corteSucColor(s)}"></span>${s}</div>`;
+  });
+  bar.innerHTML=html;
+}
+function switchVMSuc(s){currentVMSuc=s;renderVentasMes();}
+
+function ventasMesFilas(){
+  const desdeEl=document.getElementById('vm-desde'), hastaEl=document.getElementById('vm-hasta');
+  // La primera vez que se abre la página, default al mes en curso.
+  if(desdeEl&&!desdeEl.value){
+    const hoy=new Date();
+    desdeEl.value=new Date(hoy.getFullYear(),hoy.getMonth(),1).toISOString().slice(0,10);
+  }
+  if(hastaEl&&!hastaEl.value)hastaEl.value=new Date().toISOString().slice(0,10);
+  const desde=desdeEl?.value, hasta=hastaEl?.value;
+  const soloNoFact=document.getElementById('vm-solo-nofact')?.checked;
+  let cortes=currentVMSuc==='TODAS'?cortesData:cortesData.filter(c=>c.sucursal===currentVMSuc);
+  if(desde)cortes=cortes.filter(c=>(c.cierre||c.apertura||'').slice(0,10)>=desde);
+  if(hasta)cortes=cortes.filter(c=>(c.cierre||c.apertura||'').slice(0,10)<=hasta);
+  let filas=[];
+  cortes.forEach(c=>{
+    const pagos=(c.datos&&c.datos.pagos_detalle)||[];
+    pagos.forEach(p=>filas.push({sucursal:c.sucursal,turno_id:c.turno_id,...p}));
+  });
+  if(soloNoFact)filas=filas.filter(p=>!p.facturado);
+  filas.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+  return filas;
+}
+
+function renderVentasMes(){
+  const el=document.getElementById('vm-list');
+  if(!el)return;
+  renderVMTabs();
+  const filas=ventasMesFilas();
+  const cnt=document.getElementById('vm-count');
+  const total=filas.reduce((s,p)=>s+Number(p.monto||0),0);
+  if(cnt)cnt.textContent=`${filas.length} folio(s) · ${fmxn(total)}`;
+  if(!filas.length){
+    el.innerHTML=`<div class="empty"><div class="empty-ico">📈</div>Sin ventas en este rango</div>`;
+    return;
+  }
+  const rows=filas.map(p=>{
+    const fecha=p.fecha?new Date(p.fecha).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+    const fact=p.facturado?`<span class="corte-badge ok">✓ ${p.folio_pac||''}</span>`:`<span class="corte-badge pend">Sin facturar</span>`;
+    return `<tr>
+      <td>${fecha}</td>
+      <td><span class="ent-dot" style="background:${corteSucColor(p.sucursal)}"></span>${corteSucLabel(p.sucursal)}</td>
+      <td>${p.folio??''}</td>
+      <td>${p.cuenta||'—'}</td>
+      <td>${p.mesero||'—'}</td>
+      <td>${p.forma_pago||''}</td>
+      <td class="num">${fmxn(p.monto)}</td>
+      <td>${fact}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML=`<table class="corte-tbl">
+    <thead><tr><th>Fecha</th><th>Sucursal</th><th>Folio</th><th>Cuenta</th><th>Mesero</th><th>Forma pago</th><th class="num">Monto</th><th>Facturado</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function exportVentasMesCSV(){
+  const filas=ventasMesFilas();
+  if(!filas.length){toast('No hay ventas en este rango para exportar.',true);return;}
+  const headers=['Fecha','Sucursal','Folio','Cuenta','Mesero','Forma de pago','Monto','Facturado','Folio fiscal'];
+  const escape=v=>{
+    const s=String(v??'');
+    return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+  };
+  const lines=[headers.join(',')];
+  filas.forEach(p=>{
+    lines.push([
+      p.fecha||'', corteSucLabel(p.sucursal), p.folio??'', p.cuenta||'', p.mesero||'',
+      p.forma_pago||'', Number(p.monto||0).toFixed(2), p.facturado?'Sí':'No', p.folio_pac||'',
+    ].map(escape).join(','));
+  });
+  const csv='﻿'+lines.join('\r\n'); // BOM para que Excel abra bien los acentos
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const desde=document.getElementById('vm-desde')?.value||'';
+  const hasta=document.getElementById('vm-hasta')?.value||'';
+  a.href=url;
+  a.download=`Ventas_${currentVMSuc}_${desde}_a_${hasta}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Excel exportado.');
 }
 
 // Helpers de estilo "reporte" -- calcan las tarjetas/tablas del PDF que
