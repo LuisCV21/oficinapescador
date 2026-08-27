@@ -7734,7 +7734,11 @@ function ventasMesFilas(){
     pagos.forEach(p=>filas.push({sucursal:c.sucursal,turno_id:c.turno_id,...p}));
   });
   if(soloNoFact)filas=filas.filter(p=>!p.facturado);
-  filas.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+  // Cortes viejos (de antes de que Pescador POS mandara "fecha" por folio)
+  // no traen con qué ordenar por hora -- sin este respaldo por folio
+  // quedaban revueltos (909 antes que 908, etc.), pareciendo folios
+  // repetidos aunque cada uno solo aparece una vez.
+  filas.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(Number(b.folio||0)-Number(a.folio||0)));
   return filas;
 }
 
