@@ -7756,7 +7756,16 @@ function renderVentasMes(){
   }
   const rows=filas.map(p=>{
     const fecha=p.fecha?new Date(p.fecha).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
-    const fact=p.facturado?`<span class="corte-badge ok">✓ ${p.folio_pac||''}</span>`:`<span class="corte-badge pend">Sin facturar</span>`;
+    // Un corte viejo (de antes de que Pescador POS mandara este dato) no
+    // trae "facturado" para nada -- distinto de un corte nuevo que sí lo
+    // manda y confirma que no se facturó. Mostrarlos igual como "Sin
+    // facturar" da a entender que se confirmó que no se facturó, cuando en
+    // realidad el sistema simplemente no lo sabe todavía para ese corte.
+    const fact=p.facturado===undefined
+      ?`<span class="corte-badge" style="background:var(--surface2);color:var(--text3)">Sin dato (corte viejo)</span>`
+      :p.facturado
+        ?`<span class="corte-badge ok">✓ ${p.folio_pac||''}</span>`
+        :`<span class="corte-badge pend">Sin facturar</span>`;
     return `<tr>
       <td>${fecha}</td>
       <td><span class="ent-dot" style="background:${corteSucColor(p.sucursal)}"></span>${corteSucLabel(p.sucursal)}</td>
@@ -7786,7 +7795,8 @@ function exportVentasMesCSV(){
   filas.forEach(p=>{
     lines.push([
       p.fecha||'', corteSucLabel(p.sucursal), p.folio??'', p.cuenta||'', p.mesero||'',
-      p.forma_pago||'', Number(p.monto||0).toFixed(2), p.facturado?'Sí':'No', p.folio_pac||'',
+      p.forma_pago||'', Number(p.monto||0).toFixed(2),
+      p.facturado===undefined?'Sin dato':(p.facturado?'Sí':'No'), p.folio_pac||'',
     ].map(escape).join(','));
   });
   const csv='﻿'+lines.join('\r\n'); // BOM para que Excel abra bien los acentos
