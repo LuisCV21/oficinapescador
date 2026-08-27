@@ -1197,6 +1197,16 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
               <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
                 Al <input type="date" id="vm-hasta" onchange="renderVentasMes()">
               </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+                Pago
+                <select id="vm-forma-pago" onchange="renderVentasMes()" style="font-size:12px">
+                  <option value="">Todos</option>
+                  <option value="efectivo">Efectivo</option>
+                  <option value="debito">Débito</option>
+                  <option value="credito">Crédito</option>
+                  <option value="transferencia">Transferencia</option>
+                </select>
+              </label>
               <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer">
                 <input type="checkbox" id="vm-solo-nofact" onchange="renderVentasMes()"> Solo sin facturar
               </label>
@@ -7725,6 +7735,7 @@ function ventasMesFilas(){
   if(hastaEl&&!hastaEl.value)hastaEl.value=new Date().toISOString().slice(0,10);
   const desde=desdeEl?.value, hasta=hastaEl?.value;
   const soloNoFact=document.getElementById('vm-solo-nofact')?.checked;
+  const formaPago=document.getElementById('vm-forma-pago')?.value||'';
   let cortes=currentVMSuc==='TODAS'?cortesData:cortesData.filter(c=>c.sucursal===currentVMSuc);
   if(desde)cortes=cortes.filter(c=>(c.cierre||c.apertura||'').slice(0,10)>=desde);
   if(hasta)cortes=cortes.filter(c=>(c.cierre||c.apertura||'').slice(0,10)<=hasta);
@@ -7734,6 +7745,7 @@ function ventasMesFilas(){
     pagos.forEach(p=>filas.push({sucursal:c.sucursal,turno_id:c.turno_id,...p}));
   });
   if(soloNoFact)filas=filas.filter(p=>!p.facturado);
+  if(formaPago)filas=filas.filter(p=>(p.forma_pago||'').toLowerCase()===formaPago);
   // Cortes viejos (de antes de que Pescador POS mandara "fecha" por folio)
   // no traen con qué ordenar por hora -- sin este respaldo por folio
   // quedaban revueltos (909 antes que 908, etc.), pareciendo folios
