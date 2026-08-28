@@ -908,6 +908,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <span class="sb-item-icon">📦</span>
         <span class="sb-item-label">Vista previa Globales</span>
       </div>
+      <div class="sb-item" onclick="showPage('controlgastos')" id="si-controlgastos">
+        <span class="sb-item-icon">🧮</span>
+        <span class="sb-item-label">Control de Gastos</span>
+      </div>
       <div class="sb-sep"></div>
       <div class="sb-item" onclick="showPage('archivos')" id="si-archivos">
         <span class="sb-item-icon">🗂️</span>
@@ -1243,6 +1247,30 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             </div>
           </div>
           <div style="padding:16px" id="gp-content"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+        </div>
+      </div>
+
+      <!-- CONTROL DE GASTOS -->
+      <div class="page" id="page-controlgastos">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">Control de Gastos</div>
+            <div class="page-sub">Arma solo el mismo control que antes se llevaba en Excel -- ventas y gastos de mercancía/diversos del corte de Pescador POS, clasificados por columna automáticamente y corregibles a mano</div>
+          </div>
+        </div>
+        <div class="tabs-wrap">
+          <div class="tabs-bar" id="cg-tabs-bar"></div>
+          <div class="toolbar">
+            <div class="toolbar-l" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+                Mes <select id="cg-mes" onchange="renderControlGastos()" style="font-size:12px"></select>
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+                Año <select id="cg-anio" onchange="renderControlGastos()" style="font-size:12px"></select>
+              </label>
+            </div>
+          </div>
+          <div style="padding:16px" id="cg-content"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
       </div>
 
@@ -2716,6 +2744,7 @@ function showPage(id){
   else if(id==='cortes')renderCortes();
   else if(id==='ventasmes')renderVentasMes();
   else if(id==='globalespreview')renderVistaPreviaGlobales();
+  else if(id==='controlgastos')renderControlGastos();
   else if(id==='nominayasist')reloadModuloActivo();
   else if(id==='config'){
     if(configTabCurrent==='cuentas')renderConfigCuentas();
@@ -8107,6 +8136,228 @@ function renderVistaPreviaGlobales(){
     <div class="bal-live-row" style="margin-bottom:14px;font-size:14px"><span>Total estimado de las ${grupos.size} Global(es) de ${corteSucLabel(currentGPSuc)}</span><strong>${fmxn(totalGeneral)}</strong></div>
     ${avisoSinDato}
     ${cardsHtml}
+  `;
+}
+
+// ─── CONTROL DE GASTOS ───────────────────────────────────────────
+// Arma el mismo control que antes se llevaba a mano en Excel, a partir de
+// los movimientos de caja (gasto_mercancia/gasto_diverso) que ya manda cada
+// corte de Pescador POS -- ver movimientos_desglose en cortesData. Cada
+// concepto en texto libre ("sams", "queso aro", "chipotle comida"...) se
+// clasifica en la columna del Excel que le corresponde con un catálogo de
+// palabras clave armado a partir de los conceptos reales que ya mandó
+// Florida en agosto 2026. Cuando el clasificador no reconoce nada, el gasto
+// queda como "Sin clasificar" -- nunca se adivina a ciegas metiéndolo a
+// VARIOS -- y se puede corregir a mano abajo; la corrección se guarda para
+// ESE gasto puntual (sucursal+turno_id+fecha exacta del movimiento), no
+// como regla general para ese concepto.
+const CG_MERCANCIA=[
+  ['MASA_TORT',"Masa y Tort.",/masa|tortilla/],
+  ['SAMS',"Sam's",/\bsams\b/],
+  ['AMADOR',"Amador",/\bamador\b/],
+  ['COCA',"Coca Cola",/coca.?cola|refresco/],
+  ['QUESOS',"Quesos",/queso/],
+  ['OSTION',"Ostión y Conchas/Jaiba",/ostion|concha|\bjaiba\b/],
+  ['HIELO',"Hielo",/\bhielo\b/],
+  ['GARRAFONES',"Garrafones de agua",/garraf/],
+  ['GALLETA_BIMBO',"Galleta molida/Bimbo",/galleta|bimbo/],
+  ['ACEITE',"Aceite",/aceite/],
+  ['VINOS',"Vinos y licores",/\bvino|licor|cerveza|whisky|tequila|\bcava\b/],
+  ['POSTRES',"Postres",/postre|pastel|\bflan\b|chocoflan/],
+  ['HELADOS',"Helados",/helado|nieve/],
+  ['VERDURA',"Verdura/limón/naranja/epazote",/verdura|lim[oó]n|naranja|epazote|hierbabuena|jitomate|cebolla|aguacate|\bchile\b|coco/],
+  ['ABARROTES',"Abarrotes",/abarrote|almacen|walmart|soriana|\bhuevo\b|jabon|servilleta|saladit/],
+  ['MARISCO',"Marisco",/marisco|camaron|pulpo|calamar|robalo|huachinango|pescado/],
+  ['VARIOS_MERC',"Varios",/(?!)/],
+];
+const CG_DIVERSOS=[
+  ['COMIDA_PERSONAL',"Comida personal",/comida|desayuno|\bpan\b|bolillo|espagueti|tres b|\bpollo\b|tortilla|chipotle|soriana/],
+  ['ALARMAS',"Alarmas",/alarma/],
+  ['SEGUROS',"Seguros",/\bseguro\b(?!.*social)/],
+  ['FUMIGACION',"Fumigación",/fumigaci/],
+  ['LUZ',"Luz",/\bluz\b|\bcfe\b|electricidad/],
+  ['DOGO',"Dogo",/\bdogo\b/],
+  ['GASOLINA',"Gasolina",/gasolina/],
+  ['GAS',"Gas",/\bgas\b|carbu.?gas/],
+  ['TOTAL_PLAY',"Totalplay",/total.?play/],
+  ['SISTEMA_VENTAS',"Sistema de ventas",/sistema de venta/],
+  ['NOMINA_FISCAL',"Nómina fiscal",/nomina/],
+  ['RECIBOS_HREXT',"Recibos, HR ext y bonificaciones",/hora extra|bonificaci|recibo/],
+  ['DIAS_FESTIVOS',"Días festivos",/festivo/],
+  ['VACACIONES',"Vacaciones",/vacacion/],
+  ['FINIKITO',"Finikito",/finikito/],
+  ['IMSS',"IMSS",/\bimss\b|seguro social/],
+  ['EROGACIONES',"Erogaciones",/erogacion/],
+  ['MANT_MOTO_REST',"Mant. de moto y rest.",/mantenimiento|refaccion|\btaller\b|llanta/],
+  ['HONORARIOS_CP',"Honorarios C.P.",/honorario|contador/],
+  ['MATERIAL_CONST',"Material de construcción",/material.*construccion|cemento|varilla|pintura|ferreteria/],
+  ['IMPUESTOS',"Impuestos, IVA, ISR",/impuesto|\biva\b|\bisr\b|infonavit|fiscal/],
+  ['BASURA',"Basura",/basura|recoleccion/],
+  ['DEPOSITO',"Depósito",/deposito/],
+  ['COMISIONES',"Comisiones",/comision/],
+  ['AYUNTAMIENTO',"Ayuntamiento loc.",/ayuntamiento/],
+  ['AGUINALDO',"Aguinaldo",/aguinaldo/],
+  ['VARIOS_DIV',"Varios",/(?!)/],
+];
+function cgListaGrupo(grupo){return grupo==='gasto_mercancia'?CG_MERCANCIA:CG_DIVERSOS;}
+function cgClasificar(concepto,grupo){
+  const txt=(concepto||'').toLowerCase();
+  for(const[key,,re] of cgListaGrupo(grupo)) if(re.test(txt)) return key;
+  return null;
+}
+function cgLabel(key,grupo){
+  if(!key)return'Sin clasificar';
+  const f=cgListaGrupo(grupo).find(x=>x[0]===key);
+  return f?f[1]:key;
+}
+
+let currentCGSuc='';
+let gastosOverridesData=[];
+async function loadGastosOverrides(){
+  const{data}=await sb.from('gastos_clasificacion_overrides').select('*');
+  gastosOverridesData=data||[];
+}
+function cgCategoriaFinal(m){
+  const ov=gastosOverridesData.find(o=>o.sucursal===m.sucursal&&o.turno_id===m.turno_id&&o.fecha===m.fecha);
+  return ov?ov.categoria_final:cgClasificar(m.concepto,m.categoria);
+}
+async function cgGuardarClasificacion(sucursal,turnoId,fecha,categoriaFinal){
+  const{error}=await sb.from('gastos_clasificacion_overrides')
+    .upsert({sucursal,turno_id:turnoId,fecha,categoria_final:categoriaFinal},{onConflict:'sucursal,turno_id,fecha'});
+  if(error){toast('Error: '+error.message,true);return;}
+  await loadGastosOverrides();
+  renderControlGastos();
+  toast('Clasificación corregida ✓');
+}
+
+function renderCGTabs(){
+  const bar=document.getElementById('cg-tabs-bar');
+  if(!bar)return;
+  const sucs=[...new Set(cortesData.map(c=>c.sucursal).filter(Boolean))].sort();
+  if(!sucs.includes(currentCGSuc))currentCGSuc=sucs[0]||'';
+  bar.innerHTML=sucs.map(s=>
+    `<div class="tab ${currentCGSuc===s?'active':''}" onclick="switchCGSuc('${s.replace(/'/g,"\\'")}')"><span class="ent-dot" style="background:${corteSucColor(s)}"></span>${s}</div>`
+  ).join('');
+}
+function switchCGSuc(s){currentCGSuc=s;renderControlGastos();}
+function populateCGMesAnio(){
+  const selMes=document.getElementById('cg-mes'), selAnio=document.getElementById('cg-anio');
+  if(!selMes||!selAnio||selMes.options.length)return;
+  const hoy=new Date();
+  selMes.innerHTML=MESES_ES.map((m,i)=>`<option value="${i+1}">${m}</option>`).join('');
+  selMes.value=hoy.getMonth()+1;
+  const anioActual=hoy.getFullYear();
+  selAnio.innerHTML=[anioActual,anioActual-1].map(a=>`<option value="${a}">${a}</option>`).join('');
+  selAnio.value=anioActual;
+}
+function cgRangoMes(){
+  populateCGMesAnio();
+  const mes=Number(document.getElementById('cg-mes')?.value||(new Date().getMonth()+1));
+  const anio=Number(document.getElementById('cg-anio')?.value||new Date().getFullYear());
+  return{desde:`${anio}-${String(mes).padStart(2,'0')}-01`,hasta:`${anio}-${String(mes).padStart(2,'0')}-31`};
+}
+
+async function renderControlGastos(){
+  if(!gastosOverridesData.length)await loadGastosOverrides();
+  const el=document.getElementById('cg-content');
+  if(!el)return;
+  renderCGTabs();
+  const{desde,hasta}=cgRangoMes();
+  const cortes=cortesData.filter(c=>c.sucursal===currentCGSuc&&(c.cierre||c.apertura||'').slice(0,10)>=desde&&(c.cierre||c.apertura||'').slice(0,10)<=hasta);
+  if(!cortes.length){
+    el.innerHTML=`<div class="empty"><div class="empty-ico">🧮</div>Sin cortes en este rango para ${corteSucLabel(currentCGSuc)}</div>`;
+    return;
+  }
+  const dias=new Map(); // diaKey -> {venta,credito,debito,transferencia,efectivo,diferencia}
+  const merc=new Map(); // diaKey -> {CATKEY: monto}
+  const div=new Map();
+  const sinClasificar=[];
+  cortes.forEach(c=>{
+    const diaKey=(c.cierre||c.apertura||'').slice(0,10);
+    const vpf=(c.datos&&c.datos.ventas_por_forma)||{};
+    const acc=dias.get(diaKey)||{venta:0,credito:0,debito:0,transferencia:0,efectivo:0,diferencia:0};
+    acc.venta+=Number(c.datos&&c.datos.total_ventas||0);
+    acc.credito+=Number(vpf.credito||0);
+    acc.debito+=Number(vpf.debito||0);
+    acc.transferencia+=Number(vpf.transferencia||0);
+    acc.efectivo+=Number(vpf.efectivo||0);
+    acc.diferencia+=Number(c.datos&&c.datos.cuadre&&c.datos.cuadre.diferencia_cuadre||0);
+    dias.set(diaKey,acc);
+    const movs=(c.datos&&c.datos.movimientos_desglose)||[];
+    movs.forEach(m=>{
+      if(m.medio!=='caja'||m.tipo!=='retiro')return;
+      if(m.categoria!=='gasto_mercancia'&&m.categoria!=='gasto_diverso')return;
+      const mDiaKey=(m.fecha||diaKey).slice(0,10);
+      const item={...m,sucursal:c.sucursal,turno_id:c.turno_id,diaKey:mDiaKey};
+      const catKey=cgCategoriaFinal(item);
+      const mapa=m.categoria==='gasto_mercancia'?merc:div;
+      if(!catKey){sinClasificar.push(item);return;}
+      const dm=mapa.get(mDiaKey)||{};
+      dm[catKey]=(dm[catKey]||0)+Number(m.monto||0);
+      mapa.set(mDiaKey,dm);
+    });
+  });
+  const diasOrdenados=[...dias.keys()].sort();
+
+  function tablaVentas(){
+    const rows=diasOrdenados.map(dk=>{
+      const v=dias.get(dk);
+      const difColor=Math.abs(v.diferencia)<0.5?'var(--green)':'var(--red)';
+      return`<tr><td>${fmtDiaMes(dk)}</td><td class="num">${fmxn(v.venta)}</td><td class="num">${fmxn(v.credito)}</td><td class="num">${fmxn(v.debito)}</td><td class="num">${fmxn(v.transferencia)}</td><td class="num">${fmxn(v.efectivo)}</td><td class="num" style="color:${difColor}">${fmxn(v.diferencia)}</td></tr>`;
+    }).join('');
+    const tot=diasOrdenados.reduce((a,dk)=>{const v=dias.get(dk);a.venta+=v.venta;a.credito+=v.credito;a.debito+=v.debito;a.transferencia+=v.transferencia;a.efectivo+=v.efectivo;a.diferencia+=v.diferencia;return a;},{venta:0,credito:0,debito:0,transferencia:0,efectivo:0,diferencia:0});
+    return`<table class="corte-tbl"><thead><tr><th>Día</th><th class="num">Venta</th><th class="num">T. Crédito</th><th class="num">T. Débito</th><th class="num">Transf.</th><th class="num">Efectivo</th><th class="num">Diferencia</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="font-weight:700;background:var(--surface2)"><td>Total</td><td class="num">${fmxn(tot.venta)}</td><td class="num">${fmxn(tot.credito)}</td><td class="num">${fmxn(tot.debito)}</td><td class="num">${fmxn(tot.transferencia)}</td><td class="num">${fmxn(tot.efectivo)}</td><td class="num">${fmxn(tot.diferencia)}</td></tr></tfoot>
+    </table>`;
+  }
+  function tablaGastos(mapa,lista,titulo){
+    const catsConDatos=lista.filter(([key])=>diasOrdenados.some(dk=>(mapa.get(dk)||{})[key]));
+    if(!catsConDatos.length)return`<div class="empty" style="padding:20px"><div class="empty-ico">📭</div>Sin ${titulo.toLowerCase()} clasificados en este rango</div>`;
+    const rows=diasOrdenados.map(dk=>{
+      const dm=mapa.get(dk)||{};
+      const totalDia=catsConDatos.reduce((s,[key])=>s+(dm[key]||0),0);
+      if(!totalDia)return'';
+      return`<tr><td>${fmtDiaMes(dk)}</td>${catsConDatos.map(([key])=>`<td class="num">${fmxn(dm[key]||'')}</td>`).join('')}<td class="num"><b>${fmxn(totalDia)}</b></td></tr>`;
+    }).join('');
+    const totCols=catsConDatos.map(([key])=>diasOrdenados.reduce((s,dk)=>s+((mapa.get(dk)||{})[key]||0),0));
+    const totGeneral=totCols.reduce((s,v)=>s+v,0);
+    return`<div style="overflow-x:auto"><table class="corte-tbl"><thead><tr><th>Día</th>${catsConDatos.map(([,label])=>`<th class="num">${label}</th>`).join('')}<th class="num">Total</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="font-weight:700;background:var(--surface2)"><td>Total</td>${totCols.map(v=>`<td class="num">${fmxn(v)}</td>`).join('')}<td class="num">${fmxn(totGeneral)}</td></tr></tfoot>
+    </table></div>`;
+  }
+  function seccionSinClasificar(){
+    if(!sinClasificar.length)return'';
+    const filas=sinClasificar.sort((a,b)=>b.fecha.localeCompare(a.fecha)).map((m,i)=>{
+      const opciones=cgListaGrupo(m.categoria).map(([key,label])=>`<option value="${key}">${label}</option>`).join('');
+      return`<tr>
+        <td>${fmtDiaMes(m.diaKey)}</td>
+        <td>${m.concepto}</td>
+        <td>${m.categoria==='gasto_mercancia'?'Mercancía':'Diverso'}</td>
+        <td class="num">${fmxn(m.monto)}</td>
+        <td><select id="cg-sc-${i}" style="font-size:11px">${opciones}</select></td>
+        <td><button class="btn-text" style="font-size:11px" onclick="cgGuardarClasificacion('${m.sucursal.replace(/'/g,"\\'")}',${m.turno_id},'${m.fecha}',document.getElementById('cg-sc-${i}').value)">Asignar</button></td>
+      </tr>`;
+    }).join('');
+    const totalSC=sinClasificar.reduce((s,m)=>s+Number(m.monto||0),0);
+    return`<div style="background:var(--red-light);border:1px solid #f7c1c1;border-radius:8px;padding:12px;margin-top:16px">
+      <div style="font-weight:600;color:var(--red);margin-bottom:8px">⚠️ ${sinClasificar.length} gasto(s) sin clasificar por ${fmxn(totalSC)} -- no están incluidos en las tablas de arriba hasta que se les asigne columna</div>
+      <div style="overflow-x:auto"><table class="corte-tbl">
+        <thead><tr><th>Día</th><th>Concepto</th><th>Grupo</th><th class="num">Monto</th><th>Clasificar como</th><th></th></tr></thead>
+        <tbody>${filas}</tbody>
+      </table></div>
+    </div>`;
+  }
+
+  el.innerHTML=`
+    <div class="sec-lbl">Ventas</div>
+    <div style="overflow-x:auto">${tablaVentas()}</div>
+    <div class="sec-lbl" style="margin-top:18px">Gastos de Mercancía</div>
+    ${tablaGastos(merc,CG_MERCANCIA,'gastos de mercancía')}
+    <div class="sec-lbl" style="margin-top:18px">Gastos Diversos</div>
+    ${tablaGastos(div,CG_DIVERSOS,'gastos diversos')}
+    ${seccionSinClasificar()}
   `;
 }
 
