@@ -8170,16 +8170,22 @@ const CG_MERCANCIA=[
   ['MARISCO',"Marisco",/marisco|camaron|pulpo|calamar|robalo|huachinango|pescado/],
   ['VARIOS_MERC',"Varios",/(?!)/],
 ];
+// Puebla usa prácticamente el mismo catálogo que Florida (confirmado por
+// Luis), con estas columnas de más que no existen en el Excel de Florida:
+// TELMEX (aparte de Totalplay) y ADO (boletos de camión). Ver
+// "CONTROL DE CORTES PUEBLA 2025.xlsx".
 const CG_DIVERSOS=[
   ['COMIDA_PERSONAL',"Comida personal",/comida|desayuno|\bpan\b|bolillo|espagueti|tres b|\bpollo\b|tortilla|chipotle|soriana/],
   ['ALARMAS',"Alarmas",/alarma/],
-  ['SEGUROS',"Seguros",/\bseguro\b(?!.*social)/],
+  ['SEGUROS',"Seguros",/\bseguro\b(?!.*social)|poliza|\bbbva\b/],
   ['FUMIGACION',"Fumigación",/fumigaci/],
   ['LUZ',"Luz",/\bluz\b|\bcfe\b|electricidad/],
   ['DOGO',"Dogo",/\bdogo\b/],
   ['GASOLINA',"Gasolina",/gasolina/],
   ['GAS',"Gas",/\bgas\b|carbu.?gas/],
   ['TOTAL_PLAY',"Totalplay",/total.?play/],
+  ['TELMEX',"Telmex",/telmex/],
+  ['ADO',"ADO",/\bado\b/],
   ['SISTEMA_VENTAS',"Sistema de ventas",/sistema de venta/],
   ['NOMINA_FISCAL',"Nómina fiscal",/nomina/],
   ['RECIBOS_HREXT',"Recibos, HR ext y bonificaciones",/hora extra|bonificaci|recibo/],
@@ -8199,15 +8205,63 @@ const CG_DIVERSOS=[
   ['AGUINALDO',"Aguinaldo",/aguinaldo/],
   ['VARIOS_DIV',"Varios",/(?!)/],
 ];
-function cgListaGrupo(grupo){return grupo==='gasto_mercancia'?CG_MERCANCIA:CG_DIVERSOS;}
-function cgClasificar(concepto,grupo){
+// El Hotel no vende comida, así que su Excel ("CONTROL CORTES 2018-2025
+// HOTEL.xlsx") usa columnas totalmente distintas al de los restaurantes --
+// "Gastos del Hotel" (Sam's, Dogo, Notas Procesadora, Amador, Lavandería,
+// Pan) en vez de Mercancía, y "Gastos Diversos Hotel" con cosas propias de
+// hospedaje (Izzi, clima, amenidades, hospedaje 2%...). El Hotel todavía no
+// ha empezado a usar Movimientos de Caja en el POS, así que estos patrones
+// se armaron con los nombres de columna del Excel -- no con conceptos
+// reales todavía -- van a necesitar más ajuste cuando lleguen datos.
+const CG_HOTEL_MERC=[
+  ['SAMS',"Sam's",/\bsams\b/],
+  ['DOGO',"Dogo",/\bdogo\b/],
+  ['NOTAS_PROCESADORA',"Notas Procesadora",/procesadora/],
+  ['AMADOR',"Amador",/\bamador\b/],
+  ['LAVANDERIA',"Lavandería",/lavander/],
+  ['PAN',"Pan",/\bpan\b|panaderia/],
+  ['VARIOS_HOTEL_MERC',"Varios",/(?!)/],
+];
+const CG_HOTEL_DIV=[
+  ['GAS',"Gas",/\bgas\b(?!olina)/],
+  ['LUZ',"CFE (Luz)",/\bluz\b|\bcfe\b/],
+  ['FUMIGACION',"Fumigación",/fumigaci/],
+  ['TOTAL_PLAY',"Totalplay",/total.?play/],
+  ['IZZI',"Izzi",/\bizzi\b/],
+  ['CABLE',"Caba Cable",/cable/],
+  ['PUBLICIDAD',"Periódico Líder (publicidad)",/periodico|publicidad|\blider\b/],
+  ['IMPRENTA',"Imprenta (registros)",/imprenta|registro/],
+  ['CLIMA',"Clima",/\bclima\b|aire acondicionado/],
+  ['AMENIDADES',"Amenidades (jabón/shampoo)",/amenidad|jabon|shampoo/],
+  ['SEGUROS',"Póliza seguro BBVA",/\bseguro\b|poliza|\bbbva\b/],
+  ['NOMINA_FISCAL',"Nómina fiscal",/nomina/],
+  ['RECIBOS_HREXT',"Recibos, HR ext y retardos",/hora extra|retardo|recibo/],
+  ['IMPUESTOS',"Impuestos",/impuesto|\biva\b|\bisr\b|infonavit|fiscal/],
+  ['DIAS_FESTIVOS',"Días festivos",/festivo/],
+  ['VACACIONES',"Vacaciones",/vacacion/],
+  ['AGUINALDO',"Aguinaldo",/aguinaldo/],
+  ['FINIQUITO',"Finiquito",/finiquito/],
+  ['IMSS_INFONAVIT',"IMSS-Infonavit",/\bimss\b|infonavit/],
+  ['HOSPEDAJE_2',"Hospedaje 2%",/hospedaje/],
+  ['MANTENIMIENTO',"Mantenimiento de hotel",/mantenimiento|refaccion|\btaller\b/],
+  ['HONORARIOS_CP',"Honorarios C.P.",/honorario|contador/],
+  ['GASOLINA',"Gasolina",/gasolina/],
+  ['DEPOSITO',"Depósito",/deposito/],
+  ['COMISION',"Comisión",/comision/],
+  ['VARIOS_HOTEL_DIV',"Varios",/(?!)/],
+];
+function cgListaGrupo(grupo,entKey){
+  if(entKey==='HOT')return grupo==='gasto_mercancia'?CG_HOTEL_MERC:CG_HOTEL_DIV;
+  return grupo==='gasto_mercancia'?CG_MERCANCIA:CG_DIVERSOS;
+}
+function cgClasificar(concepto,grupo,entKey){
   const txt=(concepto||'').toLowerCase();
-  for(const[key,,re] of cgListaGrupo(grupo)) if(re.test(txt)) return key;
+  for(const[key,,re] of cgListaGrupo(grupo,entKey)) if(re.test(txt)) return key;
   return null;
 }
-function cgLabel(key,grupo){
+function cgLabel(key,grupo,entKey){
   if(!key)return'Sin clasificar';
-  const f=cgListaGrupo(grupo).find(x=>x[0]===key);
+  const f=cgListaGrupo(grupo,entKey).find(x=>x[0]===key);
   return f?f[1]:key;
 }
 
@@ -8217,9 +8271,9 @@ async function loadGastosOverrides(){
   const{data}=await sb.from('gastos_clasificacion_overrides').select('*');
   gastosOverridesData=data||[];
 }
-function cgCategoriaFinal(m){
+function cgCategoriaFinal(m,entKey){
   const ov=gastosOverridesData.find(o=>o.sucursal===m.sucursal&&o.turno_id===m.turno_id&&o.fecha===m.fecha);
-  return ov?ov.categoria_final:cgClasificar(m.concepto,m.categoria);
+  return ov?ov.categoria_final:cgClasificar(m.concepto,m.categoria,entKey);
 }
 async function cgGuardarClasificacion(sucursal,turnoId,fecha,categoriaFinal){
   const{error}=await sb.from('gastos_clasificacion_overrides')
@@ -8262,6 +8316,8 @@ async function renderControlGastos(){
   const el=document.getElementById('cg-content');
   if(!el)return;
   renderCGTabs();
+  const entKey=(Object.entries(ENTS).find(([,e])=>String(currentCGSuc||'').toLowerCase().includes(e.label.toLowerCase()))||[])[0];
+  const esHotel=entKey==='HOT';
   const{desde,hasta}=cgRangoMes();
   const cortes=cortesData.filter(c=>c.sucursal===currentCGSuc&&(c.cierre||c.apertura||'').slice(0,10)>=desde&&(c.cierre||c.apertura||'').slice(0,10)<=hasta);
   if(!cortes.length){
@@ -8289,7 +8345,7 @@ async function renderControlGastos(){
       if(m.categoria!=='gasto_mercancia'&&m.categoria!=='gasto_diverso')return;
       const mDiaKey=(m.fecha||diaKey).slice(0,10);
       const item={...m,sucursal:c.sucursal,turno_id:c.turno_id,diaKey:mDiaKey};
-      const catKey=cgCategoriaFinal(item);
+      const catKey=cgCategoriaFinal(item,entKey);
       const mapa=m.categoria==='gasto_mercancia'?merc:div;
       if(!catKey){sinClasificar.push(item);return;}
       const dm=mapa.get(mDiaKey)||{};
@@ -8330,7 +8386,7 @@ async function renderControlGastos(){
   function seccionSinClasificar(){
     if(!sinClasificar.length)return'';
     const filas=sinClasificar.sort((a,b)=>b.fecha.localeCompare(a.fecha)).map((m,i)=>{
-      const opciones=cgListaGrupo(m.categoria).map(([key,label])=>`<option value="${key}">${label}</option>`).join('');
+      const opciones=cgListaGrupo(m.categoria,entKey).map(([key,label])=>`<option value="${key}">${label}</option>`).join('');
       return`<tr>
         <td>${fmtDiaMes(m.diaKey)}</td>
         <td>${m.concepto}</td>
@@ -8350,13 +8406,15 @@ async function renderControlGastos(){
     </div>`;
   }
 
+  const listaMerc=esHotel?CG_HOTEL_MERC:CG_MERCANCIA;
+  const listaDiv=esHotel?CG_HOTEL_DIV:CG_DIVERSOS;
   el.innerHTML=`
     <div class="sec-lbl">Ventas</div>
     <div style="overflow-x:auto">${tablaVentas()}</div>
-    <div class="sec-lbl" style="margin-top:18px">Gastos de Mercancía</div>
-    ${tablaGastos(merc,CG_MERCANCIA,'gastos de mercancía')}
-    <div class="sec-lbl" style="margin-top:18px">Gastos Diversos</div>
-    ${tablaGastos(div,CG_DIVERSOS,'gastos diversos')}
+    <div class="sec-lbl" style="margin-top:18px">${esHotel?'Gastos del Hotel':'Gastos de Mercancía'}</div>
+    ${tablaGastos(merc,listaMerc,esHotel?'gastos del hotel':'gastos de mercancía')}
+    <div class="sec-lbl" style="margin-top:18px">${esHotel?'Gastos Diversos Hotel':'Gastos Diversos'}</div>
+    ${tablaGastos(div,listaDiv,'gastos diversos')}
     ${seccionSinClasificar()}
   `;
 }
