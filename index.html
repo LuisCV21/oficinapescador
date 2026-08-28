@@ -904,6 +904,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <span class="sb-item-icon">📈</span>
         <span class="sb-item-label">Ventas del mes</span>
       </div>
+      <div class="sb-item" onclick="showPage('globalespreview')" id="si-globalespreview">
+        <span class="sb-item-icon">📦</span>
+        <span class="sb-item-label">Vista previa Globales</span>
+      </div>
       <div class="sb-sep"></div>
       <div class="sb-item" onclick="showPage('archivos')" id="si-archivos">
         <span class="sb-item-icon">🗂️</span>
@@ -1215,6 +1219,30 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             <div class="lcount" id="vm-count"></div>
           </div>
           <div style="padding:0 16px 16px;overflow-x:auto" id="vm-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+        </div>
+      </div>
+
+      <!-- VISTA PREVIA GLOBALES -->
+      <div class="page" id="page-globalespreview">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">Vista previa de Globales</div>
+            <div class="page-sub">Adelanto de cómo se verían las facturas Globales (una por forma de pago) que se generan al cierre del mes -- calculado con las mismas reglas que usa Pescador POS, solo que aquí no se timbra nada, es solo para revisar montos con anticipación</div>
+          </div>
+        </div>
+        <div class="tabs-wrap">
+          <div class="tabs-bar" id="gp-tabs-bar"></div>
+          <div class="toolbar">
+            <div class="toolbar-l" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+                Mes <select id="gp-mes" onchange="renderVistaPreviaGlobales()" style="font-size:12px"></select>
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+                Año <select id="gp-anio" onchange="renderVistaPreviaGlobales()" style="font-size:12px"></select>
+              </label>
+            </div>
+          </div>
+          <div style="padding:16px" id="gp-content"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
       </div>
 
@@ -2672,6 +2700,7 @@ function showPage(id){
   else if(id==='balance')switchBalTab(balActiveTab);
   else if(id==='cortes')renderCortes();
   else if(id==='ventasmes')renderVentasMes();
+  else if(id==='globalespreview')renderVistaPreviaGlobales();
   else if(id==='nominayasist')reloadModuloActivo();
   else if(id==='config'){
     if(configTabCurrent==='cuentas')renderConfigCuentas();
@@ -7834,6 +7863,140 @@ function exportVentasMesCSV(){
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
   toast('Excel exportado.');
+}
+
+// ─── VISTA PREVIA DE GLOBALES ───────────────────────────────────
+// Adelanto de las 4 facturas Globales (una por forma de pago) que
+// Pescador POS arma al cierre del mes -- mismo criterio que tab_global.py
+// del POS: folios de pago sin factura individual ni autofactura
+// (facturado===false), agrupados por forma de pago con la misma tabla
+// SAT que usa el POS al timbrar. Solo lee cortesData (ya cargado por
+// Ventas del mes), no genera ni timbra nada.
+// Un folio de corte viejo que no trae el campo "facturado" en absoluto
+// (facturado===undefined) no se sabe si ya se facturó o no -- meterlo a
+// ciegas al total inflaría o desinflaría la Global real, así que se deja
+// fuera de los grupos y se avisa aparte.
+const FORMA_SAT_OFI={
+  efectivo:['01','Efectivo'], debito:['28','Tarjeta de débito'], 'débito':['28','Tarjeta de débito'],
+  credito:['04','Tarjeta de crédito'], 'crédito':['04','Tarjeta de crédito'], tarjeta:['04','Tarjeta'],
+  transferencia:['03','Transferencia'], cheque:['02','Cheque'],
+};
+const MESES_ES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+let currentGPSuc='';
+let gpAbiertos=new Set();
+
+function populateGPMesAnio(){
+  const selMes=document.getElementById('gp-mes'), selAnio=document.getElementById('gp-anio');
+  if(!selMes||!selAnio||selMes.options.length)return;
+  const hoy=new Date();
+  selMes.innerHTML=MESES_ES.map((m,i)=>`<option value="${i+1}">${m}</option>`).join('');
+  selMes.value=hoy.getMonth()+1;
+  const anioActual=hoy.getFullYear();
+  selAnio.innerHTML=[anioActual,anioActual-1].map(a=>`<option value="${a}">${a}</option>`).join('');
+  selAnio.value=anioActual;
+}
+
+function renderGPTabs(){
+  const bar=document.getElementById('gp-tabs-bar');
+  if(!bar)return;
+  const sucs=[...new Set(cortesData.map(c=>c.sucursal).filter(Boolean))].sort();
+  if(!sucs.includes(currentGPSuc))currentGPSuc=sucs[0]||'';
+  bar.innerHTML=sucs.map(s=>
+    `<div class="tab ${currentGPSuc===s?'active':''}" onclick="switchGPSuc('${s.replace(/'/g,"\\'")}')"><span class="ent-dot" style="background:${corteSucColor(s)}"></span>${s}</div>`
+  ).join('');
+}
+function switchGPSuc(s){currentGPSuc=s;gpAbiertos=new Set();renderVistaPreviaGlobales();}
+function toggleGPGrupo(key){
+  if(gpAbiertos.has(key))gpAbiertos.delete(key); else gpAbiertos.add(key);
+  renderVistaPreviaGlobales();
+}
+
+function gpPagosDelMes(){
+  populateGPMesAnio();
+  const mes=Number(document.getElementById('gp-mes')?.value||(new Date().getMonth()+1));
+  const anio=Number(document.getElementById('gp-anio')?.value||new Date().getFullYear());
+  const desde=`${anio}-${String(mes).padStart(2,'0')}-01`;
+  const hasta=`${anio}-${String(mes).padStart(2,'0')}-31`;
+  const cortes=cortesData.filter(c=>c.sucursal===currentGPSuc);
+  let filas=[];
+  cortes.forEach(c=>{
+    const pagos=(c.datos&&c.datos.pagos_detalle)||[];
+    const corteFecha=c.cierre||c.apertura||'';
+    pagos.forEach(p=>filas.push({corteFecha,...p}));
+  });
+  filas=filas.filter(p=>{
+    const f=(p.fecha||p.corteFecha||'').slice(0,10);
+    return f>=desde&&f<=hasta;
+  });
+  return filas;
+}
+
+function renderVistaPreviaGlobales(){
+  const el=document.getElementById('gp-content');
+  if(!el)return;
+  renderGPTabs();
+  const filas=gpPagosDelMes();
+  const sinDato=filas.filter(p=>p.facturado===undefined);
+  const porFacturar=filas.filter(p=>p.facturado===false);
+  if(!filas.length){
+    el.innerHTML=`<div class="empty"><div class="empty-ico">📦</div>Sin ventas registradas en este mes para ${corteSucLabel(currentGPSuc)}</div>`;
+    return;
+  }
+  const grupos=new Map();
+  porFacturar.forEach(p=>{
+    const key=(p.forma_pago||'otro').toLowerCase().trim();
+    if(!grupos.has(key))grupos.set(key,[]);
+    grupos.get(key).push(p);
+  });
+  const totalGeneral=porFacturar.reduce((s,p)=>s+Number(p.monto||0),0);
+  let avisoSinDato='';
+  if(sinDato.length){
+    const totalSD=sinDato.reduce((s,p)=>s+Number(p.monto||0),0);
+    avisoSinDato=`<div style="background:var(--red-light);border:1px solid #f7c1c1;color:var(--red);padding:10px 12px;border-radius:8px;font-size:12px;margin-bottom:12px">⚠️ ${sinDato.length} folio(s) por ${fmxn(totalSD)} son de cortes viejos que no traen el dato de "facturado" -- no se sabe si ya se facturaron, así que NO están incluidos en los totales de abajo. Revísalos aparte en Ventas del mes.</div>`;
+  }
+  let cardsHtml='';
+  if(!grupos.size){
+    cardsHtml=`<div class="empty"><div class="empty-ico">✅</div>No hay ventas sin facturar este mes en ${corteSucLabel(currentGPSuc)} -- no habría ninguna Global que emitir.</div>`;
+  }else{
+    const ordenados=[...grupos.entries()].sort((a,b)=>
+      b[1].reduce((s,p)=>s+Number(p.monto||0),0)-a[1].reduce((s,p)=>s+Number(p.monto||0),0));
+    cardsHtml=ordenados.map(([key,items])=>{
+      const [satCode,satNombre]=FORMA_SAT_OFI[key]||['99','Otro ('+(key||'sin forma')+')'];
+      const total=items.reduce((s,p)=>s+Number(p.monto||0),0);
+      const subtotal=Math.round(total/1.16*100)/100;
+      const iva=Math.round((total-subtotal)*100)/100;
+      const abierto=gpAbiertos.has(key);
+      const filasTbl=items.slice().sort((a,b)=>(b.fecha||b.corteFecha||'').localeCompare(a.fecha||a.corteFecha||''))
+        .map(p=>{
+          const fecha=p.fecha?new Date(p.fecha).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):(p.corteFecha||'').slice(0,10);
+          return `<tr><td>${fecha}</td><td>${p.folio??''}</td><td class="num">${fmxn(p.monto)}</td></tr>`;
+        }).join('');
+      return `<div class="acc-card" style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;cursor:pointer" onclick="toggleGPGrupo('${key}')">
+          <div>
+            <div style="font-weight:600;font-size:14px">${satNombre} <span style="color:var(--text3);font-weight:400;font-size:11px">(SAT ${satCode})</span></div>
+            <div style="font-size:11px;color:var(--text2);margin-top:2px">${items.length} partida(s) · Subtotal ${fmxn(subtotal)} · IVA ${fmxn(iva)}</div>
+          </div>
+          <div style="text-align:right;display:flex;align-items:center;gap:10px">
+            <div>
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase">Total Global</div>
+              <div style="font-weight:700;font-size:16px">${fmxn(total)}</div>
+            </div>
+            <span style="font-size:11px;color:var(--text3)">${abierto?'▲':'▼'}</span>
+          </div>
+        </div>
+        ${abierto?`<div style="margin-top:10px;overflow-x:auto"><table class="corte-tbl">
+          <thead><tr><th>Fecha</th><th>Folio</th><th class="num">Monto</th></tr></thead>
+          <tbody>${filasTbl}</tbody>
+        </table></div>`:''}
+      </div>`;
+    }).join('');
+  }
+  el.innerHTML=`
+    <div class="bal-live-row" style="margin-bottom:14px;font-size:14px"><span>Total estimado de las ${grupos.size} Global(es) de ${corteSucLabel(currentGPSuc)}</span><strong>${fmxn(totalGeneral)}</strong></div>
+    ${avisoSinDato}
+    ${cardsHtml}
+  `;
 }
 
 // Helpers de estilo "reporte" -- calcan las tarjetas/tablas del PDF que
