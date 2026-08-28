@@ -1278,10 +1278,14 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             <div class="ledger-subtab" onclick="switchNominaEnt('HOT')">Hotel</div>
           </div>
           <div class="ledger-add-form">
+            <div class="f-row" style="min-width:230px">
+              <label>Periodo (Nómina y Asistencia)</label>
+              <select id="nom-add-periodo" onchange="onNomPeriodoSelect()"><option value="">Selecciona un periodo…</option></select>
+            </div>
+            <button class="btn" id="nom-preview-btn" onclick="abrirVistaPreviaGravable()" disabled>👁 Vista previa</button>
             <div class="f-row"><label>Fecha</label><input type="date" id="nom-add-fecha"/></div>
             <div class="f-row"><label>Efectivo</label><input type="number" step="0.01" id="nom-add-monto" placeholder="0.00"/></div>
             <div class="f-row"><label>Gravable</label><input type="number" step="0.01" id="nom-add-gravable" placeholder="0.00"/></div>
-            <button class="btn" onclick="calcularGravableDeNomina()" title="Suma Efectivo y Gravable de la semana ya capturada en Nómina y Asistencia">🧮 Traer de Nómina</button>
             <button class="btn btn-filled" id="nom-add-btn" onclick="addNominaLedgerEntry()">+ Agregar</button>
             <button class="btn" id="nom-cancel-edit-btn" onclick="cancelEditNominaLedger()" style="display:none">Cancelar</button>
           </div>
@@ -1358,6 +1362,15 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   <div class="modal-hdr"><div class="modal-title" id="m-correccion-anterior-title">Corregir anterior</div><button class="btn-icon" onclick="closeModal('m-correccion-anterior')">✕</button></div>
   <div class="modal-body" id="m-correccion-anterior-body"></div>
   <div class="modal-ftr" id="m-correccion-anterior-ftr"></div>
+</div>
+</div>
+
+<!-- MODAL VISTA PREVIA DE GRAVABLE (BITÁCORA NÓMINA DEL BALANCE) -->
+<div class="modal-overlay" id="m-gravable-preview">
+<div class="modal" style="max-width:820px">
+  <div class="modal-hdr"><div class="modal-title" id="m-gravable-preview-title">Vista previa</div><button class="btn-icon" onclick="closeModal('m-gravable-preview')">✕</button></div>
+  <div class="modal-body" id="m-gravable-preview-body"></div>
+  <div class="modal-ftr" id="m-gravable-preview-ftr"></div>
 </div>
 </div>
 
@@ -6987,7 +7000,7 @@ function switchBalTab(tab){
   const sub=document.getElementById('balance-page-sub');
   if(tab==='luis'){newBtn.style.display='inline-flex';newBtn.textContent='+ Nuevo balance';newBtn.onclick=openBalanceModal;sub.textContent='Ingresos, egresos, ISR e IVA — Luis Antonio Clemente Vaquier (Florida)';renderBalanceList();}
   else if(tab==='kat'){newBtn.style.display='inline-flex';newBtn.textContent='+ Nuevo balance';newBtn.onclick=openBalanceKatModal;sub.textContent='Ingresos, egresos, ISR e IVA — Ana Kateryn Clemente Vaquier (Puebla + Hotel)';renderBalanceKatList();}
-  else if(tab==='nomina'){newBtn.style.display='none';sub.textContent='Registra cada semana pagada — el balance la jala sola y la marca como usada';renderNominaLedgerList();}
+  else if(tab==='nomina'){newBtn.style.display='none';sub.textContent='Registra cada semana pagada — el balance la jala sola y la marca como usada';loadNomPeriodosParaLedger();renderNominaLedgerList();}
   else if(tab==='ado'){newBtn.style.display='none';sub.textContent='Registra cada vale de ADO (pagado o de crédito) — el balance de Kateryn los jala solo';renderAdoLedgerList();}
   else if(tab==='mio'){newBtn.style.display='none';sub.textContent='Privado — comparativo de ingresos vs egresos sin IVA de todos los balances';renderMiBalance();}
 }
@@ -7184,6 +7197,7 @@ function switchNominaEnt(ent){
   document.querySelectorAll('#nom-subtabs .ledger-subtab').forEach(t=>t.classList.remove('active'));
   const idx={FLO:0,PUE:1,HOT:2}[ent];
   document.querySelectorAll('#nom-subtabs .ledger-subtab')[idx].classList.add('active');
+  loadNomPeriodosParaLedger();
   renderNominaLedgerList();
 }
 async function addNominaLedgerEntry(){
@@ -7200,9 +7214,7 @@ async function addNominaLedgerEntry(){
   }else{
     const{error}=await sb.from('nomina_ledger').insert({entidad:nomActiveEnt,fecha,monto,gravable,creado_por:currentUser.id});
     if(error){toast('Error: '+error.message,true);return;}
-    document.getElementById('nom-add-fecha').value='';
-    document.getElementById('nom-add-monto').value='';
-    gravableEl.value='';
+    cancelEditNominaLedger();
     toast('Semana agregada ✓');
   }
   await loadNominaLedger();renderNominaLedgerList();
@@ -7210,6 +7222,8 @@ async function addNominaLedgerEntry(){
 function editNominaLedgerEntry(id){
   const n=nominaLedgerData.find(x=>x.id===id);if(!n)return;
   editingNomLedgerId=id;
+  document.getElementById('nom-add-periodo').value='';
+  document.getElementById('nom-preview-btn').disabled=true;
   document.getElementById('nom-add-fecha').value=n.fecha;
   document.getElementById('nom-add-monto').value=n.monto;
   document.getElementById('nom-add-gravable').value=n.gravable??'';
@@ -7218,41 +7232,102 @@ function editNominaLedgerEntry(id){
 }
 function cancelEditNominaLedger(){
   editingNomLedgerId=null;
-  const fEl=document.getElementById('nom-add-fecha'),mEl=document.getElementById('nom-add-monto'),gEl=document.getElementById('nom-add-gravable');
+  const fEl=document.getElementById('nom-add-fecha'),mEl=document.getElementById('nom-add-monto'),gEl=document.getElementById('nom-add-gravable'),pEl=document.getElementById('nom-add-periodo'),pvBtn=document.getElementById('nom-preview-btn');
   if(fEl)fEl.value='';
   if(mEl)mEl.value='';
   if(gEl)gEl.value='';
+  if(pEl)pEl.value='';
+  if(pvBtn)pvBtn.disabled=true;
   const btn=document.getElementById('nom-add-btn'),cBtn=document.getElementById('nom-cancel-edit-btn');
   if(btn)btn.textContent='+ Agregar';
   if(cBtn)cBtn.style.display='none';
 }
-// Suma Efectivo y Gravable directo de la semana ya capturada en "Nómina y
-// Asistencia" (misma fórmula que arma timbrar-nomina: sueldo=salario_diario
-// x dias_pagados, +25% de un día si trabajó domingo = gravable; efectivo =
-// gravable - ISR - IMSS retenidos). No incluye el subsidio al empleo pagado
-// en efectivo -- ese caso es raro (solo cuando el subsidio supera el ISR
-// causado) y de darse, el campo ya queda editable para ajustarlo a mano.
-async function calcularGravableDeNomina(){
-  const fecha=document.getElementById('nom-add-fecha').value;
-  if(!fecha){toast('Primero captura la fecha de la semana',true);return;}
-  const{data:periodos,error}=await sb.from('nomina_periodos').select('*')
-    .eq('entidad',nomActiveEnt).lte('semana_inicio',fecha).gte('semana_fin',fecha);
+// Periodos de "Nómina y Asistencia" para armar el selector de la Bitácora
+// Nómina -- así ya no hay que adivinar una fecha, se elige la semana real
+// que ya se capturó ahí (misma tabla nomina_periodos que usa ese módulo).
+let nomPeriodosCache=[];
+async function loadNomPeriodosParaLedger(){
+  const{data}=await sb.from('nomina_periodos').select('*').eq('entidad',nomActiveEnt).order('semana_inicio',{ascending:false});
+  nomPeriodosCache=data||[];
+  const sel=document.getElementById('nom-add-periodo');
+  if(!sel)return;
+  sel.innerHTML='<option value="">Selecciona un periodo…</option>'+
+    nomPeriodosCache.map(p=>`<option value="${p.id}">${fmtFechaCorta(p.semana_inicio)} al ${fmtFechaCorta(p.semana_fin)}</option>`).join('');
+  document.getElementById('nom-preview-btn').disabled=true;
+}
+// Al elegir un periodo: llena Fecha (con el fin de semana, igual que el
+// "01/08/2026" del reporte viejo de Aspel), Efectivo y Gravable, con la
+// misma fórmula que ya usa timbrar-nomina/vista previa de timbrado
+// (nominaCalc). No incluye el subsidio al empleo pagado en efectivo -- ese
+// caso es raro (solo cuando el subsidio supera el ISR causado) y de darse,
+// los campos quedan editables para ajustarlos a mano.
+async function onNomPeriodoSelect(){
+  const id=document.getElementById('nom-add-periodo').value;
+  const btn=document.getElementById('nom-preview-btn');
+  if(!id){btn.disabled=true;return;}
+  btn.disabled=false;
+  const periodo=nomPeriodosCache.find(p=>p.id===id);
+  if(!periodo)return;
+  const{data:lineas,error}=await sb.from('nomina_lineas').select('*').eq('periodo_id',id);
   if(error){toast('Error: '+error.message,true);return;}
-  if(!periodos||!periodos.length){toast(`No hay nómina capturada en "Nómina y Asistencia" para esa semana en ${ENT_LABELS[nomActiveEnt]}`,true);return;}
-  const periodo=periodos[0];
-  const{data:lineas,error:le}=await sb.from('nomina_lineas').select('*').eq('periodo_id',periodo.id);
-  if(le){toast('Error: '+le.message,true);return;}
   let gravable=0,efectivo=0;
-  (lineas||[]).forEach(l=>{
-    const salario=Number(l.salario_diario)||0;
-    const dias=Number(l.dias_pagados)||0;
-    const g=salario*dias+(l.trabajo_domingo?salario*0.25:0);
-    gravable+=g;
-    efectivo+=g-(Number(l.retencion_isr)||0)-(Number(l.retencion_imss)||0);
-  });
+  (lineas||[]).forEach(l=>{const c=nominaCalc(l);gravable+=c.subtotal;efectivo+=c.total;});
+  document.getElementById('nom-add-fecha').value=periodo.semana_fin;
   document.getElementById('nom-add-gravable').value=Math.round(gravable*100)/100;
   document.getElementById('nom-add-monto').value=Math.round(efectivo*100)/100;
-  toast(`Traído de Nómina: semana ${fmtFechaCorta(periodo.semana_inicio)} a ${fmtFechaCorta(periodo.semana_fin)} ✓`);
+}
+// Vista previa de solo lectura -- parecida al reporte de nómina de Aspel,
+// desglosada por empleado. No se guarda ni se manda a ningún lado.
+let nomPreviewFilas=[];
+async function abrirVistaPreviaGravable(){
+  const id=document.getElementById('nom-add-periodo').value;
+  if(!id)return;
+  const periodo=nomPeriodosCache.find(p=>p.id===id);
+  if(!periodo)return;
+  const{data:lineas,error}=await sb.from('nomina_lineas').select('*').eq('periodo_id',id);
+  if(error){toast('Error: '+error.message,true);return;}
+  const empById={};empData.forEach(e=>{empById[e.id]=e;});
+  nomPreviewFilas=(lineas||[])
+    .filter(l=>Number(l.dias_pagados)>0&&empById[l.empleado_id])
+    .map(l=>({e:empById[l.empleado_id],l,c:nominaCalc(l)}))
+    .sort((a,b)=>a.e.nombre.localeCompare(b.e.nombre));
+  renderVistaPreviaGravableModal(periodo);
+  openModal('m-gravable-preview');
+}
+function renderVistaPreviaGravableModal(periodo){
+  const filas=nomPreviewFilas;
+  const totGravable=filas.reduce((s,f)=>s+f.c.subtotal,0);
+  const totIsr=filas.reduce((s,f)=>s+(Number(f.l.retencion_isr)||0),0);
+  const totImss=filas.reduce((s,f)=>s+(Number(f.l.retencion_imss)||0),0);
+  const totNeto=filas.reduce((s,f)=>s+f.c.total,0);
+  document.getElementById('m-gravable-preview-title').textContent=
+    `Vista previa · ${ENT_LABELS[nomActiveEnt]} · ${fmtFechaCorta(periodo.semana_inicio)} al ${fmtFechaCorta(periodo.semana_fin)}`;
+  document.getElementById('m-gravable-preview-body').innerHTML=`
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Solo para revisar -- esto no se guarda ni se manda a ningún lado, es lo mismo que arrojaba el reporte de nómina de Aspel.</div>
+    <div style="overflow-x:auto">
+    <table class="corte-tbl">
+      <thead><tr><th style="text-align:left">Empleado</th><th style="text-align:left">Puesto</th><th class="num">Días</th><th class="num">Sueldo</th><th class="num">Prima dom.</th><th class="num">Gravable</th><th class="num">ISR</th><th class="num">IMSS</th><th class="num">Neto</th></tr></thead>
+      <tbody>${filas.map(f=>`<tr>
+        <td>${f.e.nombre}</td>
+        <td>${puestoNombre(f.e.puesto_id)}</td>
+        <td class="num">${f.l.dias_pagados}</td>
+        <td class="num">${fmxn(f.c.nominaFiscal)}</td>
+        <td class="num">${fmxn(f.c.primaDominical)}</td>
+        <td class="num"><b>${fmxn(f.c.subtotal)}</b></td>
+        <td class="num">${fmxn(f.l.retencion_isr)}</td>
+        <td class="num">${fmxn(f.l.retencion_imss)}</td>
+        <td class="num"><b>${fmxn(f.c.total)}</b></td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr style="font-weight:700;background:var(--surface2)">
+        <td colspan="5" style="text-align:right">Totales:</td>
+        <td class="num">${fmxn(totGravable)}</td>
+        <td class="num">${fmxn(totIsr)}</td>
+        <td class="num">${fmxn(totImss)}</td>
+        <td class="num">${fmxn(totNeto)}</td>
+      </tr></tfoot>
+    </table>
+    </div>`;
+  document.getElementById('m-gravable-preview-ftr').innerHTML=`<button class="btn" onclick="closeModal('m-gravable-preview')">Cerrar</button>`;
 }
 async function deleteNominaLedgerEntry(id){
   const n=nominaLedgerData.find(x=>x.id===id);
