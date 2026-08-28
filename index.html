@@ -1279,7 +1279,9 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
           </div>
           <div class="ledger-add-form">
             <div class="f-row"><label>Fecha</label><input type="date" id="nom-add-fecha"/></div>
-            <div class="f-row"><label>Monto</label><input type="number" step="0.01" id="nom-add-monto" placeholder="0.00"/></div>
+            <div class="f-row"><label>Efectivo</label><input type="number" step="0.01" id="nom-add-monto" placeholder="0.00"/></div>
+            <div class="f-row"><label>Gravable</label><input type="number" step="0.01" id="nom-add-gravable" placeholder="0.00"/></div>
+            <button class="btn" onclick="calcularGravableDeNomina()" title="Suma Efectivo y Gravable de la semana ya capturada en Nómina y Asistencia">🧮 Traer de Nómina</button>
             <button class="btn btn-filled" id="nom-add-btn" onclick="addNominaLedgerEntry()">+ Agregar</button>
             <button class="btn" id="nom-cancel-edit-btn" onclick="cancelEditNominaLedger()" style="display:none">Cancelar</button>
           </div>
@@ -7187,17 +7189,20 @@ function switchNominaEnt(ent){
 async function addNominaLedgerEntry(){
   const fecha=document.getElementById('nom-add-fecha').value;
   const monto=Number(document.getElementById('nom-add-monto').value)||0;
+  const gravableEl=document.getElementById('nom-add-gravable');
+  const gravable=gravableEl.value===''?null:Number(gravableEl.value);
   if(!fecha||!monto){toast('Falta fecha o monto',true);return;}
   if(editingNomLedgerId){
-    const{error}=await sb.from('nomina_ledger').update({fecha,monto}).eq('id',editingNomLedgerId);
+    const{error}=await sb.from('nomina_ledger').update({fecha,monto,gravable}).eq('id',editingNomLedgerId);
     if(error){toast('Error: '+error.message,true);return;}
     toast('Semana actualizada ✓');
     cancelEditNominaLedger();
   }else{
-    const{error}=await sb.from('nomina_ledger').insert({entidad:nomActiveEnt,fecha,monto,creado_por:currentUser.id});
+    const{error}=await sb.from('nomina_ledger').insert({entidad:nomActiveEnt,fecha,monto,gravable,creado_por:currentUser.id});
     if(error){toast('Error: '+error.message,true);return;}
     document.getElementById('nom-add-fecha').value='';
     document.getElementById('nom-add-monto').value='';
+    gravableEl.value='';
     toast('Semana agregada ✓');
   }
   await loadNominaLedger();renderNominaLedgerList();
@@ -7207,17 +7212,47 @@ function editNominaLedgerEntry(id){
   editingNomLedgerId=id;
   document.getElementById('nom-add-fecha').value=n.fecha;
   document.getElementById('nom-add-monto').value=n.monto;
+  document.getElementById('nom-add-gravable').value=n.gravable??'';
   document.getElementById('nom-add-btn').textContent='💾 Guardar cambios';
   document.getElementById('nom-cancel-edit-btn').style.display='inline-flex';
 }
 function cancelEditNominaLedger(){
   editingNomLedgerId=null;
-  const fEl=document.getElementById('nom-add-fecha'),mEl=document.getElementById('nom-add-monto');
+  const fEl=document.getElementById('nom-add-fecha'),mEl=document.getElementById('nom-add-monto'),gEl=document.getElementById('nom-add-gravable');
   if(fEl)fEl.value='';
   if(mEl)mEl.value='';
+  if(gEl)gEl.value='';
   const btn=document.getElementById('nom-add-btn'),cBtn=document.getElementById('nom-cancel-edit-btn');
   if(btn)btn.textContent='+ Agregar';
   if(cBtn)cBtn.style.display='none';
+}
+// Suma Efectivo y Gravable directo de la semana ya capturada en "Nómina y
+// Asistencia" (misma fórmula que arma timbrar-nomina: sueldo=salario_diario
+// x dias_pagados, +25% de un día si trabajó domingo = gravable; efectivo =
+// gravable - ISR - IMSS retenidos). No incluye el subsidio al empleo pagado
+// en efectivo -- ese caso es raro (solo cuando el subsidio supera el ISR
+// causado) y de darse, el campo ya queda editable para ajustarlo a mano.
+async function calcularGravableDeNomina(){
+  const fecha=document.getElementById('nom-add-fecha').value;
+  if(!fecha){toast('Primero captura la fecha de la semana',true);return;}
+  const{data:periodos,error}=await sb.from('nomina_periodos').select('*')
+    .eq('entidad',nomActiveEnt).lte('semana_inicio',fecha).gte('semana_fin',fecha);
+  if(error){toast('Error: '+error.message,true);return;}
+  if(!periodos||!periodos.length){toast(`No hay nómina capturada en "Nómina y Asistencia" para esa semana en ${ENT_LABELS[nomActiveEnt]}`,true);return;}
+  const periodo=periodos[0];
+  const{data:lineas,error:le}=await sb.from('nomina_lineas').select('*').eq('periodo_id',periodo.id);
+  if(le){toast('Error: '+le.message,true);return;}
+  let gravable=0,efectivo=0;
+  (lineas||[]).forEach(l=>{
+    const salario=Number(l.salario_diario)||0;
+    const dias=Number(l.dias_pagados)||0;
+    const g=salario*dias+(l.trabajo_domingo?salario*0.25:0);
+    gravable+=g;
+    efectivo+=g-(Number(l.retencion_isr)||0)-(Number(l.retencion_imss)||0);
+  });
+  document.getElementById('nom-add-gravable').value=Math.round(gravable*100)/100;
+  document.getElementById('nom-add-monto').value=Math.round(efectivo*100)/100;
+  toast(`Traído de Nómina: semana ${fmtFechaCorta(periodo.semana_inicio)} a ${fmtFechaCorta(periodo.semana_fin)} ✓`);
 }
 async function deleteNominaLedgerEntry(id){
   const n=nominaLedgerData.find(x=>x.id===id);
@@ -7238,6 +7273,7 @@ function renderNominaLedgerList(){
   el.innerHTML=items.map(n=>`<div class="ledger-row ${n.usado_en_balance?'used':''}">
     <div>
       <span class="ledger-row-monto">${fmxn(n.monto)}</span>
+      ${n.gravable!=null?`<span style="font-size:11px;color:var(--text2);margin-left:8px">Gravable: <strong>${fmxn(n.gravable)}</strong></span>`:''}
       <div class="ledger-row-info">${fmtFechaCorta(n.fecha)}</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
