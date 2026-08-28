@@ -1393,6 +1393,15 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 </div>
 </div>
 
+<!-- MODAL DETALLE DE CELDA -- CONTROL DE GASTOS -->
+<div class="modal-overlay" id="m-cg-detalle">
+<div class="modal" style="max-width:620px">
+  <div class="modal-hdr"><div class="modal-title" id="m-cg-detalle-title">Detalle</div><button class="btn-icon" onclick="closeModal('m-cg-detalle')">✕</button></div>
+  <div class="modal-body" id="m-cg-detalle-body"></div>
+  <div class="modal-ftr"><button class="btn" onclick="closeModal('m-cg-detalle')">Cerrar</button></div>
+</div>
+</div>
+
 <!-- MODAL VISTA PREVIA DE GRAVABLE (BITÁCORA NÓMINA DEL BALANCE) -->
 <div class="modal-overlay" id="m-gravable-preview">
 <div class="modal" style="max-width:820px">
@@ -8254,26 +8263,75 @@ function cgListaGrupo(grupo,entKey){
   if(entKey==='HOT')return grupo==='gasto_mercancia'?CG_HOTEL_MERC:CG_HOTEL_DIV;
   return grupo==='gasto_mercancia'?CG_MERCANCIA:CG_DIVERSOS;
 }
-function cgClasificar(concepto,grupo,entKey){
-  const txt=(concepto||'').toLowerCase();
-  for(const[key,,re] of cgListaGrupo(grupo,entKey)) if(re.test(txt)) return key;
-  return null;
-}
 function cgLabel(key,grupo,entKey){
   if(!key)return'Sin clasificar';
   const f=cgListaGrupo(grupo,entKey).find(x=>x[0]===key);
   return f?f[1]:key;
 }
+// ── Tolerancia a errores de dedo ("hieloo" en vez de "hielo") ───────────
+// Si el concepto no matchea ningún patrón exacto, se compara palabra por
+// palabra contra las mismas palabras clave de cada categoría (sacadas de
+// sus propios regex, para no mantener dos listas por separado) con
+// distancia de edición (Levenshtein). Tolerancia chica y proporcional al
+// largo de la palabra para que "gas" no haga match difuso con media lista
+// por ser demasiado corta.
+function cgLevenshtein(a,b){
+  const m=a.length,n=b.length;
+  const dp=Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  for(let i=0;i<=m;i++)dp[i][0]=i;
+  for(let j=0;j<=n;j++)dp[0][j]=j;
+  for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)
+    dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  return dp[m][n];
+}
+function cgToleranciaTypo(len){return len<=5?1:2;}
+const _cgPalabrasCache=new Map();
+function cgPalabrasDeRegex(re){
+  if(_cgPalabrasCache.has(re))return _cgPalabrasCache.get(re);
+  const palabras=new Set();
+  re.source.split('|').forEach(alt=>{
+    const limpio=alt.replace(/\(\?!.*?\)/g,' ').replace(/\\b/g,' ').replace(/[.?]/g,' ').replace(/[^a-záéíóúñ]/gi,' ');
+    limpio.toLowerCase().split(/\s+/).forEach(w=>{if(w.length>=3)palabras.add(w);});
+  });
+  const out=[...palabras];
+  _cgPalabrasCache.set(re,out);
+  return out;
+}
+function cgClasificarDifuso(concepto,grupo,entKey){
+  const palabrasConcepto=(concepto||'').toLowerCase().split(/[^a-záéíóúñ]+/).filter(w=>w.length>=3);
+  if(!palabrasConcepto.length)return null;
+  let mejor=null,mejorDist=Infinity;
+  for(const[key,,re] of cgListaGrupo(grupo,entKey)){
+    for(const pk of cgPalabrasDeRegex(re))for(const pc of palabrasConcepto){
+      if(Math.abs(pc.length-pk.length)>cgToleranciaTypo(pk.length))continue;
+      const d=cgLevenshtein(pc,pk);
+      if(d>0&&d<=cgToleranciaTypo(pk.length)&&d<mejorDist){mejorDist=d;mejor=key;}
+    }
+  }
+  return mejor;
+}
+// Regresa {key, tipo}: tipo 'exacto' si algún patrón matcheó tal cual,
+// 'difuso' si solo se reconoció por parecido (typo), o key null si no se
+// reconoció nada -- en ese caso queda "Sin clasificar" como antes.
+function cgClasificar(concepto,grupo,entKey){
+  const txt=(concepto||'').toLowerCase();
+  for(const[key,,re] of cgListaGrupo(grupo,entKey)) if(re.test(txt)) return{key,tipo:'exacto'};
+  const key=cgClasificarDifuso(concepto,grupo,entKey);
+  return key?{key,tipo:'difuso'}:{key:null,tipo:null};
+}
 
 let currentCGSuc='';
 let gastosOverridesData=[];
+let cgItemsPorCeldaActual=new Map(); // se llena en cada render, la usan los onclick de las celdas
+let cgEntKeyActual=null;
 async function loadGastosOverrides(){
   const{data}=await sb.from('gastos_clasificacion_overrides').select('*');
   gastosOverridesData=data||[];
 }
 function cgCategoriaFinal(m,entKey){
   const ov=gastosOverridesData.find(o=>o.sucursal===m.sucursal&&o.turno_id===m.turno_id&&o.fecha===m.fecha);
-  return ov?ov.categoria_final:cgClasificar(m.concepto,m.categoria,entKey);
+  if(ov)return{key:ov.categoria_final,tipo:'manual'};
+  return cgClasificar(m.concepto,m.categoria,entKey);
 }
 async function cgGuardarClasificacion(sucursal,turnoId,fecha,categoriaFinal){
   const{error}=await sb.from('gastos_clasificacion_overrides')
@@ -8328,6 +8386,8 @@ async function renderControlGastos(){
   const merc=new Map(); // diaKey -> {CATKEY: monto}
   const div=new Map();
   const sinClasificar=[];
+  const itemsPorCelda=new Map(); // "grupo|diaKey|catKey" -> [items] (para el detalle/corrección)
+  const celdasDifusas=new Set(); // "grupo|diaKey|catKey" con al menos un gasto clasificado por parecido
   cortes.forEach(c=>{
     const diaKey=(c.cierre||c.apertura||'').slice(0,10);
     const vpf=(c.datos&&c.datos.ventas_por_forma)||{};
@@ -8345,14 +8405,20 @@ async function renderControlGastos(){
       if(m.categoria!=='gasto_mercancia'&&m.categoria!=='gasto_diverso')return;
       const mDiaKey=(m.fecha||diaKey).slice(0,10);
       const item={...m,sucursal:c.sucursal,turno_id:c.turno_id,diaKey:mDiaKey};
-      const catKey=cgCategoriaFinal(item,entKey);
+      const clas=cgCategoriaFinal(item,entKey);
       const mapa=m.categoria==='gasto_mercancia'?merc:div;
-      if(!catKey){sinClasificar.push(item);return;}
+      if(!clas.key){sinClasificar.push(item);return;}
       const dm=mapa.get(mDiaKey)||{};
-      dm[catKey]=(dm[catKey]||0)+Number(m.monto||0);
+      dm[clas.key]=(dm[clas.key]||0)+Number(m.monto||0);
       mapa.set(mDiaKey,dm);
+      const celdaKey=m.categoria+'|'+mDiaKey+'|'+clas.key;
+      if(!itemsPorCelda.has(celdaKey))itemsPorCelda.set(celdaKey,[]);
+      itemsPorCelda.get(celdaKey).push({...item,tipoMatch:clas.tipo});
+      if(clas.tipo==='difuso')celdasDifusas.add(celdaKey);
     });
   });
+  cgItemsPorCeldaActual=itemsPorCelda;
+  cgEntKeyActual=entKey;
   const diasOrdenados=[...dias.keys()].sort();
 
   function tablaVentas(){
@@ -8367,14 +8433,21 @@ async function renderControlGastos(){
       <tfoot><tr style="font-weight:700;background:var(--surface2)"><td>Total</td><td class="num">${fmxn(tot.venta)}</td><td class="num">${fmxn(tot.credito)}</td><td class="num">${fmxn(tot.debito)}</td><td class="num">${fmxn(tot.transferencia)}</td><td class="num">${fmxn(tot.efectivo)}</td><td class="num">${fmxn(tot.diferencia)}</td></tr></tfoot>
     </table>`;
   }
-  function tablaGastos(mapa,lista,titulo){
+  function tablaGastos(mapa,lista,titulo,grupoKey){
     const catsConDatos=lista.filter(([key])=>diasOrdenados.some(dk=>(mapa.get(dk)||{})[key]));
     if(!catsConDatos.length)return`<div class="empty" style="padding:20px"><div class="empty-ico">📭</div>Sin ${titulo.toLowerCase()} clasificados en este rango</div>`;
+    const celda=(dk,key,val)=>{
+      if(!val)return'<td class="num"></td>';
+      const celdaKey=grupoKey+'|'+dk+'|'+key;
+      const difusa=celdasDifusas.has(celdaKey);
+      const tip=difusa?'title="Incluye algún gasto clasificado por parecido de palabra, no exacto -- clic para revisar" style="cursor:pointer;text-decoration:underline dotted;text-decoration-color:var(--amber)"':'title="Clic para ver el detalle" style="cursor:pointer"';
+      return`<td class="num" ${tip} onclick="abrirDetalleCeldaGastos('${grupoKey}','${dk}','${key}')">${fmxn(val)}</td>`;
+    };
     const rows=diasOrdenados.map(dk=>{
       const dm=mapa.get(dk)||{};
       const totalDia=catsConDatos.reduce((s,[key])=>s+(dm[key]||0),0);
       if(!totalDia)return'';
-      return`<tr><td>${fmtDiaMes(dk)}</td>${catsConDatos.map(([key])=>`<td class="num">${fmxn(dm[key]||'')}</td>`).join('')}<td class="num"><b>${fmxn(totalDia)}</b></td></tr>`;
+      return`<tr><td>${fmtDiaMes(dk)}</td>${catsConDatos.map(([key])=>celda(dk,key,dm[key])).join('')}<td class="num"><b>${fmxn(totalDia)}</b></td></tr>`;
     }).join('');
     const totCols=catsConDatos.map(([key])=>diasOrdenados.reduce((s,dk)=>s+((mapa.get(dk)||{})[key]||0),0));
     const totGeneral=totCols.reduce((s,v)=>s+v,0);
@@ -8412,11 +8485,46 @@ async function renderControlGastos(){
     <div class="sec-lbl">Ventas</div>
     <div style="overflow-x:auto">${tablaVentas()}</div>
     <div class="sec-lbl" style="margin-top:18px">${esHotel?'Gastos del Hotel':'Gastos de Mercancía'}</div>
-    ${tablaGastos(merc,listaMerc,esHotel?'gastos del hotel':'gastos de mercancía')}
+    ${tablaGastos(merc,listaMerc,esHotel?'gastos del hotel':'gastos de mercancía','gasto_mercancia')}
     <div class="sec-lbl" style="margin-top:18px">${esHotel?'Gastos Diversos Hotel':'Gastos Diversos'}</div>
-    ${tablaGastos(div,listaDiv,'gastos diversos')}
+    ${tablaGastos(div,listaDiv,'gastos diversos','gasto_diverso')}
     ${seccionSinClasificar()}
   `;
+}
+
+// Detalle de una celda del Control de Gastos -- lista los gastos que caen
+// ahí y deja reasignar cualquiera (necesario ahora que hay clasificación
+// por parecido de palabra además de la exacta: un match difuso se puede
+// equivocar, y sin esto no había forma de corregir algo que YA quedó
+// clasificado, solo lo que quedaba "sin clasificar").
+function abrirDetalleCeldaGastos(grupoKey,diaKey,catKey){
+  const celdaKey=grupoKey+'|'+diaKey+'|'+catKey;
+  const items=cgItemsPorCeldaActual.get(celdaKey)||[];
+  if(!items.length)return;
+  const entKey=cgEntKeyActual;
+  const opciones=cgListaGrupo(grupoKey,entKey).map(([key,label])=>`<option value="${key}" ${key===catKey?'selected':''}>${label}</option>`).join('');
+  const filas=items.map((m,i)=>{
+    const marcaTipo=m.tipoMatch==='difuso'?'<span style="color:var(--amber);font-size:10px" title="Clasificado por parecido de palabra, no exacto">≈ parecido</span>'
+      :m.tipoMatch==='manual'?'<span style="color:var(--green);font-size:10px">✎ corregido a mano</span>':'';
+    return`<tr>
+      <td>${m.fecha?new Date(m.fecha).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</td>
+      <td>${m.concepto}${marcaTipo?'<br>'+marcaTipo:''}</td>
+      <td class="num">${fmxn(m.monto)}</td>
+      <td><select id="cg-det-${i}" style="font-size:11px">${opciones}</select></td>
+      <td><button class="btn-text" style="font-size:11px" onclick="cgReasignarDesdeDetalle('${m.sucursal.replace(/'/g,"\\'")}',${m.turno_id},'${m.fecha}',document.getElementById('cg-det-${i}').value)">Reasignar</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('m-cg-detalle-title').textContent=`${cgLabel(catKey,grupoKey,entKey)} · ${fmtDiaMes(diaKey)}`;
+  document.getElementById('m-cg-detalle-body').innerHTML=`
+    <div style="overflow-x:auto"><table class="corte-tbl">
+      <thead><tr><th>Hora</th><th>Concepto</th><th class="num">Monto</th><th>Cambiar a</th><th></th></tr></thead>
+      <tbody>${filas}</tbody>
+    </table></div>`;
+  openModal('m-cg-detalle');
+}
+async function cgReasignarDesdeDetalle(sucursal,turnoId,fecha,categoriaFinal){
+  await cgGuardarClasificacion(sucursal,turnoId,fecha,categoriaFinal);
+  closeModal('m-cg-detalle');
 }
 
 // Helpers de estilo "reporte" -- calcan las tarjetas/tablas del PDF que
