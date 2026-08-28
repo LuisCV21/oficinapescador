@@ -7711,16 +7711,18 @@ function renderCortes(){
 // cada corte, aplanados a través de todos los cortes del rango elegido) --
 // pensado para que las secretarias puedan cruzar contra el reporte de
 // Factura.com sin que Luis tenga que exportar el Excel del POS a mano.
-let currentVMSuc='TODAS';
+// Sin pestaña "Todas" a propósito -- Ventas del mes siempre se revisa por
+// sucursal por separado (para cruzar contra Factura.com de esa sucursal),
+// nunca mezclado.
+let currentVMSuc='';
 function renderVMTabs(){
   const bar=document.getElementById('vm-tabs-bar');
   if(!bar)return;
   const sucs=[...new Set(cortesData.map(c=>c.sucursal).filter(Boolean))].sort();
-  if(currentVMSuc!=='TODAS'&&!sucs.includes(currentVMSuc))currentVMSuc='TODAS';
-  let html=`<div class="tab ${currentVMSuc==='TODAS'?'active':''}" onclick="switchVMSuc('TODAS')">📈 Todas</div>`;
-  sucs.forEach(s=>{
-    html+=`<div class="tab ${currentVMSuc===s?'active':''}" onclick="switchVMSuc('${s.replace(/'/g,"\\'")}')"><span class="ent-dot" style="background:${corteSucColor(s)}"></span>${s}</div>`;
-  });
+  if(!sucs.includes(currentVMSuc))currentVMSuc=sucs[0]||'';
+  let html=sucs.map(s=>
+    `<div class="tab ${currentVMSuc===s?'active':''}" onclick="switchVMSuc('${s.replace(/'/g,"\\'")}')"><span class="ent-dot" style="background:${corteSucColor(s)}"></span>${s}</div>`
+  ).join('');
   bar.innerHTML=html;
 }
 function switchVMSuc(s){currentVMSuc=s;renderVentasMes();}
@@ -7736,7 +7738,7 @@ function ventasMesFilas(){
   const desde=desdeEl?.value, hasta=hastaEl?.value;
   const soloNoFact=document.getElementById('vm-solo-nofact')?.checked;
   const formaPago=document.getElementById('vm-forma-pago')?.value||'';
-  let cortes=currentVMSuc==='TODAS'?cortesData:cortesData.filter(c=>c.sucursal===currentVMSuc);
+  let cortes=cortesData.filter(c=>c.sucursal===currentVMSuc);
   if(desde)cortes=cortes.filter(c=>(c.cierre||c.apertura||'').slice(0,10)>=desde);
   if(hasta)cortes=cortes.filter(c=>(c.cierre||c.apertura||'').slice(0,10)<=hasta);
   let filas=[];
