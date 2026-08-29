@@ -8070,13 +8070,28 @@ function datosFiscalesDe(sucursalNombre){
 }
 
 function facturasDetalleDelDia(sucursal,fechaYMD){
+  // Se agrupa por el día en que se COBRÓ la venta (fecha_venta), no por
+  // cuándo se timbró el CFDI -- una venta cobrada el día 4 pero facturada
+  // hasta el día 26 le interesa a la contadora en el día 4 (ahí está el
+  // baucher), no en el 26.
   let filas=[];
   cortesData.filter(c=>c.sucursal===sucursal).forEach(c=>{
     const fd=(c.datos&&c.datos.facturas_detalle)||[];
-    fd.forEach(f=>{ if((f.fecha_creacion||'').slice(0,10)===fechaYMD) filas.push(f); });
+    fd.forEach(f=>{ if((f.fecha_venta||'').slice(0,10)===fechaYMD) filas.push(f); });
   });
-  filas.sort((a,b)=>(Number(a.folio_cfdi)||0)-(Number(b.folio_cfdi)||0));
+  // Por folio de venta, y dentro del mismo folio por orden de timbrado --
+  // así una venta con varios intentos (cancelado, cancelado, el bueno) sale
+  // junta y en el orden en que realmente pasó.
+  filas.sort((a,b)=>(Number(a.folio_pago)||0)-(Number(b.folio_pago)||0)||(a.fecha_creacion||'').localeCompare(b.fecha_creacion||''));
   return filas;
+}
+function folioFiscalDisplay(f){
+  if(f.folio_pac){
+    const n=String(f.folio_pac).replace(/^[Ff]/,'').trim().replace(/^-/,'');
+    return n?`F-${n}`:'—';
+  }
+  if(f.folio_cfdi!=null)return`F-${f.folio_cfdi}`;
+  return'—';
 }
 
 // Array-de-arrays con la misma forma que una hoja del Excel original --
@@ -8094,7 +8109,7 @@ function construirHojaFacturacion(sucursal,fechaYMD){
     [fiscal.domicilio_fiscal||'—'],
     [encabezadoFecha],
     [],
-    ['Fecha','Folio','Razón social cliente','SUBTOTAL','IVA','TOTAL','Folio fiscal','ESTADO DE CFDI','CLAVE','FORMA DE PAGO'],
+    ['Folio venta','Fecha timbrado','Folio CFDI','Razón social cliente','SUBTOTAL','IVA','TOTAL','Folio fiscal','ESTADO DE CFDI','CLAVE','FORMA DE PAGO'],
   ];
   let sTot=0,iTot=0,tTot=0;
   const porForma={EFECTIVO:0,DEBITO:0,CREDITO:0,TRANSFERENCIA:0};
@@ -8103,18 +8118,18 @@ function construirHojaFacturacion(sucursal,fechaYMD){
     const formaLbl=CLAVE_FORMA_PAGO[f.clave_forma_pago]||f.clave_forma_pago||'';
     if(f.estado==='timbrada'&&porForma[formaLbl]!==undefined)porForma[formaLbl]+=Number(f.total||0);
     aoa.push([
-      (f.fecha_creacion||'').slice(0,10), f.folio_cfdi!=null?`F ${f.folio_cfdi}`:'',
+      f.folio_pago??'', (f.fecha_creacion||'').slice(0,10), folioFiscalDisplay(f),
       f.razon_social||'', Number(f.subtotal||0), Number(f.iva||0), Number(f.total||0),
       f.uuid_fiscal||'', ESTADO_CFDI_LABEL[f.estado]||f.estado||'',
       f.clave_forma_pago||'', formaLbl,
     ]);
   });
   aoa.push([]);
-  aoa.push(['','','TOTAL',Math.round(sTot*100)/100,Math.round(iTot*100)/100,Math.round(tTot*100)/100]);
+  aoa.push(['','','','TOTAL',Math.round(sTot*100)/100,Math.round(iTot*100)/100,Math.round(tTot*100)/100]);
   aoa.push([]);
   aoa.push([]);
-  ['CREDITO','DEBITO','TRANSFERENCIA','EFECTIVO'].forEach(k=>aoa.push(['','',k,'',Math.round(porForma[k]*100)/100]));
-  aoa.push(['','','TOTAL','',Math.round((porForma.CREDITO+porForma.DEBITO+porForma.TRANSFERENCIA+porForma.EFECTIVO)*100)/100]);
+  ['CREDITO','DEBITO','TRANSFERENCIA','EFECTIVO'].forEach(k=>aoa.push(['','','',k,'',Math.round(porForma[k]*100)/100]));
+  aoa.push(['','','','TOTAL','',Math.round((porForma.CREDITO+porForma.DEBITO+porForma.TRANSFERENCIA+porForma.EFECTIVO)*100)/100]);
   return {aoa,filas,totales:{subtotal:sTot,iva:iTot,total:tTot,porForma}};
 }
 
@@ -8153,8 +8168,9 @@ function renderReporteFacturacion(){
     const estadoLbl=ESTADO_CFDI_LABEL[f.estado]||f.estado||'—';
     const estadoColor=f.estado==='cancelada'?'var(--red)':(f.estado==='timbrada'?'var(--green)':'var(--text3)');
     return `<tr>
+      <td>${f.folio_pago??'—'}</td>
       <td>${(f.fecha_creacion||'').slice(0,16).replace('T',' ')}</td>
-      <td>${f.folio_cfdi!=null?'F '+f.folio_cfdi:'—'}</td>
+      <td>${folioFiscalDisplay(f)}</td>
       <td>${f.razon_social||'—'}</td>
       <td class="num">${fmxn(f.subtotal)}</td>
       <td class="num">${fmxn(f.iva)}</td>
@@ -8167,10 +8183,10 @@ function renderReporteFacturacion(){
   const pf=totales.porForma;
   body.innerHTML=`${encabezado}
     <div style="overflow-x:auto"><table class="corte-tbl">
-      <thead><tr><th>Fecha</th><th>Folio</th><th>Razón social</th><th class="num">Subtotal</th><th class="num">IVA</th><th class="num">Total</th><th>Folio fiscal</th><th>Estado</th><th>Forma de pago</th></tr></thead>
+      <thead><tr><th>Folio venta</th><th>Fecha timbrado</th><th>Folio CFDI</th><th>Razón social</th><th class="num">Subtotal</th><th class="num">IVA</th><th class="num">Total</th><th>Folio fiscal</th><th>Estado</th><th>Forma de pago</th></tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr style="font-weight:700;background:var(--surface2)">
-        <td colspan="3">TOTAL</td>
+        <td colspan="4">TOTAL</td>
         <td class="num">${fmxn(totales.subtotal)}</td><td class="num">${fmxn(totales.iva)}</td><td class="num">${fmxn(totales.total)}</td>
         <td colspan="3"></td>
       </tr></tfoot>
