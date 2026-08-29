@@ -840,6 +840,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
     </div>
     <div class="tb-right">
       <div id="rt-indicator" title="Conectando..." style="width:8px;height:8px;border-radius:50%;background:var(--amber);flex-shrink:0;transition:background .3s" title="Sincronización en tiempo real"></div>
+      <button class="tb-theme-btn" onclick="openAccionesFeed()" title="Cambios de facturación (cancelaciones/sustituciones)" style="position:relative">🔔<span id="av-badge" style="display:none;position:absolute;top:2px;right:2px;background:var(--red,#e74c3c);color:white;border-radius:8px;min-width:16px;height:16px;font-size:9px;font-weight:700;align-items:center;justify-content:center;padding:0 3px">0</span></button>
       <button class="tb-theme-btn" onclick="toggleTheme()" title="Cambiar tema" id="theme-btn">🌙</button>
       <div class="tb-user-chip">
         <div class="tb-avatar" id="tb-avatar">?</div>
@@ -1390,6 +1391,22 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   <div class="modal-hdr"><div class="modal-title" id="m-correccion-anterior-title">Corregir anterior</div><button class="btn-icon" onclick="closeModal('m-correccion-anterior')">✕</button></div>
   <div class="modal-body" id="m-correccion-anterior-body"></div>
   <div class="modal-ftr" id="m-correccion-anterior-ftr"></div>
+</div>
+</div>
+
+<div class="modal-overlay" id="m-accion-venta">
+<div class="modal" style="max-width:460px">
+  <div class="modal-hdr"><div class="modal-title" id="m-accion-venta-title">Acción sobre factura</div><button class="btn-icon" onclick="closeModal('m-accion-venta')">✕</button></div>
+  <div class="modal-body" id="m-accion-venta-body"></div>
+  <div class="modal-ftr" id="m-accion-venta-ftr"></div>
+</div>
+</div>
+
+<div class="modal-overlay" id="m-acciones-feed">
+<div class="modal" style="max-width:560px">
+  <div class="modal-hdr"><div class="modal-title">Cambios de facturación</div><button class="btn-icon" onclick="closeModal('m-acciones-feed')">✕</button></div>
+  <div class="modal-body" id="m-acciones-feed-body"></div>
+  <div class="modal-ftr"><button class="btn" onclick="closeModal('m-acciones-feed')">Cerrar</button></div>
 </div>
 </div>
 
@@ -2561,7 +2578,7 @@ function isAdmin(){return currentPerfil&&currentPerfil.rol==='admin';}
 function puedeTimbrarNomina(){return currentPerfil&&(currentPerfil.rol==='admin'||currentPerfil.rol==='oficinista');}
 function canDelete(){return isAdmin();}
 function showIfAdmin(html){return isAdmin()?html:'';}
-let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[],cortesData=[],correccionesData=[],correccionesAnteriorData=[];
+let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[],cortesData=[],correccionesData=[],correccionesAnteriorData=[],accionesVentaData=[],accionesPosData=[];
 let currentEnt=localStorage.getItem('ep_obl_ent')||null,currentRhEnt=null;
 let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null,editCatId=null,editCuentaId=null,editPuestoId=null,editUsuarioId=null;
 let cuentasPagoData=[],puestosData=[],usuariosData=[];
@@ -2657,7 +2674,7 @@ async function initApp(user){
 
 // ─── LOAD DATA ────────────────────────────────────────────────
 async function loadAll(){
-  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadUsuarios(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger(),loadCortes(),loadCorrecciones(),loadCorreccionesAnterior()]);
+  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadUsuarios(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger(),loadCortes(),loadCorrecciones(),loadCorreccionesAnterior(),loadAccionesVenta(),loadAccionesPos()]);
   renderAll();
 }
 async function loadCortes(){
@@ -2671,6 +2688,16 @@ async function loadCorrecciones(){
 async function loadCorreccionesAnterior(){
   const {data}=await sb.from('correcciones_anterior_pendientes').select('*').order('creada_at',{ascending:false});
   correccionesAnteriorData=data||[];
+}
+async function loadAccionesVenta(){
+  const {data}=await sb.from('acciones_venta_pendientes').select('*').order('creada_at',{ascending:false});
+  accionesVentaData=data||[];
+  renderAccionesVentaBadge();
+}
+async function loadAccionesPos(){
+  const {data}=await sb.from('acciones_pos_directas').select('*').order('creada_at',{ascending:false});
+  accionesPosData=data||[];
+  renderAccionesVentaBadge();
 }
 async function loadBalances(){
   const {data}=await sb.from('balances_mensuales').select('*').order('fecha_corte',{ascending:false}).order('created_at',{ascending:false});
@@ -7966,6 +7993,11 @@ function renderVentasMes(){
       :p.facturado
         ?`<span class="corte-badge ok">✓ ${p.folio_pac||''}</span>`
         :`<span class="corte-badge pend">Sin facturar</span>`;
+    const acciones=p.facturado
+      ?accionBtnsVenta(p.sucursal,p.folio,p.turno_id)
+      :(p.facturado===false
+        ?`<button class="corte-iconbtn" title="Corregir método de pago" onclick="openCorreccionModal('${p.sucursal}',${p.folio},${p.turno_id})">✎</button>`
+        :'');
     return `<tr>
       <td>${fecha}</td>
       <td><span class="ent-dot" style="background:${corteSucColor(p.sucursal)}"></span>${corteSucLabel(p.sucursal)}</td>
@@ -7975,10 +8007,11 @@ function renderVentasMes(){
       <td>${p.forma_pago||''}</td>
       <td class="num">${fmxn(p.monto)}</td>
       <td>${fact}</td>
+      <td style="text-align:center;white-space:nowrap">${acciones}</td>
     </tr>`;
   }).join('');
   el.innerHTML=`<table class="corte-tbl">
-    <thead><tr><th>Fecha</th><th>Sucursal</th><th>Folio</th><th>Cuenta</th><th>Mesero</th><th>Forma pago</th><th class="num">Monto</th><th>Facturado</th></tr></thead>
+    <thead><tr><th>Fecha</th><th>Sucursal</th><th>Folio</th><th>Cuenta</th><th>Mesero</th><th>Forma pago</th><th class="num">Monto</th><th>Facturado</th><th>Acciones</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
@@ -8698,13 +8731,17 @@ function openCorteDetail(id){
   // que Pescador POS la jale y la aplique solo al abrir turno.
   const pagosDetalle=d.pagos_detalle||[];
   const filasFolios=pagosDetalle.map((p,i)=>{
-    const corr=correccionDe(c.sucursal,p.folio);
-    let estado='';
-    if(corr&&corr.aplicada)estado=`<span class="corte-badge ok">✓ corregido a ${corr.forma_pago_correcta}</span>`;
-    else if(corr)estado=`<span class="corte-badge pend">⏳ pendiente → ${corr.forma_pago_correcta}</span>`;
-    const btn=corr&&!corr.aplicada
-      ?`<button class="corte-iconbtn" title="Cancelar corrección pendiente" onclick="cancelarCorreccionPago('${corr.id}')">✕</button>`
-      :`<button class="corte-iconbtn" ${corr?'disabled':''} title="Corregir método de pago" onclick="openCorreccionModal('${c.sucursal}',${p.folio},${c.turno_id})">✎</button>`;
+    let estado='',btn='';
+    if(p.facturado){
+      btn=accionBtnsVenta(c.sucursal,p.folio,c.turno_id);
+    }else{
+      const corr=correccionDe(c.sucursal,p.folio);
+      if(corr&&corr.aplicada)estado=`<span class="corte-badge ok">✓ corregido a ${corr.forma_pago_correcta}</span>`;
+      else if(corr)estado=`<span class="corte-badge pend">⏳ pendiente → ${corr.forma_pago_correcta}</span>`;
+      btn=corr&&!corr.aplicada
+        ?`<button class="corte-iconbtn" title="Cancelar corrección pendiente" onclick="cancelarCorreccionPago('${corr.id}')">✕</button>`
+        :`<button class="corte-iconbtn" ${corr?'disabled':''} title="Corregir método de pago" onclick="openCorreccionModal('${c.sucursal}',${p.folio},${c.turno_id})">✎</button>`;
+    }
     return `<tr><td>${p.folio}</td><td>${p.forma_pago}${estado}</td><td class="num">${fmxn(p.monto)}</td><td style="text-align:center">${btn}</td></tr>`;
   }).join('');
 
@@ -8828,6 +8865,130 @@ async function cancelarCorreccionPago(id){
   if(error){toast('No se pudo cancelar: '+error.message,true);return;}
   await loadCorrecciones();
   if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();
+}
+
+// ─── CANCELAR / SUSTITUIR FACTURA (folios YA facturados) ─────────────────
+// Distinto de la corrección de forma de pago: esto es una acción fiscal
+// real ante el SAT. Oficina solo deja la SOLICITUD aquí -- Pescador POS la
+// jala, un humano en la sucursal la revisa y la confirma con el diálogo
+// que ya existe ahí (Cancelar/Sustituir CFDI) antes de que se ejecute.
+// Nunca se aplica sola. Ver Edge Function pos-acciones-venta.
+function accionVentaDe(sucursal,folio){
+  const propias=accionesVentaData.filter(a=>a.sucursal===sucursal&&a.folio===folio);
+  return propias.find(a=>a.estado==='pendiente')||propias[0]||null;
+}
+
+function accionBtnsVenta(sucursal,folio,turnoId){
+  const accion=accionVentaDe(sucursal,folio);
+  if(accion&&accion.estado==='pendiente'){
+    const tipoLbl=accion.tipo==='sustitucion'?'sustituir/cambiar pago':'cancelar';
+    return `<span class="corte-badge pend">⏳ pedido ${tipoLbl}</span> `+
+      `<button class="corte-iconbtn" title="Retirar solicitud (la sucursal todavía no la aplica)" onclick="cancelarAccionVenta('${accion.id}')">✕</button>`;
+  }
+  let estadoBadge='';
+  if(accion&&accion.estado==='aplicada'){
+    estadoBadge=`<span class="corte-badge ok" title="${(accion.resultado||'').replace(/"/g,'&quot;')}">✓ aplicada</span> `;
+  }else if(accion&&accion.estado==='rechazada'){
+    estadoBadge=`<span class="corte-badge" style="background:var(--red-light);color:var(--red)" title="${(accion.resultado||'').replace(/"/g,'&quot;')}">✕ rechazada</span> `;
+  }
+  const suc=sucursal.replace(/'/g,"\\'");
+  return `${estadoBadge}`+
+    `<button class="corte-iconbtn" title="Pedir cancelar este CFDI" onclick="openAccionVentaModal('${suc}',${folio},${turnoId==null?'null':turnoId},'cancelacion')">🗑</button>`+
+    `<button class="corte-iconbtn" title="Pedir sustituir CFDI (y/o corregir forma de pago)" onclick="openAccionVentaModal('${suc}',${folio},${turnoId==null?'null':turnoId},'sustitucion')">🔁</button>`;
+}
+
+function openAccionVentaModal(sucursal,folio,turnoId,tipo){
+  const esSust=tipo==='sustitucion';
+  document.getElementById('m-accion-venta-title').textContent=
+    (esSust?'Sustituir factura — ':'Cancelar factura — ')+`folio ${folio} · ${sucursal}`;
+  document.getElementById('m-accion-venta-body').innerHTML=`
+    <div style="background:var(--amber-light,#fff3cd);color:var(--amber,#856404);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:12px">
+      Esto NO se aplica solo -- queda en cola para que alguien en ${sucursal} lo confirme en el POS antes de tocar el SAT.
+    </div>
+    ${esSust?`<div class="f-row"><label>Nueva forma de pago (opcional)</label>
+      <select id="av-forma"><option value="">— No corregir forma de pago, solo sustituir —</option>${FORMAS_PAGO_POS.map(f=>`<option value="${f}">${f}</option>`).join('')}</select>
+    </div>`:''}
+    <div class="f-row"><label>Motivo <span class="req">*</span></label><input type="text" id="av-motivo" placeholder="ej. cliente pidió otro RFC / forma de pago incorrecta"/></div>
+  `;
+  document.getElementById('m-accion-venta-ftr').innerHTML=
+    `<button class="btn" onclick="closeModal('m-accion-venta')">Cancelar</button>`+
+    `<button class="btn btn-filled" id="av-save-btn" onclick="guardarAccionVenta('${sucursal.replace(/'/g,"\\'")}',${folio},${turnoId==null?'null':turnoId},'${tipo}')">Enviar solicitud</button>`;
+  openModal('m-accion-venta');
+}
+
+async function guardarAccionVenta(sucursal,folio,turnoId,tipo){
+  const btn=document.getElementById('av-save-btn');
+  const motivo=document.getElementById('av-motivo').value.trim();
+  if(!motivo){toast('El motivo es obligatorio.',true);return;}
+  const formaEl=document.getElementById('av-forma');
+  const formaPagoNueva=formaEl&&formaEl.value?formaEl.value:null;
+  btn.disabled=true;
+  const creadaPor=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina';
+  const {error}=await sb.from('acciones_venta_pendientes').insert({
+    sucursal,folio,turno_id:turnoId,tipo,forma_pago_nueva:formaPagoNueva,motivo,creada_por:creadaPor,
+  });
+  if(error){btn.disabled=false;toast('No se pudo enviar: '+error.message,true);return;}
+  closeModal('m-accion-venta');
+  toast('Solicitud enviada — la sucursal la verá y la confirmará en su POS');
+  await loadAccionesVenta();
+  if(document.getElementById('page-cortes').classList.contains('active')){renderCortes();renderVentasMes();}
+}
+
+async function cancelarAccionVenta(id){
+  if(!confirm('¿Retirar esta solicitud? Solo funciona si la sucursal todavía no la aplicó.'))return;
+  const {error}=await sb.from('acciones_venta_pendientes').delete().eq('id',id).eq('estado','pendiente');
+  if(error){toast('No se pudo retirar: '+error.message,true);return;}
+  await loadAccionesVenta();
+  if(document.getElementById('page-cortes').classList.contains('active')){renderCortes();renderVentasMes();}
+}
+
+// ─── NOTIFICACIONES: qué pasó del otro lado (campanita en la barra) ──────
+function accionesNoVistas(){
+  const resueltas=accionesVentaData.filter(a=>a.estado!=='pendiente'&&!a.visto_por_oficina);
+  const directas=accionesPosData.filter(a=>!a.visto_por_oficina);
+  return {resueltas,directas,total:resueltas.length+directas.length};
+}
+
+function renderAccionesVentaBadge(){
+  const el=document.getElementById('av-badge');
+  if(!el)return;
+  const n=accionesNoVistas().total;
+  el.textContent=n>99?'99+':String(n);
+  el.style.display=n>0?'flex':'none';
+}
+
+async function openAccionesFeed(){
+  const {resueltas,directas}=accionesNoVistas();
+  const body=document.getElementById('m-acciones-feed-body');
+  if(!resueltas.length&&!directas.length){
+    body.innerHTML=`<div class="empty"><div class="empty-ico">🔔</div>Sin cambios nuevos que revisar.</div>`;
+  }else{
+    const fila=(fecha,html)=>`<div style="border-bottom:1px solid var(--border,#e5e5e5);padding:10px 2px;font-size:12px">
+      <div style="color:var(--text3);font-size:11px">${fmtFechaHora(fecha)}</div>${html}</div>`;
+    const filasResueltas=resueltas.map(a=>{
+      const ok=a.estado==='aplicada';
+      const tipoLbl=a.tipo==='sustitucion'?'Sustitución':'Cancelación';
+      return fila(a.resuelta_at||a.creada_at,
+        `<b>${tipoLbl} folio ${a.folio}</b> (${a.sucursal}) — pedida por ti, `+
+        `<span style="color:${ok?'var(--green)':'var(--red)'}">${ok?'✓ aplicada':'✕ rechazada'}</span> por ${a.resuelta_por||'la sucursal'}`+
+        (a.resultado?`<br><span style="color:var(--text3)">${a.resultado}</span>`:''));
+    }).join('');
+    const filasDirectas=directas.map(a=>{
+      const tipoLbl=a.tipo==='sustitucion'?'Sustitución':'Cancelación';
+      return fila(a.creada_at,
+        `<b>${tipoLbl} folio ${a.folio??'—'}</b> (${a.sucursal}) — hecha directo en el POS por ${a.usuario||'?'}`+
+        (a.detalle?`<br><span style="color:var(--text3)">${a.detalle}</span>`:''));
+    }).join('');
+    body.innerHTML=filasResueltas+filasDirectas;
+  }
+  openModal('m-acciones-feed');
+  // Marcar como vistas al abrir el panel -- si el usuario quería revisarlas
+  // con calma antes de que desaparezca el badge, ya las está viendo aquí.
+  const idsVenta=resueltas.map(a=>a.id);
+  const idsPos=directas.map(a=>a.id);
+  if(idsVenta.length)await sb.from('acciones_venta_pendientes').update({visto_por_oficina:true}).in('id',idsVenta);
+  if(idsPos.length)await sb.from('acciones_pos_directas').update({visto_por_oficina:true}).in('id',idsPos);
+  if(idsVenta.length||idsPos.length){await Promise.all([loadAccionesVenta(),loadAccionesPos()]);}
 }
 
 // ─── CORRECCIÓN DE SALDOS "ANTERIOR" (caja/bodega/vales/baucher) ─────────
@@ -9557,6 +9718,8 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'cortes_caja'},async()=>{await loadCortes();if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();})
     .on('postgres_changes',{event:'*',schema:'public',table:'correcciones_pago_pendientes'},async()=>{await loadCorrecciones();if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();})
     .on('postgres_changes',{event:'*',schema:'public',table:'correcciones_anterior_pendientes'},async()=>{await loadCorreccionesAnterior();if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'acciones_venta_pendientes'},async()=>{await loadAccionesVenta();if(document.getElementById('page-cortes').classList.contains('active')){renderCortes();renderVentasMes();}})
+    .on('postgres_changes',{event:'*',schema:'public',table:'acciones_pos_directas'},async()=>{await loadAccionesPos();})
     .on('postgres_changes',{event:'*',schema:'public',table:'balances_mensuales'},async()=>{await loadBalances();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='luis')renderBalanceList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'balances_kateryn'},async()=>{await loadBalancesKat();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='kat')renderBalanceKatList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'nomina_ledger'},async()=>{await loadNominaLedger();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='nomina')renderNominaLedgerList();})
