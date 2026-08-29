@@ -7996,12 +7996,15 @@ function ventasMesFilas(){
   });
   if(soloNoFact)filas=filas.filter(p=>!p.facturado);
   if(formaPago)filas=filas.filter(p=>(p.forma_pago||'').toLowerCase()===formaPago);
-  // Cortes viejos (de antes de que Pescador POS mandara "fecha" por folio)
-  // no traen con qué ordenar por hora -- sin este respaldo por folio
-  // quedaban revueltos (909 antes que 908, etc.), pareciendo folios
-  // repetidos aunque cada uno solo aparece una vez.
+  // Por folio (descendente) -- es lo que de verdad usan para cruzar contra
+  // Factura.com/el baucher, y tiene que ir en orden consecutivo para que se
+  // note de un vistazo si falta uno. Antes iba por hora, pero un folio
+  // corregido/partido después (dividir pago, corregir monto) se crea con
+  // folio NUEVO conservando la fecha ORIGINAL -- eso lo hacía aparecer
+  // fuera de secuencia (ej. folio 103 metido entre el 56 y el 57). La
+  // fecha queda solo de respaldo para cortes viejos sin folio.
   const fechaOrden=p=>p.fecha||p.corteFecha||'';
-  filas.sort((a,b)=>fechaOrden(b).localeCompare(fechaOrden(a))||(Number(b.folio||0)-Number(a.folio||0)));
+  filas.sort((a,b)=>(Number(b.folio||0)-Number(a.folio||0))||fechaOrden(b).localeCompare(fechaOrden(a)));
   return filas;
 }
 
