@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Administración El Pescador</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;1,9..144,300&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=DM+Mono:wght@400;500&display=swap');
 
@@ -1220,6 +1221,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
                 <input type="checkbox" id="vm-solo-nofact" onchange="renderVentasMes()"> Solo sin facturar
               </label>
               <button class="btn btn-filled btn-sm" onclick="exportVentasMesCSV()">⬇️ Exportar Excel</button>
+              <button class="btn btn-sm" onclick="openReporteFacturacion()">📋 Reporte de facturación</button>
             </div>
             <div class="lcount" id="vm-count"></div>
           </div>
@@ -1399,6 +1401,36 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   <div class="modal-hdr"><div class="modal-title" id="m-accion-venta-title">Acción sobre factura</div><button class="btn-icon" onclick="closeModal('m-accion-venta')">✕</button></div>
   <div class="modal-body" id="m-accion-venta-body"></div>
   <div class="modal-ftr" id="m-accion-venta-ftr"></div>
+</div>
+</div>
+
+<div class="modal-overlay" id="m-reporte-facturacion">
+<div class="modal" style="max-width:920px">
+  <div class="modal-hdr">
+    <div class="modal-title">Reporte de facturación</div>
+    <button class="btn-icon" onclick="closeModal('m-reporte-facturacion')">✕</button>
+  </div>
+  <div class="modal-body">
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px">
+      <div class="f-row" style="margin:0"><label>Sucursal</label>
+        <select id="rf-suc" onchange="renderReporteFacturacion()">
+          <option value="Florida">Florida</option>
+          <option value="Puebla">Puebla</option>
+          <option value="Hotel">Hotel</option>
+        </select>
+      </div>
+      <div class="f-row" style="margin:0"><label>Día</label>
+        <input type="date" id="rf-fecha" onchange="renderReporteFacturacion()"/>
+      </div>
+      <button class="btn" onclick="exportarReporteFacturacionDiaXLSX()">📥 Exportar este día</button>
+      <div style="flex:1"></div>
+      <div class="f-row" style="margin:0"><label>Del</label><input type="date" id="rf-desde"/></div>
+      <div class="f-row" style="margin:0"><label>Al</label><input type="date" id="rf-hasta"/></div>
+      <button class="btn btn-filled" onclick="exportarReporteFacturacionRangoXLSX()">📥 Exportar rango (una hoja por día)</button>
+    </div>
+    <div id="rf-body"></div>
+  </div>
+  <div class="modal-ftr"><button class="btn" onclick="closeModal('m-reporte-facturacion')">Cerrar</button></div>
 </div>
 </div>
 
@@ -2578,7 +2610,7 @@ function isAdmin(){return currentPerfil&&currentPerfil.rol==='admin';}
 function puedeTimbrarNomina(){return currentPerfil&&(currentPerfil.rol==='admin'||currentPerfil.rol==='oficinista');}
 function canDelete(){return isAdmin();}
 function showIfAdmin(html){return isAdmin()?html:'';}
-let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[],cortesData=[],correccionesData=[],correccionesAnteriorData=[],accionesVentaData=[],accionesPosData=[];
+let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[],cortesData=[],correccionesData=[],correccionesAnteriorData=[],accionesVentaData=[],accionesPosData=[],entidadesFiscalesData=[];
 let currentEnt=localStorage.getItem('ep_obl_ent')||null,currentRhEnt=null;
 let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null,editCatId=null,editCuentaId=null,editPuestoId=null,editUsuarioId=null;
 let cuentasPagoData=[],puestosData=[],usuariosData=[];
@@ -2674,8 +2706,12 @@ async function initApp(user){
 
 // ─── LOAD DATA ────────────────────────────────────────────────
 async function loadAll(){
-  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadUsuarios(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger(),loadCortes(),loadCorrecciones(),loadCorreccionesAnterior(),loadAccionesVenta(),loadAccionesPos()]);
+  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadUsuarios(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger(),loadCortes(),loadCorrecciones(),loadCorreccionesAnterior(),loadAccionesVenta(),loadAccionesPos(),loadEntidadesFiscales()]);
   renderAll();
+}
+async function loadEntidadesFiscales(){
+  const {data}=await sb.from('entidades_fiscales').select('*');
+  entidadesFiscalesData=data||[];
 }
 async function loadCortes(){
   const {data}=await sb.from('cortes_caja').select('*').order('cierre',{ascending:false});
@@ -8016,6 +8052,167 @@ function renderVentasMes(){
   </table>`;
 }
 
+// ─── REPORTE DE FACTURACIÓN (formato Excel diario, agosto 2026) ──────────
+// Reemplaza el Excel "REP. FACTURACIÓN" que se armaba a mano cada día --
+// arma la misma hoja (encabezado fiscal + una fila por factura + total +
+// desglose por forma de pago) a partir de facturas_detalle, que ya manda
+// cada sucursal dentro del corte (un renglón por factura individual, sin
+// importar si después se canceló o se sustituyó).
+const CLAVE_FORMA_PAGO={'01':'EFECTIVO','02':'CHEQUE','03':'TRANSFERENCIA','04':'CREDITO','28':'DEBITO','99':'POR DEFINIR'};
+const ESTADO_CFDI_LABEL={timbrada:'Vigente',cancelada:'Cancelada',pendiente:'Pendiente',error:'Error'};
+const MESES_LARGO=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+
+function datosFiscalesDe(sucursalNombre){
+  const ent=corteSucEnt(sucursalNombre);
+  if(!ent)return null;
+  const key=Object.keys(ENTS).find(k=>ENTS[k]===ent);
+  return entidadesFiscalesData.find(e=>e.entidad===key)||null;
+}
+
+function facturasDetalleDelDia(sucursal,fechaYMD){
+  let filas=[];
+  cortesData.filter(c=>c.sucursal===sucursal).forEach(c=>{
+    const fd=(c.datos&&c.datos.facturas_detalle)||[];
+    fd.forEach(f=>{ if((f.fecha_creacion||'').slice(0,10)===fechaYMD) filas.push(f); });
+  });
+  filas.sort((a,b)=>(Number(a.folio_cfdi)||0)-(Number(b.folio_cfdi)||0));
+  return filas;
+}
+
+// Array-de-arrays con la misma forma que una hoja del Excel original --
+// se usa tanto para pintar la tabla en pantalla como para exportar (XLSX
+// lee AOA directo con aoa_to_sheet).
+function construirHojaFacturacion(sucursal,fechaYMD){
+  const fiscal=datosFiscalesDe(sucursal)||{};
+  const filas=facturasDetalleDelDia(sucursal,fechaYMD);
+  const d=fechaYMD?new Date(fechaYMD+'T00:00:00'):null;
+  const encabezadoFecha=d?`DEL:${d.getDate()} DE ${MESES_LARGO[d.getMonth()]} DEL ${d.getFullYear()}`:'';
+
+  const aoa=[
+    [fiscal.razon_social||'—'],
+    [`RFC: ${fiscal.rfc||'—'}`],
+    [fiscal.domicilio_fiscal||'—'],
+    [encabezadoFecha],
+    [],
+    ['Fecha','Folio','Razón social cliente','SUBTOTAL','IVA','TOTAL','Folio fiscal','ESTADO DE CFDI','CLAVE','FORMA DE PAGO'],
+  ];
+  let sTot=0,iTot=0,tTot=0;
+  const porForma={EFECTIVO:0,DEBITO:0,CREDITO:0,TRANSFERENCIA:0};
+  filas.forEach(f=>{
+    sTot+=Number(f.subtotal||0); iTot+=Number(f.iva||0); tTot+=Number(f.total||0);
+    const formaLbl=CLAVE_FORMA_PAGO[f.clave_forma_pago]||f.clave_forma_pago||'';
+    if(f.estado==='timbrada'&&porForma[formaLbl]!==undefined)porForma[formaLbl]+=Number(f.total||0);
+    aoa.push([
+      (f.fecha_creacion||'').slice(0,10), f.folio_cfdi!=null?`F ${f.folio_cfdi}`:'',
+      f.razon_social||'', Number(f.subtotal||0), Number(f.iva||0), Number(f.total||0),
+      f.uuid_fiscal||'', ESTADO_CFDI_LABEL[f.estado]||f.estado||'',
+      f.clave_forma_pago||'', formaLbl,
+    ]);
+  });
+  aoa.push([]);
+  aoa.push(['','','TOTAL',Math.round(sTot*100)/100,Math.round(iTot*100)/100,Math.round(tTot*100)/100]);
+  aoa.push([]);
+  aoa.push([]);
+  ['CREDITO','DEBITO','TRANSFERENCIA','EFECTIVO'].forEach(k=>aoa.push(['','',k,'',Math.round(porForma[k]*100)/100]));
+  aoa.push(['','','TOTAL','',Math.round((porForma.CREDITO+porForma.DEBITO+porForma.TRANSFERENCIA+porForma.EFECTIVO)*100)/100]);
+  return {aoa,filas,totales:{subtotal:sTot,iva:iTot,total:tTot,porForma}};
+}
+
+function openReporteFacturacion(){
+  const sucSel=document.getElementById('rf-suc');
+  sucSel.value=currentVMSuc==='TODAS'?'Florida':currentVMSuc;
+  const fEl=document.getElementById('rf-fecha');
+  if(!fEl.value)fEl.value=new Date().toISOString().slice(0,10);
+  const desdeEl=document.getElementById('rf-desde'),hastaEl=document.getElementById('rf-hasta');
+  if(!desdeEl.value)desdeEl.value=fEl.value;
+  if(!hastaEl.value)hastaEl.value=fEl.value;
+  renderReporteFacturacion();
+  openModal('m-reporte-facturacion');
+}
+
+function renderReporteFacturacion(){
+  const sucursal=document.getElementById('rf-suc').value;
+  const fecha=document.getElementById('rf-fecha').value;
+  const body=document.getElementById('rf-body');
+  if(!fecha){body.innerHTML='';return;}
+  const {filas,totales}=construirHojaFacturacion(sucursal,fecha);
+  const fiscal=datosFiscalesDe(sucursal);
+  const encabezado=fiscal
+    ?`<div style="font-size:12px;color:var(--text2);margin-bottom:10px">
+        <b>${fiscal.razon_social}</b> · RFC ${fiscal.rfc}<br>${fiscal.domicilio_fiscal}
+      </div>`
+    :`<div style="background:var(--amber-light,#fff3cd);color:var(--amber,#856404);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px">
+        Sin datos fiscales capturados para ${sucursal}.
+      </div>`;
+  if(!filas.length){
+    body.innerHTML=encabezado+`<div class="empty"><div class="empty-ico">📋</div>Sin facturas este día en ${sucursal}.</div>`;
+    return;
+  }
+  const rows=filas.map(f=>{
+    const formaLbl=CLAVE_FORMA_PAGO[f.clave_forma_pago]||f.clave_forma_pago||'—';
+    const estadoLbl=ESTADO_CFDI_LABEL[f.estado]||f.estado||'—';
+    const estadoColor=f.estado==='cancelada'?'var(--red)':(f.estado==='timbrada'?'var(--green)':'var(--text3)');
+    return `<tr>
+      <td>${(f.fecha_creacion||'').slice(0,16).replace('T',' ')}</td>
+      <td>${f.folio_cfdi!=null?'F '+f.folio_cfdi:'—'}</td>
+      <td>${f.razon_social||'—'}</td>
+      <td class="num">${fmxn(f.subtotal)}</td>
+      <td class="num">${fmxn(f.iva)}</td>
+      <td class="num">${fmxn(f.total)}</td>
+      <td style="font-size:10px">${f.uuid_fiscal||'—'}</td>
+      <td style="color:${estadoColor}">${estadoLbl}</td>
+      <td>${formaLbl}</td>
+    </tr>`;
+  }).join('');
+  const pf=totales.porForma;
+  body.innerHTML=`${encabezado}
+    <div style="overflow-x:auto"><table class="corte-tbl">
+      <thead><tr><th>Fecha</th><th>Folio</th><th>Razón social</th><th class="num">Subtotal</th><th class="num">IVA</th><th class="num">Total</th><th>Folio fiscal</th><th>Estado</th><th>Forma de pago</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="font-weight:700;background:var(--surface2)">
+        <td colspan="3">TOTAL</td>
+        <td class="num">${fmxn(totales.subtotal)}</td><td class="num">${fmxn(totales.iva)}</td><td class="num">${fmxn(totales.total)}</td>
+        <td colspan="3"></td>
+      </tr></tfoot>
+    </table></div>
+    ${pdfSec('Desglose por forma de pago (solo vigentes)')}
+    ${pdfCard('',pdfRow('Crédito',fmxn(pf.CREDITO))+pdfRow('Débito',fmxn(pf.DEBITO))+pdfRow('Transferencia',fmxn(pf.TRANSFERENCIA))+pdfRow('Efectivo',fmxn(pf.EFECTIVO))+pdfRow('Total',`<b>${fmxn(pf.CREDITO+pf.DEBITO+pf.TRANSFERENCIA+pf.EFECTIVO)}</b>`,{sep:true}))}
+  `;
+}
+
+function exportarReporteFacturacionDiaXLSX(){
+  const sucursal=document.getElementById('rf-suc').value;
+  const fecha=document.getElementById('rf-fecha').value;
+  if(!fecha){toast('Elige un día primero.',true);return;}
+  const {aoa}=construirHojaFacturacion(sucursal,fecha);
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  XLSX.utils.book_append_sheet(wb,ws,String(new Date(fecha+'T00:00:00').getDate()));
+  XLSX.writeFile(wb,`REP_FACTURACION_${sucursal}_${fecha}.xlsx`);
+  toast('Excel exportado.');
+}
+
+function exportarReporteFacturacionRangoXLSX(){
+  const sucursal=document.getElementById('rf-suc').value;
+  const desde=document.getElementById('rf-desde').value,hasta=document.getElementById('rf-hasta').value;
+  if(!desde||!hasta){toast('Elige el rango (Del/Al) primero.',true);return;}
+  const wb=XLSX.utils.book_new();
+  let d=new Date(desde+'T00:00:00');
+  const fin=new Date(hasta+'T00:00:00');
+  let hojas=0;
+  while(d<=fin){
+    const ymd=d.toISOString().slice(0,10);
+    const {aoa}=construirHojaFacturacion(sucursal,ymd);
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    XLSX.utils.book_append_sheet(wb,ws,String(d.getDate()));
+    hojas++;
+    d.setDate(d.getDate()+1);
+  }
+  if(!hojas){toast('El rango no tiene días válidos.',true);return;}
+  XLSX.writeFile(wb,`REP_FACTURACION_${sucursal}_${desde}_a_${hasta}.xlsx`);
+  toast(`Excel exportado (${hojas} hoja(s)).`);
+}
+
 function exportVentasMesCSV(){
   const filas=ventasMesFilas();
   if(!filas.length){toast('No hay ventas en este rango para exportar.',true);return;}
@@ -9720,6 +9917,7 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'correcciones_anterior_pendientes'},async()=>{await loadCorreccionesAnterior();if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();})
     .on('postgres_changes',{event:'*',schema:'public',table:'acciones_venta_pendientes'},async()=>{await loadAccionesVenta();if(document.getElementById('page-cortes').classList.contains('active')){renderCortes();renderVentasMes();}})
     .on('postgres_changes',{event:'*',schema:'public',table:'acciones_pos_directas'},async()=>{await loadAccionesPos();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'entidades_fiscales'},async()=>{await loadEntidadesFiscales();})
     .on('postgres_changes',{event:'*',schema:'public',table:'balances_mensuales'},async()=>{await loadBalances();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='luis')renderBalanceList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'balances_kateryn'},async()=>{await loadBalancesKat();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='kat')renderBalanceKatList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'nomina_ledger'},async()=>{await loadNominaLedger();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='nomina')renderNominaLedgerList();})
