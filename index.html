@@ -2381,7 +2381,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 
     <!-- PASO 4 — NÓMINA -->
     <div class="bal-panel" data-step="4">
-      <div class="bal-help">👥 Esto se jala de la Bitácora de Nómina (Florida). Marca las semanas que quieres incluir en este balance — las que ya se usaron en otro balance no aparecen aquí.</div>
+      <div class="bal-help">👥 Esto se jala de la Bitácora de Nómina (Florida) — el gravable y efectivo de cada semana solo incluyen empleados timbrados (inscritos IMSS); los de recibo simple no cuentan aquí. Marca las semanas que quieres incluir en este balance — las que ya se usaron en otro balance no aparecen aquí.</div>
       <div class="ledger-add-form" style="margin-bottom:14px">
         <div class="f-row"><label>Fecha</label><input type="date" id="nom-quick-fecha-FLO"/></div>
         <div class="f-row"><label>Monto</label><input type="number" step="0.01" id="nom-quick-monto-FLO" placeholder="0.00"/></div>
@@ -7375,8 +7375,12 @@ async function onNomPeriodoSelect(){
   if(!periodo)return;
   const{data:lineas,error}=await sb.from('nomina_lineas').select('*').eq('periodo_id',id);
   if(error){toast('Error: '+error.message,true);return;}
+  const empById={};empData.forEach(e=>{empById[e.id]=e;});
   let gravable=0,efectivo=0;
-  (lineas||[]).forEach(l=>{const c=nominaCalc(l);gravable+=c.subtotal;efectivo+=c.total;});
+  (lineas||[]).forEach(l=>{
+    const e=empById[l.empleado_id];if(!e||e.nomina_fiscal===false)return; // recibo simple, no entra a la bitácora fiscal
+    const c=nominaCalc(l);gravable+=c.subtotal;efectivo+=c.total;
+  });
   document.getElementById('nom-add-fecha').value=periodo.semana_fin;
   document.getElementById('nom-add-gravable').value=Math.round(gravable*100)/100;
   document.getElementById('nom-add-monto').value=Math.round(efectivo*100)/100;
@@ -7393,7 +7397,7 @@ async function abrirVistaPreviaGravable(){
   if(error){toast('Error: '+error.message,true);return;}
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
   nomPreviewFilas=(lineas||[])
-    .filter(l=>Number(l.dias_pagados)>0&&empById[l.empleado_id])
+    .filter(l=>Number(l.dias_pagados)>0&&empById[l.empleado_id]&&empById[l.empleado_id].nomina_fiscal!==false)
     .map(l=>({e:empById[l.empleado_id],l,c:nominaCalc(l)}))
     .sort((a,b)=>a.e.nombre.localeCompare(b.e.nombre));
   renderVistaPreviaGravableModal(periodo);
@@ -7408,7 +7412,7 @@ function renderVistaPreviaGravableModal(periodo){
   document.getElementById('m-gravable-preview-title').textContent=
     `Vista previa · ${ENT_LABELS[nomActiveEnt]} · ${fmtFechaCorta(periodo.semana_inicio)} al ${fmtFechaCorta(periodo.semana_fin)}`;
   document.getElementById('m-gravable-preview-body').innerHTML=`
-    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Solo para revisar -- esto no se guarda ni se manda a ningún lado, es lo mismo que arrojaba el reporte de nómina de Aspel.</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Solo para revisar -- esto no se guarda ni se manda a ningún lado, es lo mismo que arrojaba el reporte de nómina de Aspel. Solo incluye empleados con nómina timbrada (inscritos IMSS); los de recibo simple no entran aquí.</div>
     <div style="overflow-x:auto">
     <table class="corte-tbl">
       <thead><tr><th style="text-align:left">Empleado</th><th style="text-align:left">Puesto</th><th class="num">Días</th><th class="num">Sueldo</th><th class="num">Prima dom.</th><th class="num">Gravable</th><th class="num">ISR</th><th class="num">IMSS</th><th class="num">Neto</th></tr></thead>
