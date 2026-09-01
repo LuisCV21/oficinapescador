@@ -1391,6 +1391,15 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 </div>
 </div>
 
+<!-- MODAL FACTURAR UN FOLIO INDIVIDUAL A UN CLIENTE -->
+<div class="modal-overlay" id="m-facturar-individual">
+<div class="modal" style="max-width:460px">
+  <div class="modal-hdr"><div class="modal-title" id="m-facturar-individual-title">Facturar folio</div><button class="btn-icon" onclick="closeModal('m-facturar-individual')">✕</button></div>
+  <div class="modal-body" id="m-facturar-individual-body"></div>
+  <div class="modal-ftr" id="m-facturar-individual-ftr"></div>
+</div>
+</div>
+
 <!-- MODAL CORREGIR SALDOS "ANTERIOR" (CAJA/BODEGA/VALES/BAUCHER) -->
 <div class="modal-overlay" id="m-correccion-anterior">
 <div class="modal" style="max-width:440px">
@@ -8045,7 +8054,8 @@ function renderVentasMes(){
     const acciones=p.facturado
       ?accionBtnsVenta(p.sucursal,p.folio,p.turno_id)
       :(p.facturado===false&&!p.excluido
-        ?`<button class="corte-iconbtn" title="Corregir método de pago" onclick="openCorreccionModal('${p.sucursal}',${p.folio},${p.turno_id})">✎</button>`
+        ?`<button class="corte-iconbtn" title="Corregir método de pago" onclick="openCorreccionModal('${p.sucursal}',${p.folio},${p.turno_id})">✎</button>`+
+          `<button class="corte-iconbtn" title="Facturar este folio a un cliente" onclick="openFacturarModal('${p.sucursal.replace(/'/g,"\\'")}',${p.folio})">🧾</button>`
         :'');
     // Qué se vendió en este folio -- platillos (restaurantes, con
     // modificadores) o concepto/habitación (hotel, que no tiene carrito de
@@ -8516,6 +8526,92 @@ async function gpDescartar(facturaGlobalId){
   }catch(e){
     toast('Error: '+e.message,true);
     gpCargando=false;
+  }
+}
+
+// ─── FACTURAR UN FOLIO INDIVIDUAL DESDE OFICINA ───────────────────
+// Misma idea que Facturación Global pero para UN folio con RFC real de
+// cliente -- se timbra directo (sin borrador, el cliente está esperando su
+// CFDI), vía las acciones buscar_folio/timbrar_individual del mismo Edge
+// Function oficina-facturacion-global.
+const REGIMENES_FISCALES_OFI=[
+  ['601','601 — General de Ley Personas Morales'],['603','603 — Personas Morales con Fines no Lucrativos'],
+  ['605','605 — Sueldos y Salarios'],['606','606 — Arrendamiento'],['607','607 — Enajenación o Adquisición de Bienes'],
+  ['608','608 — Demás Ingresos'],['610','610 — Residentes en el Extranjero'],['611','611 — Ingresos por Dividendos'],
+  ['612','612 — Personas Físicas con Actividades Empresariales'],['614','614 — Ingresos por Intereses'],
+  ['616','616 — Sin Obligaciones Fiscales'],['621','621 — Incorporación Fiscal'],
+  ['625','625 — Plataformas Tecnológicas'],['626','626 — Régimen Simplificado de Confianza'],
+];
+const USOS_CFDI_OFI=[
+  ['G01','G01 — Adquisición de mercancías'],['G02','G02 — Devoluciones, descuentos o bonificaciones'],
+  ['G03','G03 — Gastos en general'],['S01','S01 — Sin efectos fiscales'],
+];
+
+function entidadDeSucursal(nombre){
+  const ent=corteSucEnt(nombre);
+  if(!ent)return null;
+  return Object.keys(ENTS).find(k=>ENTS[k]===ent)||null;
+}
+
+async function openFacturarModal(sucursal,folio){
+  const entidad=entidadDeSucursal(sucursal);
+  if(!entidad){toast('No se reconoce la sucursal "'+sucursal+'"',true);return;}
+  document.getElementById('m-facturar-individual-title').textContent=`Facturar folio ${folio} — ${corteSucLabel(sucursal)}`;
+  document.getElementById('m-facturar-individual-body').innerHTML=`<div class="loading"><div class="spinner"></div>Buscando folio...</div>`;
+  document.getElementById('m-facturar-individual-ftr').innerHTML='';
+  openModal('m-facturar-individual');
+  let out;
+  try{
+    out=await gpLlamarFuncion({accion:'buscar_folio',entidad,folio});
+  }catch(e){
+    document.getElementById('m-facturar-individual-body').innerHTML=`<div class="empty"><div class="empty-ico">⚠️</div>${e.message}</div>`;
+    return;
+  }
+  const{pago,subtotal,iva,total}=out;
+  document.getElementById('m-facturar-individual-body').innerHTML=`
+    <div class="bal-live-row" style="margin-bottom:12px;font-size:13px">
+      <span>${pago.sat_nombre} · ${pago.cuenta||'—'} · ${pago.fecha?new Date(pago.fecha).toLocaleDateString('es-MX'):''}</span>
+      <strong>${fmxn(total)}</strong>
+    </div>
+    <div class="f-row"><label>RFC del cliente <span class="req">*</span></label><input type="text" id="fi-rfc" style="text-transform:uppercase" placeholder="XAXX010101000"/></div>
+    <div class="f-row"><label>Razón social <span class="req">*</span></label><input type="text" id="fi-razon" placeholder="Nombre o razón social"/></div>
+    <div class="f-row"><label>Código postal fiscal <span class="req">*</span></label><input type="text" id="fi-cp" maxlength="5" placeholder="93320"/></div>
+    <div class="f-row"><label>Régimen fiscal <span class="req">*</span></label>
+      <select id="fi-regimen">${REGIMENES_FISCALES_OFI.map(([c,l])=>`<option value="${c}">${l}</option>`).join('')}</select>
+    </div>
+    <div class="f-row"><label>Uso CFDI <span class="req">*</span></label>
+      <select id="fi-uso">${USOS_CFDI_OFI.map(([c,l])=>`<option value="${c}" ${c==='G03'?'selected':''}>${l}</option>`).join('')}</select>
+    </div>
+    <div class="f-row"><label>Correo (opcional)</label><input type="email" id="fi-email" placeholder="cliente@correo.com"/></div>
+    <div class="f-row"><label>Método de pago</label>
+      <select id="fi-metodo"><option value="PUE" selected>PUE — Pago en una sola exhibición</option><option value="PPD">PPD — Pago en parcialidades o diferido</option></select>
+    </div>
+  `;
+  document.getElementById('m-facturar-individual-ftr').innerHTML=
+    `<button class="btn" onclick="closeModal('m-facturar-individual')">Cancelar</button>`+
+    `<button class="btn btn-filled" id="fi-timbrar-btn" onclick="confirmarFacturarIndividual('${entidad}',${folio})">Timbrar CFDI</button>`;
+}
+
+async function confirmarFacturarIndividual(entidad,folio){
+  const rfc=document.getElementById('fi-rfc').value.trim().toUpperCase();
+  const razon_social=document.getElementById('fi-razon').value.trim();
+  const cp=document.getElementById('fi-cp').value.trim();
+  const regimen_fiscal=document.getElementById('fi-regimen').value;
+  const uso_cfdi=document.getElementById('fi-uso').value;
+  const email=document.getElementById('fi-email').value.trim();
+  const metodo_pago=document.getElementById('fi-metodo').value;
+  if(!rfc||!razon_social||!cp){toast('RFC, razón social y CP son obligatorios',true);return;}
+  if(!confirm(`Esto genera un CFDI real ante el SAT a nombre de ${razon_social} (${rfc}), no se puede deshacer con un simple clic. ¿Confirmas timbrar?`))return;
+  const btn=document.getElementById('fi-timbrar-btn');
+  btn.disabled=true;btn.textContent='Timbrando...';
+  try{
+    const out=await gpLlamarFuncion({accion:'timbrar_individual',entidad,folio,rfc,razon_social,cp,regimen_fiscal,uso_cfdi,email,metodo_pago});
+    closeModal('m-facturar-individual');
+    toast(`✓ Timbrada — folio fiscal ${out.factura.folio_pac||out.factura.uuid_fiscal.slice(0,8)}`);
+    renderVentasMes();
+  }catch(e){
+    toast('Error: '+e.message,true);
+    btn.disabled=false;btn.textContent='Timbrar CFDI';
   }
 }
 

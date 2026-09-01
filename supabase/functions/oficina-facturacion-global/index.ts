@@ -187,7 +187,50 @@ async function candidatosPendientes(
   for (const row of previas ?? []) {
     for (const f of row.folios ?? []) cubiertos.add(Number(f.folio));
   }
+
+  // También excluye folios que ya se facturaron INDIVIDUAL desde Oficina
+  // (facturas_individuales) -- sin esto, un folio facturado a un cliente
+  // en lo individual se seguía ofreciendo para la Global, duplicando CFDI.
+  const { data: individuales, error: errInd } = await db
+    .from("facturas_individuales")
+    .select("folio")
+    .eq("entidad", entidad)
+    .neq("estado", "cancelada");
+  if (errInd) throw new Error(`No se pudo leer facturas_individuales: ${errInd.message}`);
+  for (const row of individuales ?? []) cubiertos.add(Number(row.folio));
+
   return candidatos.filter((c) => !cubiertos.has(c.folio));
+}
+
+// Busca UN folio específico (cualquier periodo) para facturarlo individual
+// -- null si no existe, ya está facturado, o ya está cubierto por una
+// Global/individual previa.
+async function buscarPagoPorFolio(db: any, entidad: string, folio: number): Promise<Pago | null> {
+  const keyword = KEYWORD[entidad];
+  const { data: cortes, error } = await db.from("cortes_caja").select("datos").ilike("sucursal", `%${keyword}%`);
+  if (error) throw new Error(`No se pudo leer cortes_caja: ${error.message}`);
+  for (const corte of cortes ?? []) {
+    const pagos = corte?.datos?.pagos_detalle ?? [];
+    for (const p of pagos) {
+      if (Number(p?.folio) !== folio) continue;
+      const formaKey = String(p.forma_pago || "").toLowerCase();
+      const sat = FORMA_SAT[formaKey] || ["01", "Efectivo"];
+      if (p.facturado) return null;
+      const { count: enGlobal } = await db.from("facturas_globales")
+        .select("id", { count: "exact", head: true })
+        .eq("entidad", entidad).neq("estado", "cancelada")
+        .contains("folios", [{ folio }]);
+      if (enGlobal) return null;
+      const { data: yaIndividual } = await db.from("facturas_individuales")
+        .select("id").eq("entidad", entidad).eq("folio", folio).neq("estado", "cancelada").maybeSingle();
+      if (yaIndividual) return null;
+      return {
+        folio, monto: round2(Number(p.monto || 0)), fecha: p.fecha,
+        cuenta: p.cuenta ?? null, sat_code: sat[0], sat_nombre: sat[1],
+      };
+    }
+  }
+  return null;
 }
 
 function agruparPorFormaPago(candidatos: Pago[], entidad: string) {
@@ -259,7 +302,10 @@ Deno.serve(async (req) => {
 
     const db = createClient(supabaseUrl, serviceKey);
     const body = await req.json().catch(() => ({}));
-    const { accion, entidad, mes, anio, forma_pago, factura_global_id } = body ?? {};
+    const {
+      accion, entidad, mes, anio, forma_pago, factura_global_id,
+      folio, rfc, razon_social, cp, regimen_fiscal, uso_cfdi, email, metodo_pago,
+    } = body ?? {};
 
     if (!entidad || !KEYWORD[entidad]) return json({ error: "entidad inválida (usa HOT, PUE o FLO)" }, 400);
 
@@ -276,6 +322,100 @@ Deno.serve(async (req) => {
         .neq("estado", "cancelada")
         .order("fecha_creacion", { ascending: true });
       return json({ periodo_inicio: inicio, periodo_fin: fin, grupos, existentes: existentes ?? [] });
+    }
+
+    // ── buscar_folio: ubica un folio puntual para facturarlo individual ──
+    if (accion === "buscar_folio") {
+      if (!folio) return json({ error: "folio es obligatorio" }, 400);
+      const pago = await buscarPagoPorFolio(db, entidad, Number(folio));
+      if (!pago) {
+        return json({ error: "Ese folio no existe, ya está facturado, o ya quedó cubierto por otra factura." }, 404);
+      }
+      const tasaTotal = entidad === "HOT" ? IVA_TASA + ISH_TASA : IVA_TASA;
+      const subtotal = round2(pago.monto / (1 + tasaTotal));
+      const iva = entidad === "HOT" ? round2(subtotal * IVA_TASA) : round2(pago.monto - subtotal);
+      const ish = entidad === "HOT" ? round2(pago.monto - subtotal - iva) : 0;
+      return json({ pago, subtotal, iva, ish, total: pago.monto });
+    }
+
+    // ── timbrar_individual: factura + timbra directo (sin borrador, igual
+    // que ya hace Pescador POS para individuales -- el cliente está
+    // esperando su CFDI, no tiene caso dejarlo para revisar después) ─────
+    if (accion === "timbrar_individual") {
+      if (!folio || !rfc || !razon_social || !cp || !regimen_fiscal || !uso_cfdi) {
+        return json({ error: "folio, rfc, razon_social, cp, regimen_fiscal y uso_cfdi son obligatorios" }, 400);
+      }
+      const pago = await buscarPagoPorFolio(db, entidad, Number(folio));
+      if (!pago) {
+        return json({ error: "Ese folio ya no está disponible (ya se facturó o lo cubrió otra factura mientras tanto)." }, 409);
+      }
+
+      const { data: cred } = await db.from("facturacom_credenciales").select("api_key, secret_key").eq("entidad", entidad).maybeSingle();
+      if (!cred?.api_key || !cred?.secret_key) return json({ error: `Faltan las llaves de factura.com para ${entidad}.` }, 500);
+      const { data: fiscal } = await db.from("entidades_fiscales").select("cp").eq("entidad", entidad).maybeSingle();
+      if (!fiscal?.cp) return json({ error: `Falta el código postal de facturación de ${entidad}.` }, 500);
+
+      const tasaTotal = entidad === "HOT" ? IVA_TASA + ISH_TASA : IVA_TASA;
+      const subtotal = round2(pago.monto / (1 + tasaTotal));
+      const iva = entidad === "HOT" ? round2(subtotal * IVA_TASA) : round2(pago.monto - subtotal);
+      const ish = entidad === "HOT" ? round2(pago.monto - subtotal - iva) : 0;
+      const claveProdServ = entidad === "HOT" ? "90111800" : "90101501";
+      const claveUnidad = "E48";
+      const descripcion = entidad === "HOT" ? "Servicio de hospedaje" : "Alimentos y bebidas";
+      const metodo = metodo_pago || "PUE";
+      const rfcUpper = String(rfc).trim().toUpperCase();
+
+      const clienteUid = await buscarOCrearCliente(cred.api_key, cred.secret_key, {
+        rfc: rfcUpper, razonSocial: razon_social, cp, regimen: regimen_fiscal, usoCfdi: uso_cfdi,
+      });
+      const serieId = await obtenerSerieFactura(cred.api_key, cred.secret_key);
+
+      const payload = {
+        Receptor: { UID: clienteUid },
+        TipoDocumento: "factura",
+        Conceptos: [{
+          ClaveProdServ: claveProdServ, Cantidad: 1, ClaveUnidad: claveUnidad, Unidad: "Actividad",
+          ValorUnitario: subtotal, Descripcion: descripcion, ObjetoImp: "02",
+          Impuestos: {
+            Traslados: [{ Base: subtotal, Impuesto: "002", TipoFactor: "Tasa", TasaOCuota: "0.16", Importe: iva }],
+            Retenidos: [],
+            Locales: entidad === "HOT" && ish
+              ? [{ Base: subtotal, Impuesto: "ISH", TipoFactor: "Tasa", TasaOCuota: "0.02", Importe: ish }]
+              : [],
+          },
+        }],
+        UsoCFDI: uso_cfdi,
+        Serie: serieId,
+        FormaPago: pago.sat_code,
+        MetodoPago: metodo,
+        Moneda: "MXN",
+        LugarExpedicion: fiscal.cp,
+        EnviarCorreo: !!email,
+      };
+      const result = await crearFactura(cred.api_key, cred.secret_key, payload);
+      if (result?.response !== "success") {
+        return json({ error: result?.message || JSON.stringify(result) }, 502);
+      }
+      const facturapiId = result?.invoice_uid || "";
+      const uuidFiscal = result?.UUID || "";
+      const folioPac = result?.INV?.Folio || null;
+
+      const { data: inserted, error: insErr } = await db.from("facturas_individuales").insert({
+        entidad, folio: Number(folio), cuenta: pago.cuenta, fecha_venta: pago.fecha,
+        subtotal, iva: iva + ish, total: pago.monto,
+        forma_pago: pago.sat_code, metodo_pago: metodo,
+        rfc_receptor: rfcUpper, razon_social, regimen_fiscal, uso_cfdi,
+        cp_receptor: cp, email_receptor: email || null,
+        estado: "timbrada", facturapi_id: facturapiId, uuid_fiscal: uuidFiscal, folio_pac: folioPac,
+        creado_por: caller.id,
+      }).select().single();
+      if (insErr) {
+        return json({
+          error: `Se timbró ante el SAT (UUID ${uuidFiscal}) pero no se pudo guardar localmente: ${insErr.message}. `
+            + `NO reintentes timbrar este folio -- ya existe. Avisa para corregir el registro a mano.`,
+        }, 500);
+      }
+      return json({ ok: true, factura: inserted });
     }
 
     // ── crear_borrador: crea el CFDI Draft=1 en Factura.com ───────────────
