@@ -912,7 +912,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       </div>
       <div class="sb-item" onclick="showPage('globalespreview')" id="si-globalespreview">
         <span class="sb-item-icon">📦</span>
-        <span class="sb-item-label">Vista previa Globales</span>
+        <span class="sb-item-label">Facturación Global</span>
       </div>
       <div class="sb-item" onclick="showPage('controlgastos')" id="si-controlgastos">
         <span class="sb-item-icon">🧮</span>
@@ -1237,8 +1237,8 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       <div class="page" id="page-globalespreview">
         <div class="page-hdr">
           <div>
-            <div class="page-title">Vista previa de Globales</div>
-            <div class="page-sub">Adelanto de cómo se verían las facturas Globales (una por forma de pago) que se generan al cierre del mes -- calculado con las mismas reglas que usa Pescador POS, solo que aquí no se timbra nada, es solo para revisar montos con anticipación</div>
+            <div class="page-title">Facturación Global</div>
+            <div class="page-sub">Crea y timbra aquí las facturas Globales (una por forma de pago) al cierre del mes, sin depender de la sucursal -- primero se crea como borrador para revisar, y se timbra ante el SAT en un paso aparte</div>
           </div>
         </div>
         <div class="tabs-wrap">
@@ -8047,11 +8047,20 @@ function renderVentasMes(){
       :(p.facturado===false&&!p.excluido
         ?`<button class="corte-iconbtn" title="Corregir método de pago" onclick="openCorreccionModal('${p.sucursal}',${p.folio},${p.turno_id})">✎</button>`
         :'');
+    // Qué se vendió en este folio -- platillos (restaurantes, con
+    // modificadores) o concepto/habitación (hotel, que no tiene carrito de
+    // productos por folio, cada venta ya es un solo cargo). Se muestra
+    // como tooltip en la celda de "Cuenta" para no ensuciar la tabla con
+    // otra columna -- el ícono 📋 avisa que hay detalle al pasar el mouse.
+    const detalleTxt=ventaDetalleTexto(p);
+    const cuentaCelda=detalleTxt
+      ?`<span title="${detalleTxt.replace(/"/g,'&quot;')}" style="border-bottom:1px dotted var(--text3);cursor:help">${p.cuenta||'—'} 📋</span>`
+      :(p.cuenta||'—');
     return `<tr>
       <td>${fecha}</td>
       <td><span class="ent-dot" style="background:${corteSucColor(p.sucursal)}"></span>${corteSucLabel(p.sucursal)}</td>
       <td>${p.folio??''}</td>
-      <td>${p.cuenta||'—'}</td>
+      <td>${cuentaCelda}</td>
       <td>${p.mesero||'—'}</td>
       <td>${p.forma_pago||''}</td>
       <td class="num">${fmxn(p.monto)}</td>
@@ -8063,6 +8072,27 @@ function renderVentasMes(){
     <thead><tr><th>Fecha</th><th>Sucursal</th><th>Folio</th><th>Cuenta</th><th>Mesero</th><th>Forma pago</th><th class="num">Monto</th><th>Facturado</th><th>Acciones</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
+}
+
+// Texto plano (para el atributo title=) con el detalle de qué se vendió en
+// un folio -- lista de platillos con cantidad/modificadores si viene de un
+// restaurante (Pescador POS), o el concepto/habitación si viene del hotel.
+function ventaDetalleTexto(p){
+  if(Array.isArray(p.platillos)&&p.platillos.length){
+    return p.platillos.map(it=>{
+      let l=`${it.cantidad}x ${it.producto||'—'}${it.cancelado?' (CANCELADO)':''} — ${fmxn(it.importe)}`;
+      if(it.modificadores&&it.modificadores.length)l+=`\n   ${it.modificadores.join(', ')}`;
+      if(it.comentario)l+=`\n   📝 ${it.comentario}`;
+      return l;
+    }).join('\n');
+  }
+  if(p.concepto||p.habitacion){
+    const partes=[];
+    if(p.habitacion)partes.push(`Hab. ${p.habitacion}`);
+    if(p.concepto)partes.push(p.concepto);
+    return partes.join(' — ');
+  }
+  return '';
 }
 
 // ─── REPORTE DE FACTURACIÓN (formato Excel diario, agosto 2026) ──────────
@@ -8273,22 +8303,13 @@ function exportVentasMesCSV(){
   toast('Excel exportado.');
 }
 
-// ─── VISTA PREVIA DE GLOBALES ───────────────────────────────────
-// Adelanto de las 4 facturas Globales (una por forma de pago) que
-// Pescador POS arma al cierre del mes -- mismo criterio que tab_global.py
-// del POS: folios de pago sin factura individual ni autofactura
-// (facturado===false), agrupados por forma de pago con la misma tabla
-// SAT que usa el POS al timbrar. Solo lee cortesData (ya cargado por
-// Ventas del mes), no genera ni timbra nada.
-// Un folio de corte viejo que no trae el campo "facturado" en absoluto
-// (facturado===undefined) no se sabe si ya se facturó o no -- meterlo a
-// ciegas al total inflaría o desinflaría la Global real, así que se deja
-// fuera de los grupos y se avisa aparte.
-const FORMA_SAT_OFI={
-  efectivo:['01','Efectivo'], debito:['28','Tarjeta de débito'], 'débito':['28','Tarjeta de débito'],
-  credito:['04','Tarjeta de crédito'], 'crédito':['04','Tarjeta de crédito'], tarjeta:['04','Tarjeta'],
-  transferencia:['03','Transferencia'], cheque:['02','Cheque'],
-};
+// ─── FACTURACIÓN GLOBAL ───────────────────────────────────
+// Crea y timbra las facturas Globales (una por forma de pago) directo
+// desde Oficina, vía el Edge Function oficina-facturacion-global (Fase 2,
+// septiembre 2026) -- ya no depende de que alguien en la sucursal corra el
+// Global desde el POS local. El cálculo de qué está pendiente vive del
+// lado del servidor (misma fuente para todos), esta pantalla solo pinta
+// el resultado y dispara crear borrador / timbrar / descartar.
 const MESES_ES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 let currentGPSuc='';
 let gpAbiertos=new Set();
@@ -8319,101 +8340,183 @@ function toggleGPGrupo(key){
   renderVistaPreviaGlobales();
 }
 
-function gpPagosDelMes(){
-  populateGPMesAnio();
-  const mes=Number(document.getElementById('gp-mes')?.value||(new Date().getMonth()+1));
-  const anio=Number(document.getElementById('gp-anio')?.value||new Date().getFullYear());
-  const desde=`${anio}-${String(mes).padStart(2,'0')}-01`;
-  const hasta=`${anio}-${String(mes).padStart(2,'0')}-31`;
-  const cortes=cortesData.filter(c=>c.sucursal===currentGPSuc);
-  let filas=[];
-  cortes.forEach(c=>{
-    const pagos=(c.datos&&c.datos.pagos_detalle)||[];
-    const corteFecha=c.cierre||c.apertura||'';
-    pagos.forEach(p=>filas.push({corteFecha,...p}));
-  });
-  filas=filas.filter(p=>{
-    const f=(p.fecha||p.corteFecha||'').slice(0,10);
-    return f>=desde&&f<=hasta;
-  });
-  return filas;
+// entidad HOT/PUE/FLO para el sucursal actual (mismo mapeo por keyword que
+// corteSucEnt) -- el Edge Function trabaja con estas 3 claves, no con el
+// nombre libre que cada sucursal manda en su corte.
+function gpEntidadActual(){
+  const ent=corteSucEnt(currentGPSuc);
+  if(!ent)return null;
+  return Object.keys(ENTS).find(k=>ENTS[k]===ent)||null;
 }
 
-function renderVistaPreviaGlobales(){
+let gpUltimoResultado=null; // último {periodo_inicio,periodo_fin,grupos,existentes} cargado
+let gpCargando=false;
+
+async function gpLlamarFuncion(payload){
+  const{data:{session}}=await sb.auth.getSession();
+  const resp=await fetch(SUPA_URL+'/functions/v1/oficina-facturacion-global',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+    body:JSON.stringify(payload),
+  });
+  const out=await resp.json().catch(()=>({error:'Respuesta inválida del servidor'}));
+  if(!resp.ok)throw new Error(out.error||resp.statusText);
+  return out;
+}
+
+async function renderVistaPreviaGlobales(){
   const el=document.getElementById('gp-content');
   if(!el)return;
   renderGPTabs();
-  const filas=gpPagosDelMes();
-  const sinDato=filas.filter(p=>p.facturado===undefined);
-  // p.excluido: folio marcado "Excluir" en el CFDI Global del POS -- nunca
-  // va a tener CFDI, se reporta aparte ante el SAT, así que tampoco debe
-  // contar como pendiente aquí (antes se quedaba contando para siempre
-  // después de excluirlo, porque "facturado" nunca dejaba de ser false).
-  const excluidos=filas.filter(p=>p.facturado===false&&p.excluido===true);
-  const porFacturar=filas.filter(p=>p.facturado===false&&!p.excluido);
-  if(!filas.length){
-    el.innerHTML=`<div class="empty"><div class="empty-ico">📦</div>Sin ventas registradas en este mes para ${corteSucLabel(currentGPSuc)}</div>`;
+  populateGPMesAnio();
+  const mes=Number(document.getElementById('gp-mes')?.value||(new Date().getMonth()+1));
+  const anio=Number(document.getElementById('gp-anio')?.value||new Date().getFullYear());
+  const entidad=gpEntidadActual();
+  if(!entidad){
+    el.innerHTML=`<div class="empty"><div class="empty-ico">📦</div>No se reconoce la sucursal "${currentGPSuc}" (debe contener hotel/puebla/florida en el nombre)</div>`;
     return;
   }
-  const grupos=new Map();
-  porFacturar.forEach(p=>{
-    const key=(p.forma_pago||'otro').toLowerCase().trim();
-    if(!grupos.has(key))grupos.set(key,[]);
-    grupos.get(key).push(p);
-  });
-  const totalGeneral=porFacturar.reduce((s,p)=>s+Number(p.monto||0),0);
-  let avisoSinDato='';
-  if(sinDato.length){
-    const totalSD=sinDato.reduce((s,p)=>s+Number(p.monto||0),0);
-    avisoSinDato=`<div style="background:var(--red-light);border:1px solid #f7c1c1;color:var(--red);padding:10px 12px;border-radius:8px;font-size:12px;margin-bottom:12px">⚠️ ${sinDato.length} folio(s) por ${fmxn(totalSD)} son de cortes viejos que no traen el dato de "facturado" -- no se sabe si ya se facturaron, así que NO están incluidos en los totales de abajo. Revísalos aparte en Ventas del mes.</div>`;
+  el.innerHTML=`<div class="loading"><div class="spinner"></div>Calculando pendientes...</div>`;
+  gpCargando=true;
+  try{
+    const out=await gpLlamarFuncion({accion:'pendientes',entidad,mes,anio});
+    gpUltimoResultado=out;
+  }catch(e){
+    el.innerHTML=`<div class="empty"><div class="empty-ico">⚠️</div>Error al calcular: ${e.message}</div>`;
+    gpCargando=false;
+    return;
   }
-  if(excluidos.length){
-    const totalEx=excluidos.reduce((s,p)=>s+Number(p.monto||0),0);
-    avisoSinDato+=`<div style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);padding:10px 12px;border-radius:8px;font-size:12px;margin-bottom:12px">ℹ️ ${excluidos.length} folio(s) por ${fmxn(totalEx)} están marcados "Excluir" en el POS -- no llevan CFDI, se reportan aparte ante el SAT, así que tampoco están en los totales de abajo.</div>`;
-  }
-  let cardsHtml='';
-  if(!grupos.size){
-    cardsHtml=`<div class="empty"><div class="empty-ico">✅</div>No hay ventas sin facturar este mes en ${corteSucLabel(currentGPSuc)} -- no habría ninguna Global que emitir.</div>`;
-  }else{
-    const ordenados=[...grupos.entries()].sort((a,b)=>
-      b[1].reduce((s,p)=>s+Number(p.monto||0),0)-a[1].reduce((s,p)=>s+Number(p.monto||0),0));
-    cardsHtml=ordenados.map(([key,items])=>{
-      const [satCode,satNombre]=FORMA_SAT_OFI[key]||['99','Otro ('+(key||'sin forma')+')'];
-      const total=items.reduce((s,p)=>s+Number(p.monto||0),0);
-      const subtotal=Math.round(total/1.16*100)/100;
-      const iva=Math.round((total-subtotal)*100)/100;
-      const abierto=gpAbiertos.has(key);
-      const filasTbl=items.slice().sort((a,b)=>(b.fecha||b.corteFecha||'').localeCompare(a.fecha||a.corteFecha||''))
-        .map(p=>{
-          const fecha=p.fecha?new Date(p.fecha).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):(p.corteFecha||'').slice(0,10);
-          return `<tr><td>${fecha}</td><td>${p.folio??''}</td><td class="num">${fmxn(p.monto)}</td></tr>`;
-        }).join('');
-      return `<div class="acc-card" style="margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;cursor:pointer" onclick="toggleGPGrupo('${key}')">
-          <div>
-            <div style="font-weight:600;font-size:14px">${satNombre} <span style="color:var(--text3);font-weight:400;font-size:11px">(SAT ${satCode})</span></div>
-            <div style="font-size:11px;color:var(--text2);margin-top:2px">${items.length} partida(s) · Subtotal ${fmxn(subtotal)} · IVA ${fmxn(iva)}</div>
-          </div>
-          <div style="text-align:right;display:flex;align-items:center;gap:10px">
-            <div>
-              <div style="font-size:10px;color:var(--text2);text-transform:uppercase">Total Global</div>
-              <div style="font-weight:700;font-size:16px">${fmxn(total)}</div>
-            </div>
-            <span style="font-size:11px;color:var(--text3)">${abierto?'▲':'▼'}</span>
-          </div>
+  gpCargando=false;
+  gpRenderResultado();
+}
+
+function gpRenderResultado(){
+  const el=document.getElementById('gp-content');
+  if(!el||!gpUltimoResultado)return;
+  const{grupos,existentes}=gpUltimoResultado;
+  const totalPendiente=grupos.reduce((s,g)=>s+Number(g.total||0),0);
+
+  const existentesHtml=existentes.length?`
+    <div class="sec-lbl" style="margin-top:4px">Ya creadas este periodo</div>
+    ${existentes.map(fg=>{
+      const esBorrador=fg.estado==='borrador';
+      const badge=esBorrador
+        ?`<span class="corte-badge pend">Borrador</span>`
+        :`<span class="corte-badge ok">✓ Timbrada F-${fg.folio_cfdi??''}</span>`;
+      const acciones=esBorrador?`
+        <button class="btn-text" style="font-size:11px;color:var(--red)" onclick="gpDescartar('${fg.id}')">Descartar</button>
+        <button class="btn btn-filled" style="font-size:11px;padding:4px 10px" onclick="gpTimbrar('${fg.id}')">Timbrar borrador</button>
+      `:`<span style="font-size:11px;color:var(--text3)" title="${fg.uuid_fiscal||''}">UUID ${(fg.uuid_fiscal||'').slice(0,8)}…</span>`;
+      return `<div class="acc-card" style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-weight:600;font-size:14px">${fg.forma_nombre} <span style="color:var(--text3);font-weight:400;font-size:11px">(SAT ${fg.forma_pago})</span></div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">${(fg.folios||[]).length} partida(s) · Subtotal ${fmxn(fg.subtotal)} · IVA ${fmxn(fg.iva)}</div>
         </div>
-        ${abierto?`<div style="margin-top:10px;overflow-x:auto"><table class="corte-tbl">
-          <thead><tr><th>Fecha</th><th>Folio</th><th class="num">Monto</th></tr></thead>
-          <tbody>${filasTbl}</tbody>
-        </table></div>`:''}
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="text-align:right">
+            <div style="font-size:10px;color:var(--text2);text-transform:uppercase">Total</div>
+            <div style="font-weight:700;font-size:16px">${fmxn(fg.total)}</div>
+          </div>
+          ${badge}
+          ${acciones}
+        </div>
       </div>`;
-    }).join('');
+    }).join('')}
+  `:'';
+
+  let pendientesHtml='';
+  if(!grupos.length){
+    pendientesHtml=`<div class="empty"><div class="empty-ico">✅</div>No hay ventas sin facturar este mes en ${corteSucLabel(currentGPSuc)}${existentes.length?' además de lo ya creado arriba':''}.</div>`;
+  }else{
+    const ordenados=[...grupos].sort((a,b)=>b.total-a.total);
+    pendientesHtml=`<div class="sec-lbl" style="margin-top:${existentes.length?'18':'4'}px">Pendiente por facturar</div>`+
+      ordenados.map(g=>{
+        const key=g.sat_code;
+        const abierto=gpAbiertos.has(key);
+        const filasTbl=g.folios.slice().sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''))
+          .map(p=>{
+            const fecha=p.fecha?new Date(p.fecha).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+            return `<tr><td>${fecha}</td><td>${p.folio??''}</td><td>${p.cuenta||'—'}</td><td class="num">${fmxn(p.monto)}</td></tr>`;
+          }).join('');
+        return `<div class="acc-card" style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <div style="cursor:pointer" onclick="toggleGPGrupo('${key}')">
+              <div style="font-weight:600;font-size:14px">${g.sat_nombre} <span style="color:var(--text3);font-weight:400;font-size:11px">(SAT ${g.sat_code})</span></div>
+              <div style="font-size:11px;color:var(--text2);margin-top:2px">${g.folios.length} partida(s) · Subtotal ${fmxn(g.subtotal)} · IVA ${fmxn(g.iva+ (g.ish||0))}</div>
+            </div>
+            <div style="text-align:right;display:flex;align-items:center;gap:10px">
+              <div>
+                <div style="font-size:10px;color:var(--text2);text-transform:uppercase">Total Global</div>
+                <div style="font-weight:700;font-size:16px">${fmxn(g.total)}</div>
+              </div>
+              <button class="btn btn-filled" style="font-size:11px;padding:6px 12px" onclick="gpCrearBorrador('${key}')">Crear borrador</button>
+              <span style="font-size:11px;color:var(--text3);cursor:pointer" onclick="toggleGPGrupo('${key}')">${abierto?'▲':'▼'}</span>
+            </div>
+          </div>
+          ${abierto?`<div style="margin-top:10px;overflow-x:auto"><table class="corte-tbl">
+            <thead><tr><th>Fecha</th><th>Folio</th><th>Cuenta</th><th class="num">Monto</th></tr></thead>
+            <tbody>${filasTbl}</tbody>
+          </table></div>`:''}
+        </div>`;
+      }).join('');
   }
+
   el.innerHTML=`
-    <div class="bal-live-row" style="margin-bottom:14px;font-size:14px"><span>Total estimado de las ${grupos.size} Global(es) de ${corteSucLabel(currentGPSuc)}</span><strong>${fmxn(totalGeneral)}</strong></div>
-    ${avisoSinDato}
-    ${cardsHtml}
+    <div class="bal-live-row" style="margin-bottom:14px;font-size:14px"><span>Total pendiente de ${corteSucLabel(currentGPSuc)}</span><strong>${fmxn(totalPendiente)}</strong></div>
+    ${existentesHtml}
+    ${pendientesHtml}
   `;
+}
+
+function toggleGPGrupo(key){
+  if(gpAbiertos.has(key))gpAbiertos.delete(key); else gpAbiertos.add(key);
+  gpRenderResultado();
+}
+
+async function gpCrearBorrador(satCode){
+  if(gpCargando)return;
+  const entidad=gpEntidadActual();
+  const mes=Number(document.getElementById('gp-mes')?.value);
+  const anio=Number(document.getElementById('gp-anio')?.value);
+  gpCargando=true;
+  try{
+    toast('Creando borrador en Factura.com...');
+    await gpLlamarFuncion({accion:'crear_borrador',entidad,mes,anio,forma_pago:satCode});
+    toast('✓ Borrador creado -- revísalo antes de timbrar');
+    await renderVistaPreviaGlobales();
+  }catch(e){
+    toast('Error: '+e.message,true);
+    gpCargando=false;
+  }
+}
+
+async function gpTimbrar(facturaGlobalId){
+  if(gpCargando)return;
+  if(!confirm('Esto genera un CFDI Global real ante el SAT, no se puede deshacer con un simple clic. ¿Confirmas timbrar?'))return;
+  gpCargando=true;
+  try{
+    toast('Timbrando ante el SAT...');
+    await gpLlamarFuncion({accion:'timbrar',factura_global_id:facturaGlobalId});
+    toast('✓ Timbrada ante el SAT');
+    await renderVistaPreviaGlobales();
+  }catch(e){
+    toast('Error: '+e.message,true);
+    gpCargando=false;
+  }
+}
+
+async function gpDescartar(facturaGlobalId){
+  if(gpCargando)return;
+  if(!confirm('¿Descartar este borrador? Nunca se timbró ante el SAT, así que se puede borrar sin problema -- sus ventas vuelven a quedar pendientes.'))return;
+  gpCargando=true;
+  try{
+    await gpLlamarFuncion({accion:'descartar',factura_global_id:facturaGlobalId});
+    toast('Borrador descartado');
+    await renderVistaPreviaGlobales();
+  }catch(e){
+    toast('Error: '+e.message,true);
+    gpCargando=false;
+  }
 }
 
 // ─── CONTROL DE GASTOS ───────────────────────────────────────────
