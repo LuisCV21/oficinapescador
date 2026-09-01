@@ -8475,7 +8475,85 @@ function gpRenderResultado(){
     <div class="bal-live-row" style="margin-bottom:14px;font-size:14px"><span>Total pendiente de ${corteSucLabel(currentGPSuc)}</span><strong>${fmxn(totalPendiente)}</strong></div>
     ${existentesHtml}
     ${pendientesHtml}
+    ${gpVistaDiariaHtml()}
   `;
+}
+
+// ─── VISTA DIARIA (informativo) ────────────────────────────────────
+// Cuánto entró cada día por forma de pago -- para que la oficina pueda ir
+// viendo el flujo diario sin esperar al cierre de mes. Es SOLO visual:
+// suma pagos_detalle tal cual vienen en cortesData (ya cargado por
+// Ventas del mes/Control de Gastos), no filtra por facturado/excluido ni
+// toca nada de lo que sí genera/timbra CFDI arriba en esta misma pantalla.
+let gpVerDiaria=false;
+function gpToggleDiaria(){ gpVerDiaria=!gpVerDiaria; gpRenderResultado(); }
+
+function gpDatosDiarios(){
+  const mes=Number(document.getElementById('gp-mes')?.value);
+  const anio=Number(document.getElementById('gp-anio')?.value);
+  const desde=`${anio}-${String(mes).padStart(2,'0')}-01`;
+  const hasta=`${anio}-${String(mes).padStart(2,'0')}-31`;
+  const dias=new Map(); // 'YYYY-MM-DD' -> {efectivo,credito,debito,transferencia,otro}
+  cortesData.filter(c=>c.sucursal===currentGPSuc).forEach(c=>{
+    const pagos=(c.datos&&c.datos.pagos_detalle)||[];
+    const corteFecha=(c.cierre||c.apertura||'').slice(0,10);
+    pagos.forEach(p=>{
+      const f=(p.fecha||corteFecha||'').slice(0,10);
+      if(!f||f<desde||f>hasta)return;
+      const forma=(p.forma_pago||'').toLowerCase();
+      const col=forma==='efectivo'?'efectivo'
+        :(forma==='credito'||forma==='tarjeta_credito')?'credito'
+        :(forma==='debito'||forma==='tarjeta_debito')?'debito'
+        :forma==='transferencia'?'transferencia':'otro';
+      const acc=dias.get(f)||{efectivo:0,credito:0,debito:0,transferencia:0,otro:0};
+      acc[col]+=Number(p.monto||0);
+      dias.set(f,acc);
+    });
+  });
+  return dias;
+}
+
+function gpVistaDiariaHtml(){
+  const toggleBtn=`<button class="btn-text" style="font-size:12px" onclick="gpToggleDiaria()">${gpVerDiaria?'▲ Ocultar vista diaria':'▼ Ver vista diaria (efectivo/tarjeta/transferencia por día)'}</button>`;
+  if(!gpVerDiaria)return `<div style="margin-top:18px">${toggleBtn}</div>`;
+
+  const dias=gpDatosDiarios();
+  const fechas=[...dias.keys()].sort();
+  if(!fechas.length){
+    return `<div style="margin-top:18px">${toggleBtn}<div class="empty" style="padding:20px"><div class="empty-ico">📅</div>Sin ventas registradas este mes</div></div>`;
+  }
+  const tot={efectivo:0,credito:0,debito:0,transferencia:0,otro:0};
+  const rows=fechas.map(f=>{
+    const d=dias.get(f);
+    Object.keys(tot).forEach(k=>tot[k]+=d[k]);
+    const diaTotal=d.efectivo+d.credito+d.debito+d.transferencia+d.otro;
+    return `<tr>
+      <td>${fmtDiaMes(f)}</td>
+      <td class="num">${fmxn(d.efectivo)}</td>
+      <td class="num">${fmxn(d.credito)}</td>
+      <td class="num">${fmxn(d.debito)}</td>
+      <td class="num">${fmxn(d.transferencia)}</td>
+      <td class="num"><b>${fmxn(diaTotal)}</b></td>
+    </tr>`;
+  }).join('');
+  const totGeneral=tot.efectivo+tot.credito+tot.debito+tot.transferencia+tot.otro;
+  return `<div style="margin-top:18px">
+    ${toggleBtn}
+    <div class="sec-lbl" style="margin-top:10px">Vista diaria — ${corteSucLabel(currentGPSuc)}</div>
+    <div class="page-sub" style="margin-bottom:8px">Solo informativo: lo que entró cada día por forma de pago, ya esté facturado o no. No genera ni afecta ninguna Global.</div>
+    <div style="overflow-x:auto"><table class="corte-tbl">
+      <thead><tr><th>Día</th><th class="num">Efectivo</th><th class="num">Crédito</th><th class="num">Débito</th><th class="num">Transferencia</th><th class="num">Total</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="font-weight:700;background:var(--surface2)">
+        <td>Total del mes</td>
+        <td class="num">${fmxn(tot.efectivo)}</td>
+        <td class="num">${fmxn(tot.credito)}</td>
+        <td class="num">${fmxn(tot.debito)}</td>
+        <td class="num">${fmxn(tot.transferencia)}</td>
+        <td class="num">${fmxn(totGeneral)}</td>
+      </tr></tfoot>
+    </table></div>
+  </div>`;
 }
 
 function toggleGPGrupo(key){
