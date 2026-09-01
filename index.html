@@ -8039,10 +8039,12 @@ function renderVentasMes(){
       ?`<span class="corte-badge" style="background:var(--surface2);color:var(--text3)">Sin dato (corte viejo)</span>`
       :p.facturado
         ?`<span class="corte-badge ok">✓ ${p.folio_pac||''}</span>`
-        :`<span class="corte-badge pend">Sin facturar</span>`;
+        :p.excluido
+          ?`<span class="corte-badge" style="background:var(--surface2);color:var(--text3)">Excluida (sin CFDI)</span>`
+          :`<span class="corte-badge pend">Sin facturar</span>`;
     const acciones=p.facturado
       ?accionBtnsVenta(p.sucursal,p.folio,p.turno_id)
-      :(p.facturado===false
+      :(p.facturado===false&&!p.excluido
         ?`<button class="corte-iconbtn" title="Corregir método de pago" onclick="openCorreccionModal('${p.sucursal}',${p.folio},${p.turno_id})">✎</button>`
         :'');
     return `<tr>
@@ -8343,7 +8345,12 @@ function renderVistaPreviaGlobales(){
   renderGPTabs();
   const filas=gpPagosDelMes();
   const sinDato=filas.filter(p=>p.facturado===undefined);
-  const porFacturar=filas.filter(p=>p.facturado===false);
+  // p.excluido: folio marcado "Excluir" en el CFDI Global del POS -- nunca
+  // va a tener CFDI, se reporta aparte ante el SAT, así que tampoco debe
+  // contar como pendiente aquí (antes se quedaba contando para siempre
+  // después de excluirlo, porque "facturado" nunca dejaba de ser false).
+  const excluidos=filas.filter(p=>p.facturado===false&&p.excluido===true);
+  const porFacturar=filas.filter(p=>p.facturado===false&&!p.excluido);
   if(!filas.length){
     el.innerHTML=`<div class="empty"><div class="empty-ico">📦</div>Sin ventas registradas en este mes para ${corteSucLabel(currentGPSuc)}</div>`;
     return;
@@ -8359,6 +8366,10 @@ function renderVistaPreviaGlobales(){
   if(sinDato.length){
     const totalSD=sinDato.reduce((s,p)=>s+Number(p.monto||0),0);
     avisoSinDato=`<div style="background:var(--red-light);border:1px solid #f7c1c1;color:var(--red);padding:10px 12px;border-radius:8px;font-size:12px;margin-bottom:12px">⚠️ ${sinDato.length} folio(s) por ${fmxn(totalSD)} son de cortes viejos que no traen el dato de "facturado" -- no se sabe si ya se facturaron, así que NO están incluidos en los totales de abajo. Revísalos aparte en Ventas del mes.</div>`;
+  }
+  if(excluidos.length){
+    const totalEx=excluidos.reduce((s,p)=>s+Number(p.monto||0),0);
+    avisoSinDato+=`<div style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);padding:10px 12px;border-radius:8px;font-size:12px;margin-bottom:12px">ℹ️ ${excluidos.length} folio(s) por ${fmxn(totalEx)} están marcados "Excluir" en el POS -- no llevan CFDI, se reportan aparte ante el SAT, así que tampoco están en los totales de abajo.</div>`;
   }
   let cardsHtml='';
   if(!grupos.size){
