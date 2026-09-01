@@ -8573,7 +8573,7 @@ async function openFacturarModal(sucursal,folio){
       <span>${pago.sat_nombre} · ${pago.cuenta||'—'} · ${pago.fecha?new Date(pago.fecha).toLocaleDateString('es-MX'):''}</span>
       <strong>${fmxn(total)}</strong>
     </div>
-    <div class="f-row"><label>RFC del cliente <span class="req">*</span></label><input type="text" id="fi-rfc" style="text-transform:uppercase" placeholder="XAXX010101000"/></div>
+    <div class="f-row"><label>RFC del cliente <span class="req">*</span></label><input type="text" id="fi-rfc" style="text-transform:uppercase" placeholder="XAXX010101000" onblur="buscarClienteFiscalOfi(this.value)"/><span id="fi-rfc-hint" style="font-size:11px;color:var(--green)"></span></div>
     <div class="f-row"><label>Razón social <span class="req">*</span></label><input type="text" id="fi-razon" placeholder="Nombre o razón social"/></div>
     <div class="f-row"><label>Código postal fiscal <span class="req">*</span></label><input type="text" id="fi-cp" maxlength="5" placeholder="93320"/></div>
     <div class="f-row"><label>Régimen fiscal <span class="req">*</span></label>
@@ -8590,6 +8590,24 @@ async function openFacturarModal(sucursal,folio){
   document.getElementById('m-facturar-individual-ftr').innerHTML=
     `<button class="btn" onclick="closeModal('m-facturar-individual')">Cancelar</button>`+
     `<button class="btn btn-filled" id="fi-timbrar-btn" onclick="confirmarFacturarIndividual('${entidad}',${folio})">Timbrar CFDI</button>`;
+}
+
+// Autocompleta con el directorio consolidado de clientes_fiscales -- un
+// cliente que ya facturó en OTRA sucursal no hay que volver a capturarlo
+// a mano.
+async function buscarClienteFiscalOfi(rfcTexto){
+  const rfc=(rfcTexto||'').trim().toUpperCase();
+  const hint=document.getElementById('fi-rfc-hint');
+  if(!hint)return;
+  if(rfc.length<12){hint.textContent='';return;}
+  const{data}=await sb.from('clientes_fiscales').select('*').eq('rfc',rfc).maybeSingle();
+  if(!data){hint.textContent='';return;}
+  document.getElementById('fi-razon').value=data.razon_social||'';
+  if(data.cp)document.getElementById('fi-cp').value=data.cp;
+  if(data.regimen_fiscal)document.getElementById('fi-regimen').value=data.regimen_fiscal;
+  if(data.uso_cfdi)document.getElementById('fi-uso').value=data.uso_cfdi;
+  if(data.email)document.getElementById('fi-email').value=data.email;
+  hint.textContent=`✓ Cliente encontrado (ya facturó en ${(data.sucursales||[]).map(e=>ENTS[e]?.label||e).join(', ')})`;
 }
 
 async function confirmarFacturarIndividual(entidad,folio){
