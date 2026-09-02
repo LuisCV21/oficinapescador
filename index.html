@@ -8220,7 +8220,12 @@ function construirHojaFacturacion(sucursal,fechaYMD){
 
 function openReporteFacturacion(){
   const sucSel=document.getElementById('rf-suc');
-  sucSel.value=currentVMSuc==='TODAS'?'Florida':currentVMSuc;
+  // currentVMSuc trae el nombre CRUDO de la sucursal (ej. "Av. Puebla"),
+  // que no coincide con los <option value> del selector ("Puebla"/"Hotel"/
+  // "Florida") -- si se asigna tal cual, el <select> queda sin nada
+  // seleccionado (value="") y el reporte sale vacío aunque sí haya
+  // facturas. Se normaliza igual que en facturasDetalleDelDia.
+  sucSel.value=corteSucLabel(currentVMSuc)||'Florida';
   const fEl=document.getElementById('rf-fecha');
   if(!fEl.value)fEl.value=new Date().toISOString().slice(0,10);
   const desdeEl=document.getElementById('rf-desde'),hastaEl=document.getElementById('rf-hasta');
