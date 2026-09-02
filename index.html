@@ -2623,7 +2623,7 @@ function isAdmin(){return currentPerfil&&currentPerfil.rol==='admin';}
 function puedeTimbrarNomina(){return currentPerfil&&(currentPerfil.rol==='admin'||currentPerfil.rol==='oficinista');}
 function canDelete(){return isAdmin();}
 function showIfAdmin(html){return isAdmin()?html:'';}
-let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[],cortesData=[],correccionesData=[],correccionesAnteriorData=[],accionesVentaData=[],accionesPosData=[],entidadesFiscalesData=[];
+let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[],cortesData=[],correccionesData=[],correccionesAnteriorData=[],accionesVentaData=[],accionesPosData=[],entidadesFiscalesData=[],cancelacionesCfdiData=[];
 let currentEnt=localStorage.getItem('ep_obl_ent')||null,currentRhEnt=null;
 let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null,editCatId=null,editCuentaId=null,editPuestoId=null,editUsuarioId=null;
 let cuentasPagoData=[],puestosData=[],usuariosData=[];
@@ -2719,7 +2719,7 @@ async function initApp(user){
 
 // ─── LOAD DATA ────────────────────────────────────────────────
 async function loadAll(){
-  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadUsuarios(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger(),loadCortes(),loadCorrecciones(),loadCorreccionesAnterior(),loadAccionesVenta(),loadAccionesPos(),loadEntidadesFiscales()]);
+  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadUsuarios(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger(),loadCortes(),loadCorrecciones(),loadCorreccionesAnterior(),loadAccionesVenta(),loadAccionesPos(),loadEntidadesFiscales(),loadCancelacionesCfdi()]);
   renderAll();
 }
 async function loadEntidadesFiscales(){
@@ -2729,6 +2729,10 @@ async function loadEntidadesFiscales(){
 async function loadCortes(){
   const {data}=await sb.from('cortes_caja').select('*').order('cierre',{ascending:false});
   cortesData=data||[];
+}
+async function loadCancelacionesCfdi(){
+  const {data}=await sb.from('cfdi_cancelaciones').select('*').order('cancelado_at',{ascending:false});
+  cancelacionesCfdiData=data||[];
 }
 async function loadCorrecciones(){
   const {data}=await sb.from('correcciones_pago_pendientes').select('*').order('creada_at',{ascending:false});
@@ -8052,7 +8056,7 @@ function renderVentasMes(){
           ?`<span class="corte-badge" style="background:var(--surface2);color:var(--text3)">Excluida (sin CFDI)</span>`
           :`<span class="corte-badge pend">Sin facturar</span>`;
     const acciones=p.facturado
-      ?accionBtnsVenta(p.sucursal,p.folio,p.turno_id)
+      ?accionBtnsVenta(p.sucursal,p.folio,p.turno_id,p.uuid_fiscal)
       :(p.facturado===false&&!p.excluido
         ?`<button class="corte-iconbtn" title="Corregir método de pago" onclick="openCorreccionModal('${p.sucursal}',${p.folio},${p.turno_id})">✎</button>`+
           `<button class="corte-iconbtn" title="Facturar este folio a un cliente" onclick="openFacturarModal('${p.sucursal.replace(/'/g,"\\'")}',${p.folio})">🧾</button>`
@@ -9299,7 +9303,7 @@ function openCorteDetail(id){
   const filasFolios=pagosDetalle.map((p,i)=>{
     let estado='',btn='';
     if(p.facturado){
-      btn=accionBtnsVenta(c.sucursal,p.folio,c.turno_id);
+      btn=accionBtnsVenta(c.sucursal,p.folio,c.turno_id,p.uuid_fiscal);
     }else{
       const corr=correccionDe(c.sucursal,p.folio);
       if(corr&&corr.aplicada)estado=`<span class="corte-badge ok">✓ corregido a ${corr.forma_pago_correcta}</span>`;
@@ -9443,71 +9447,114 @@ async function cancelarCorreccionPago(id){
   if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();
 }
 
-// ─── CANCELAR / SUSTITUIR FACTURA (folios YA facturados) ─────────────────
-// Distinto de la corrección de forma de pago: esto es una acción fiscal
-// real ante el SAT. Oficina solo deja la SOLICITUD aquí -- Pescador POS la
-// jala, un humano en la sucursal la revisa y la confirma con el diálogo
-// que ya existe ahí (Cancelar/Sustituir CFDI) antes de que se ejecute.
-// Nunca se aplica sola. Ver Edge Function pos-acciones-venta.
+// ─── CANCELAR FACTURA (folios YA facturados) ─────────────────────────────
+// Hasta el 2026-09-01 esto solo dejaba una SOLICITUD para que alguien en la
+// sucursal la confirmara con PIN en Pescador POS (DialogoCancelarFactura)
+// antes de tocar el SAT -- ver acciones_venta_pendientes / Edge Function
+// pos-acciones-venta, que siguen aquí solo para retirar una solicitud vieja
+// que haya quedado pendiente de antes. Decisión explícita del dueño ese
+// día: Oficina cancela DIRECTO ante el SAT vía el Edge Function
+// cancelar-cfdi (mismas reglas de motivo/sustitución que ya usa
+// facturacom.py en pescador-pos) -- ya no pasa por el POS ni por un PIN
+// local. Ver aviso en cancelar-cfdi/index.ts: esto no reconcilia sola la
+// tabla `facturas` local de la sucursal.
+const MOTIVOS_CANCELACION=[
+  ['01','Emitido con errores — con sustitución'],
+  ['02','Emitido con errores — sin sustitución'],
+  ['03','No se llevó a cabo la operación'],
+  ['04','Operación nominativa en factura global'],
+];
+
 function accionVentaDe(sucursal,folio){
   const propias=accionesVentaData.filter(a=>a.sucursal===sucursal&&a.folio===folio);
   return propias.find(a=>a.estado==='pendiente')||propias[0]||null;
 }
 
-function accionBtnsVenta(sucursal,folio,turnoId){
+function entidadCodigoDe(sucursal){
+  const ent=corteSucEnt(sucursal);
+  if(!ent)return null;
+  return Object.keys(ENTS).find(k=>ENTS[k]===ent)||null;
+}
+
+function cancelacionCfdiDe(sucursal,folio){
+  return cancelacionesCfdiData.find(c=>c.sucursal===sucursal&&c.folio===folio)||null;
+}
+
+function accionBtnsVenta(sucursal,folio,turnoId,uuidFiscal){
+  const cancelada=cancelacionCfdiDe(sucursal,folio);
+  if(cancelada){
+    const motivoTxt=(MOTIVOS_CANCELACION.find(m=>m[0]===cancelada.motivo)||[])[1]||cancelada.motivo;
+    return `<span class="corte-badge" style="background:var(--red-light);color:var(--red)" title="Motivo ${cancelada.motivo} — ${motivoTxt}">✕ cancelada ante el SAT</span>`;
+  }
+  // Solicitud vieja (de antes de este cambio) que quedó pendiente de que la
+  // sucursal la confirmara -- se deja poder retirarla, pero ya no se puede
+  // crear una nueva así.
   const accion=accionVentaDe(sucursal,folio);
   if(accion&&accion.estado==='pendiente'){
     const tipoLbl=accion.tipo==='sustitucion'?'sustituir/cambiar pago':'cancelar';
-    return `<span class="corte-badge pend">⏳ pedido ${tipoLbl}</span> `+
-      `<button class="corte-iconbtn" title="Retirar solicitud (la sucursal todavía no la aplica)" onclick="cancelarAccionVenta('${accion.id}')">✕</button>`;
+    return `<span class="corte-badge pend">⏳ pedido ${tipoLbl} (antiguo)</span> `+
+      `<button class="corte-iconbtn" title="Retirar solicitud vieja" onclick="cancelarAccionVenta('${accion.id}')">✕</button>`;
   }
-  let estadoBadge='';
-  if(accion&&accion.estado==='aplicada'){
-    estadoBadge=`<span class="corte-badge ok" title="${(accion.resultado||'').replace(/"/g,'&quot;')}">✓ aplicada</span> `;
-  }else if(accion&&accion.estado==='rechazada'){
-    estadoBadge=`<span class="corte-badge" style="background:var(--red-light);color:var(--red)" title="${(accion.resultado||'').replace(/"/g,'&quot;')}">✕ rechazada</span> `;
+  if(!uuidFiscal){
+    return `<span class="corte-badge" style="background:var(--surface2);color:var(--text3)" title="Este corte no trae el UUID fiscal del CFDI todavía">Sin UUID</span>`;
   }
   const suc=sucursal.replace(/'/g,"\\'");
-  return `${estadoBadge}`+
-    `<button class="corte-iconbtn" title="Pedir cancelar este CFDI" onclick="openAccionVentaModal('${suc}',${folio},${turnoId==null?'null':turnoId},'cancelacion')">🗑</button>`+
-    `<button class="corte-iconbtn" title="Pedir sustituir CFDI (y/o corregir forma de pago)" onclick="openAccionVentaModal('${suc}',${folio},${turnoId==null?'null':turnoId},'sustitucion')">🔁</button>`;
+  const uuid=uuidFiscal.replace(/'/g,"\\'");
+  return `<button class="corte-iconbtn" title="Cancelar este CFDI ante el SAT" onclick="openCancelarCfdiModal('${suc}',${folio},${turnoId==null?'null':turnoId},'${uuid}')">🗑</button>`;
 }
 
-function openAccionVentaModal(sucursal,folio,turnoId,tipo){
-  const esSust=tipo==='sustitucion';
-  document.getElementById('m-accion-venta-title').textContent=
-    (esSust?'Sustituir factura — ':'Cancelar factura — ')+`folio ${folio} · ${sucursal}`;
+function openCancelarCfdiModal(sucursal,folio,turnoId,uuidFiscal){
+  const entidad=entidadCodigoDe(sucursal);
+  document.getElementById('m-accion-venta-title').textContent=`Cancelar factura ante el SAT — folio ${folio} · ${sucursal}`;
   document.getElementById('m-accion-venta-body').innerHTML=`
-    <div style="background:var(--amber-light,#fff3cd);color:var(--amber,#856404);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:12px">
-      Esto NO se aplica solo -- queda en cola para que alguien en ${sucursal} lo confirme en el POS antes de tocar el SAT.
+    <div style="background:var(--red-light,#fdecea);color:var(--red,#c0392b);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:12px">
+      Esto cancela el CFDI ante el SAT de inmediato, sin pasar por el POS ni por PIN local. No se puede deshacer.
     </div>
-    ${esSust?`<div class="f-row"><label>Nueva forma de pago (opcional)</label>
-      <select id="av-forma"><option value="">— No corregir forma de pago, solo sustituir —</option>${FORMAS_PAGO_POS.map(f=>`<option value="${f}">${f}</option>`).join('')}</select>
-    </div>`:''}
-    <div class="f-row"><label>Motivo <span class="req">*</span></label><input type="text" id="av-motivo" placeholder="ej. cliente pidió otro RFC / forma de pago incorrecta"/></div>
+    <div class="f-row"><label>Motivo SAT <span class="req">*</span></label>
+      <select id="cc-motivo" onchange="document.getElementById('cc-panel-sust').style.display=this.value==='01'?'block':'none'">
+        ${MOTIVOS_CANCELACION.map(([c,d])=>`<option value="${c}" ${c==='02'?'selected':''}>${c} — ${d}</option>`).join('')}
+      </select>
+    </div>
+    <div class="f-row" id="cc-panel-sust" style="display:none">
+      <label>UUID fiscal del CFDI sustituto <span class="req">*</span></label>
+      <input type="text" id="cc-sustituto" placeholder="UUID del CFDI que ya emitiste para reemplazar este"/>
+      <div style="font-size:11px;color:var(--text3);margin-top:2px">Con motivo 01 el SAT exige que el sustituto ya exista y esté timbrado.</div>
+    </div>
   `;
   document.getElementById('m-accion-venta-ftr').innerHTML=
-    `<button class="btn" onclick="closeModal('m-accion-venta')">Cancelar</button>`+
-    `<button class="btn btn-filled" id="av-save-btn" onclick="guardarAccionVenta('${sucursal.replace(/'/g,"\\'")}',${folio},${turnoId==null?'null':turnoId},'${tipo}')">Enviar solicitud</button>`;
+    `<button class="btn" onclick="closeModal('m-accion-venta')">Cerrar</button>`+
+    `<button class="btn btn-filled" id="cc-save-btn" style="background:var(--red,#c0392b);border-color:var(--red,#c0392b)" onclick="ejecutarCancelacionCfdi('${sucursal.replace(/'/g,"\\'")}',${folio},${turnoId==null?'null':turnoId},'${uuidFiscal.replace(/'/g,"\\'")}','${entidad||''}')">Cancelar ante el SAT</button>`;
   openModal('m-accion-venta');
 }
 
-async function guardarAccionVenta(sucursal,folio,turnoId,tipo){
-  const btn=document.getElementById('av-save-btn');
-  const motivo=document.getElementById('av-motivo').value.trim();
-  if(!motivo){toast('El motivo es obligatorio.',true);return;}
-  const formaEl=document.getElementById('av-forma');
-  const formaPagoNueva=formaEl&&formaEl.value?formaEl.value:null;
-  btn.disabled=true;
-  const creadaPor=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina';
-  const {error}=await sb.from('acciones_venta_pendientes').insert({
-    sucursal,folio,turno_id:turnoId,tipo,forma_pago_nueva:formaPagoNueva,motivo,creada_por:creadaPor,
-  });
-  if(error){btn.disabled=false;toast('No se pudo enviar: '+error.message,true);return;}
-  closeModal('m-accion-venta');
-  toast('Solicitud enviada — la sucursal la verá y la confirmará en su POS');
-  await loadAccionesVenta();
-  if(document.getElementById('page-cortes').classList.contains('active')){renderCortes();renderVentasMes();}
+async function ejecutarCancelacionCfdi(sucursal,folio,turnoId,uuidFiscal,entidad){
+  const btn=document.getElementById('cc-save-btn');
+  const motivo=document.getElementById('cc-motivo').value;
+  const sustituto=(document.getElementById('cc-sustituto')?.value||'').trim();
+  if(motivo==='01'&&!sustituto){toast('Con motivo 01 el UUID del CFDI sustituto es obligatorio.',true);return;}
+  if(!entidad){toast('No se reconoce a qué entidad (Hotel/Puebla/Florida) pertenece esta sucursal.',true);return;}
+  if(!confirm(`¿Cancelar el folio ${folio} ante el SAT? Esto es irreversible.`))return;
+  btn.disabled=true;btn.textContent='Cancelando…';
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const resp=await fetch(SUPA_URL+'/functions/v1/cancelar-cfdi',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+      body:JSON.stringify({
+        entidad,uuid_fiscal:uuidFiscal,motivo,folio_sustituto:motivo==='01'?sustituto:null,
+        sucursal,folio,turno_id:turnoId,
+      }),
+    });
+    const out=await resp.json().catch(()=>({error:'Respuesta inválida del servidor'}));
+    if(!resp.ok||out.error)throw new Error(out.error||'Error desconocido');
+    closeModal('m-accion-venta');
+    toast(out.aviso||'CFDI cancelado ante el SAT');
+    await loadCancelacionesCfdi();
+    if(document.getElementById('page-cortes').classList.contains('active')){renderCortes();renderVentasMes();}
+  }catch(e){
+    btn.disabled=false;btn.textContent='Cancelar ante el SAT';
+    toast('No se pudo cancelar: '+e.message,true);
+  }
 }
 
 async function cancelarAccionVenta(id){
@@ -10296,6 +10343,7 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'correcciones_anterior_pendientes'},async()=>{await loadCorreccionesAnterior();if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();})
     .on('postgres_changes',{event:'*',schema:'public',table:'acciones_venta_pendientes'},async()=>{await loadAccionesVenta();if(document.getElementById('page-cortes').classList.contains('active')){renderCortes();renderVentasMes();}})
     .on('postgres_changes',{event:'*',schema:'public',table:'acciones_pos_directas'},async()=>{await loadAccionesPos();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'cfdi_cancelaciones'},async()=>{await loadCancelacionesCfdi();if(document.getElementById('page-cortes').classList.contains('active')){renderCortes();renderVentasMes();}})
     .on('postgres_changes',{event:'*',schema:'public',table:'entidades_fiscales'},async()=>{await loadEntidadesFiscales();})
     .on('postgres_changes',{event:'*',schema:'public',table:'balances_mensuales'},async()=>{await loadBalances();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='luis')renderBalanceList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'balances_kateryn'},async()=>{await loadBalancesKat();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='kat')renderBalanceKatList();})
