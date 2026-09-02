@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
 
       const { data, error } = await adminClient
         .from("correcciones_anterior_pendientes")
-        .select("id, anterior_caja, anterior_bodega, anterior_vales, anterior_baucher, motivo, creada_por, creada_at")
+        .select("id, anterior_caja, anterior_bodega, anterior_vales, anterior_baucher, anterior_vales_antonio, anterior_vales_personal, motivo, creada_por, creada_at")
         .eq("sucursal", sucursal)
         .eq("aplicada", false)
         .order("creada_at");

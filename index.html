@@ -9398,14 +9398,16 @@ function openCorteDetail(id){
   const btnPdf=c.pdf_path
     ?`<button class="btn btn-filled" onclick="verCortePdf('${c.pdf_path}')">📄 Ver PDF</button>`
     :'';
-  const preAnterior={
+  const preAnterior=rr?{
+    bodega:(rr.totales_cuentas&&rr.totales_cuentas.bodega)||0,
+    baucher:(rr.totales_cuentas&&rr.totales_cuentas.baucher)||0,
+    vales_antonio:(rr.totales_cuentas&&rr.totales_cuentas.vales_antonio)||0,
+    vales_personal:(rr.totales_cuentas&&rr.totales_cuentas.vales_personal)||0,
+  }:{
     caja:Math.round(((d.efectivo_monedas||0)+(d.efectivo_billetes||0)+(d.saldo_bodega||0)+(d.saldo_baucher||0)+(d.saldo_vales||0))*100)/100,
     bodega:d.saldo_bodega||0, vales:d.saldo_vales||0, baucher:d.saldo_baucher||0,
   };
-  // El hotel encadena su "anterior" solo (anteriores_para_turno_nuevo en
-  // corte_recepcion.py, al abrir turno) -- no lee correcciones_anterior_pendientes
-  // como sí hace Pescador POS, así que este botón no aplicaría nada ahí.
-  const btnAnterior=rr?'':`<button class="btn" title="Corregir los saldos con los que arranca el próximo turno de ${c.sucursal}" onclick='openCorreccionAnteriorModal(${JSON.stringify(c.sucursal)},${JSON.stringify(preAnterior)})'>✎ Corregir anterior</button>`;
+  const btnAnterior=`<button class="btn" title="Corregir los saldos con los que arranca el próximo turno de ${c.sucursal}" onclick='openCorreccionAnteriorModal(${JSON.stringify(c.sucursal)},${JSON.stringify(preAnterior)})'>✎ Corregir anterior</button>`;
   document.getElementById('m-corte-detail-ftr').innerHTML=
     btnPdf+btnAnterior+'<button class="btn" onclick="closeModal(\'m-corte-detail\')">Cerrar</button>';
   openModal('m-corte-detail');
@@ -9641,15 +9643,25 @@ function correccionAnteriorPendienteDe(sucursal){
 }
 
 function openCorreccionAnteriorModal(sucursal,pre){
-  const p=pre||{caja:0,bodega:0,vales:0,baucher:0};
+  const esHotel=/hotel/i.test(sucursal);
+  const p=pre||(esHotel?{bodega:0,baucher:0,vales_antonio:0,vales_personal:0}:{caja:0,bodega:0,vales:0,baucher:0});
   const pendiente=correccionAnteriorPendienteDe(sucursal);
   document.getElementById('m-correccion-anterior-title').textContent=`Corregir anterior — ${sucursal}`;
-  document.getElementById('m-correccion-anterior-body').innerHTML=`
-    ${pendiente?`<div style="background:var(--amber-light,#fff3cd);color:var(--amber,#856404);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:12px">Ya hay una corrección pendiente de ${fmtFechaHora(pendiente.creada_at)} sin aplicar todavía — guardar aquí la reemplaza. <a href="#" onclick="event.preventDefault();cancelarCorreccionAnterior('${pendiente.id}');closeModal('m-correccion-anterior')" style="color:inherit;text-decoration:underline">Cancelarla en vez de reemplazarla</a></div>`:''}
+  const camposHotel=`
+    <div class="f-row"><label>Anterior de Vales Sr. Antonio</label><input type="number" step="0.01" id="ca-vales-antonio" value="${p.vales_antonio||0}"/></div>
+    <div class="f-row"><label>Anterior de Vales del Personal</label><input type="number" step="0.01" id="ca-vales-personal" value="${p.vales_personal||0}"/></div>
+    <div class="f-row"><label>Anterior de Bodega</label><input type="number" step="0.01" id="ca-bodega" value="${p.bodega||0}"/></div>
+    <div class="f-row"><label>Anterior de Baucher</label><input type="number" step="0.01" id="ca-baucher" value="${p.baucher||0}"/></div>
+  `;
+  const camposRestaurante=`
     <div class="f-row"><label>Anterior de caja <span class="req">*</span></label><input type="number" step="0.01" id="ca-caja" value="${p.caja}"/></div>
     <div class="f-row"><label>Anterior de bodega</label><input type="number" step="0.01" id="ca-bodega" value="${p.bodega}"/></div>
     <div class="f-row"><label>Anterior de vales</label><input type="number" step="0.01" id="ca-vales" value="${p.vales}"/></div>
     <div class="f-row"><label>Anterior de baucher</label><input type="number" step="0.01" id="ca-baucher" value="${p.baucher}"/></div>
+  `;
+  document.getElementById('m-correccion-anterior-body').innerHTML=`
+    ${pendiente?`<div style="background:var(--amber-light,#fff3cd);color:var(--amber,#856404);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:12px">Ya hay una corrección pendiente de ${fmtFechaHora(pendiente.creada_at)} sin aplicar todavía — guardar aquí la reemplaza. <a href="#" onclick="event.preventDefault();cancelarCorreccionAnterior('${pendiente.id}');closeModal('m-correccion-anterior')" style="color:inherit;text-decoration:underline">Cancelarla en vez de reemplazarla</a></div>`:''}
+    ${esHotel?camposHotel:camposRestaurante}
     <div class="f-row"><label>Motivo (opcional)</label><input type="text" id="ca-motivo" placeholder="ej. cajera capturó mal el baucher del cierre"/></div>
     <div style="font-size:11.5px;color:var(--text3);margin-top:4px">Se aplica sola la próxima vez que ${sucursal} abra turno (o de inmediato si ya tiene uno abierto y sincroniza).</div>
   `;
@@ -9662,19 +9674,34 @@ function openCorreccionAnteriorModal(sucursal,pre){
 async function guardarCorreccionAnterior(sucursal){
   const btn=document.getElementById('ca-save-btn');
   btn.disabled=true;
-  const caja=parseFloat(document.getElementById('ca-caja').value);
-  const bodega=parseFloat(document.getElementById('ca-bodega').value)||0;
-  const vales=parseFloat(document.getElementById('ca-vales').value)||0;
-  const baucher=parseFloat(document.getElementById('ca-baucher').value)||0;
-  if(isNaN(caja)){btn.disabled=false;toast('El anterior de caja es obligatorio',true);return;}
+  const esHotel=/hotel/i.test(sucursal);
   const motivo=document.getElementById('ca-motivo').value.trim()||null;
   const creadaPor=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina';
-  const {error}=await sb.from('correcciones_anterior_pendientes').insert({
-    sucursal,anterior_caja:caja,anterior_bodega:bodega,anterior_vales:vales,anterior_baucher:baucher,motivo,creada_por:creadaPor,
-  });
+  let payload;
+  if(esHotel){
+    payload={
+      sucursal,anterior_caja:0,
+      anterior_bodega:parseFloat(document.getElementById('ca-bodega').value)||0,
+      anterior_baucher:parseFloat(document.getElementById('ca-baucher').value)||0,
+      anterior_vales_antonio:parseFloat(document.getElementById('ca-vales-antonio').value)||0,
+      anterior_vales_personal:parseFloat(document.getElementById('ca-vales-personal').value)||0,
+      motivo,creada_por:creadaPor,
+    };
+  }else{
+    const caja=parseFloat(document.getElementById('ca-caja').value);
+    if(isNaN(caja)){btn.disabled=false;toast('El anterior de caja es obligatorio',true);return;}
+    payload={
+      sucursal,anterior_caja:caja,
+      anterior_bodega:parseFloat(document.getElementById('ca-bodega').value)||0,
+      anterior_vales:parseFloat(document.getElementById('ca-vales').value)||0,
+      anterior_baucher:parseFloat(document.getElementById('ca-baucher').value)||0,
+      motivo,creada_por:creadaPor,
+    };
+  }
+  const {error}=await sb.from('correcciones_anterior_pendientes').insert(payload);
   if(error){btn.disabled=false;toast('No se pudo guardar: '+error.message,true);return;}
   closeModal('m-correccion-anterior');
-  toast('Corrección de anterior guardada — se aplicará en el POS al abrir turno');
+  toast('Corrección de anterior guardada — se aplicará al abrir/sincronizar turno');
   await loadCorreccionesAnterior();
   if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();
 }
