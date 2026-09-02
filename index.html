@@ -9227,6 +9227,30 @@ function openCorteDetail(id){
   if(!c)return;
   const d=c.datos||{};
   const cu=d.cuadre||{};
+  // El hotel manda su cuadre bajo resumen_recepcion (4 cuentas: vales_antonio/
+  // vales_personal/bodega/baucher) desde el 2026-09-01, con nombres de campo
+  // distintos a los planos que ya manda Pescador POS (saldo_bodega, etc.) --
+  // sin este mapeo, "Cuadre del corte"/"Cuadre del día" salían en blanco para
+  // el hotel aunque el dato sí hubiera llegado (solo diferencia_cuadre viaja
+  // también plano, por eso esa sí se veía).
+  const rr=d.resumen_recepcion||null;
+  if(rr){
+    d.saldo_bodega=rr.totales_cuentas.bodega;
+    d.saldo_baucher=rr.totales_cuentas.baucher;
+    d.efectivo_monedas=rr.monedas;
+    d.efectivo_billetes=rr.billetes;
+    d.saldo_vales=Math.round(((rr.totales_cuentas.vales_antonio||0)+(rr.totales_cuentas.vales_personal||0))*100)/100;
+    cu.primer_total_caja=rr.total_caja_1;
+    cu.gastos_totales=rr.gastos;
+    cu.segundo_total_caja=rr.total_caja_2;
+    cu.anterior_caja=rr.anterior;
+    cu.tira=rr.ventas;
+    cu.esperado=rr.total_check;
+    cu.diferencia_cuadre=rr.diferencia;
+    cu.anterior_vales=Math.round(((rr.anterior_vales_antonio||0)+(rr.anterior_vales_personal||0))*100)/100;
+    cu.anterior_baucher=rr.anterior_baucher;
+    cu.anterior_bodega=rr.anterior_bodega;
+  }
   const difCuadra=Math.abs(Number(cu.diferencia_cuadre||0))<0.5;
 
   const desglose=d.movimientos_desglose||[];
@@ -9255,6 +9279,18 @@ function openCorteDetail(id){
     (movs.length?filasSaldo(movs):pdfRow('<span style="color:var(--text3);font-style:italic">Sin movimientos este turno</span>',''))+
     pdfRow('Actual',fmxn(actual),{bold:true,sep:true})
   );
+  // Detalle de las 4 cuentas de recepción del hotel (ver corte_recepcion.py
+  // allá): un monto positivo entra a la cuenta, uno negativo es el regreso/
+  // liquidación -- mismo criterio de color que filasSaldo arriba.
+  const bloqueCuentaHotel=(titulo,cuenta)=>{
+    const movs=(rr.movimientos_cuentas||[]).filter(m=>m.cuenta===cuenta);
+    const filas=movs.map(m=>pdfRow(m.concepto||'—',fmxn(m.monto),{color:Number(m.monto)>=0?'var(--green)':'var(--red)'})).join('');
+    return pdfSec(titulo)+pdfCard('',
+      pdfRow('Anterior',fmxn(rr[`anterior_${cuenta}`]))+
+      (movs.length?filas:pdfRow('<span style="color:var(--text3);font-style:italic">Sin movimientos este turno</span>',''))+
+      pdfRow('Actual',fmxn(rr.totales_cuentas[cuenta]),{bold:true,sep:true})
+    );
+  };
 
   // Folios de pago del corte -- si un folio dice "Efectivo" pero en
   // realidad fue "Debito" (o al revés), aquí se deja la corrección para
@@ -9317,9 +9353,16 @@ function openCorteDetail(id){
     ${tablaGastos(gastosDiv)}
     ${gastosDiv.length?pdfCard('',pdfRow('Total',`<b>${fmxn(gastosDiv.reduce((s,m)=>s+Number(m.monto||0),0))}</b>`,{sep:true})):''}
 
-    ${bloqueAnterior('Detalle de vales',detVales,cu.anterior_vales,d.saldo_vales)}
-    ${bloqueAnterior('Detalle de baucher',detBaucher,cu.anterior_baucher,d.saldo_baucher)}
-    ${bloqueAnterior('Detalle de bodega',detBodega,cu.anterior_bodega,d.saldo_bodega)}
+    ${rr?
+      bloqueCuentaHotel('Vales Sr. Antonio','vales_antonio')+
+      bloqueCuentaHotel('Vales del Personal','vales_personal')+
+      bloqueCuentaHotel('Bodega','bodega')+
+      bloqueCuentaHotel('Baucher','baucher')
+    :
+      bloqueAnterior('Detalle de vales',detVales,cu.anterior_vales,d.saldo_vales)+
+      bloqueAnterior('Detalle de baucher',detBaucher,cu.anterior_baucher,d.saldo_baucher)+
+      bloqueAnterior('Detalle de bodega',detBodega,cu.anterior_bodega,d.saldo_bodega)
+    }
 
     ${pdfSec('Folios de pago')}
     ${pdfTabla(
@@ -9337,7 +9380,10 @@ function openCorteDetail(id){
     caja:Math.round(((d.efectivo_monedas||0)+(d.efectivo_billetes||0)+(d.saldo_bodega||0)+(d.saldo_baucher||0)+(d.saldo_vales||0))*100)/100,
     bodega:d.saldo_bodega||0, vales:d.saldo_vales||0, baucher:d.saldo_baucher||0,
   };
-  const btnAnterior=`<button class="btn" title="Corregir los saldos con los que arranca el próximo turno de ${c.sucursal}" onclick='openCorreccionAnteriorModal(${JSON.stringify(c.sucursal)},${JSON.stringify(preAnterior)})'>✎ Corregir anterior</button>`;
+  // El hotel encadena su "anterior" solo (anteriores_para_turno_nuevo en
+  // corte_recepcion.py, al abrir turno) -- no lee correcciones_anterior_pendientes
+  // como sí hace Pescador POS, así que este botón no aplicaría nada ahí.
+  const btnAnterior=rr?'':`<button class="btn" title="Corregir los saldos con los que arranca el próximo turno de ${c.sucursal}" onclick='openCorreccionAnteriorModal(${JSON.stringify(c.sucursal)},${JSON.stringify(preAnterior)})'>✎ Corregir anterior</button>`;
   document.getElementById('m-corte-detail-ftr').innerHTML=
     btnPdf+btnAnterior+'<button class="btn" onclick="closeModal(\'m-corte-detail\')">Cerrar</button>';
   openModal('m-corte-detail');
