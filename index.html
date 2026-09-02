@@ -8155,7 +8155,12 @@ function facturasDetalleDelDia(sucursal,fechaYMD){
   // hasta el día 26 le interesa a la contadora en el día 4 (ahí está el
   // baucher), no en el 26.
   let filas=[];
-  cortesData.filter(c=>c.sucursal===sucursal).forEach(c=>{
+  // Cada sucursal manda su corte con SU propio nombre tal cual lo tiene
+  // capturado (Puebla="Av. Puebla", Hotel="Real de Poza Hotel"), que no
+  // coincide con el valor corto del selector ("Puebla"/"Hotel") -- se
+  // compara por la etiqueta corta (misma normalización que corteSucLabel),
+  // no por el nombre crudo, si no Puebla y Hotel siempre salían vacíos.
+  cortesData.filter(c=>corteSucLabel(c.sucursal)===sucursal).forEach(c=>{
     const fd=(c.datos&&c.datos.facturas_detalle)||[];
     fd.forEach(f=>{ if((f.fecha_venta||'').slice(0,10)===fechaYMD) filas.push(f); });
   });
