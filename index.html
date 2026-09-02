@@ -7882,10 +7882,15 @@ function fmtFechaCorta(dateStr){
 
 let currentCorteSuc='TODAS';
 let currentCorteMes=new Date().toISOString().slice(0,7);
+// Por APERTURA, no cierre -- un turno que abre 8pm y cierra 8am del dia
+// siguiente (normal en Hotel, corte partido en 2) es del mes en que
+// arrancó, no del que amaneció; si no, el ultimo turno de agosto se
+// colaba en la vista de septiembre solo por haber cerrado ya de madrugada.
+function corteMesKey(c){return(c.apertura||c.cierre||'').slice(0,7);}
 function renderCorteMesOptions(){
   const sel=document.getElementById('corte-mes');
   if(!sel)return;
-  const meses=[...new Set(cortesData.map(c=>(c.cierre||c.apertura||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  const meses=[...new Set(cortesData.map(corteMesKey).filter(Boolean))].sort().reverse();
   if(!meses.includes(currentCorteMes))meses.unshift(currentCorteMes);
   const fmtMes=m=>{
     const[y,mo]=m.split('-');
@@ -7929,7 +7934,7 @@ function renderCorteTabs(){
   if(!bar)return;
   const sucs=[...new Set(cortesData.map(c=>c.sucursal).filter(Boolean))].sort();
   if(currentCorteSuc!=='TODAS'&&!sucs.includes(currentCorteSuc))currentCorteSuc='TODAS';
-  const enMes=currentCorteMes?cortesData.filter(c=>(c.cierre||c.apertura||'').slice(0,7)===currentCorteMes):cortesData;
+  const enMes=currentCorteMes?cortesData.filter(c=>corteMesKey(c)===currentCorteMes):cortesData;
   let html=`<div class="tab ${currentCorteSuc==='TODAS'?'active':''}" onclick="switchCorteSuc('TODAS')">🧾 Todas<span class="tab-badge">${enMes.length}</span></div>`;
   sucs.forEach(s=>{
     const cnt=enMes.filter(c=>c.sucursal===s).length;
@@ -7945,7 +7950,7 @@ function renderCortes(){
   renderCorteMesOptions();
   const soloDif=document.getElementById('corte-solo-dif')?.checked;
   let list=currentCorteSuc==='TODAS'?cortesData:cortesData.filter(c=>c.sucursal===currentCorteSuc);
-  if(currentCorteMes)list=list.filter(c=>(c.cierre||c.apertura||'').slice(0,7)===currentCorteMes);
+  if(currentCorteMes)list=list.filter(c=>corteMesKey(c)===currentCorteMes);
   if(soloDif)list=list.filter(c=>Math.abs(Number(c.diferencia_cuadre||0))>0.5);
   const cnt=document.getElementById('corte-count');
   if(cnt)cnt.textContent=list.length+(list.length===1?' corte':' cortes');
