@@ -9374,17 +9374,32 @@ async function renderControlGastos(){
     dias.set(diaKey,acc);
     const movs=(c.datos&&c.datos.movimientos_desglose)||[];
     movs.forEach(m=>{
-      if(m.medio!=='caja'||m.tipo!=='retiro')return;
-      if(m.categoria!=='gasto_mercancia'&&m.categoria!=='gasto_diverso')return;
+      // El hotel manda TODOS sus gastos sin "medio", con tipo='RETIRO' (en
+      // mayúsculas) y categoria='General' -- nunca decide mercancía/diverso
+      // al capturar, a diferencia del restaurante donde eso lo elige la
+      // cajera. Se decide aquí probando primero contra el catálogo de
+      // "Gastos del Hotel" (Sam's, Dogo, Pan...) y si no matchea nada cae a
+      // "Gastos Diversos Hotel" -- mismo hallazgo que dejaba los gastos del
+      // hotel invisibles en el detalle de corte, aquí aplicaba igual, así
+      // que Control de Gastos tampoco mostraba nada del hotel (4-sept-2026).
+      const esGastoHotel=entKey==='HOT'&&m.categoria==='General'&&(m.tipo||'').toUpperCase()==='RETIRO';
+      let categoria=m.categoria;
+      if(esGastoHotel){
+        const conceptoHotel=m.concepto||m.descripcion||'';
+        categoria=cgClasificar(conceptoHotel,'gasto_mercancia','HOT').key?'gasto_mercancia':'gasto_diverso';
+      }else if(m.medio!=='caja'||m.tipo!=='retiro'){
+        return;
+      }
+      if(categoria!=='gasto_mercancia'&&categoria!=='gasto_diverso')return;
       const mDiaKey=(m.fecha||diaKey).slice(0,10);
-      const item={...m,sucursal:c.sucursal,turno_id:c.turno_id,diaKey:mDiaKey};
+      const item={...m,categoria,concepto:m.concepto||m.descripcion,sucursal:c.sucursal,turno_id:c.turno_id,diaKey:mDiaKey};
       const clas=cgCategoriaFinal(item,entKey);
-      const mapa=m.categoria==='gasto_mercancia'?merc:div;
+      const mapa=categoria==='gasto_mercancia'?merc:div;
       if(!clas.key){sinClasificar.push(item);return;}
       const dm=mapa.get(mDiaKey)||{};
       dm[clas.key]=(dm[clas.key]||0)+Number(m.monto||0);
       mapa.set(mDiaKey,dm);
-      const celdaKey=m.categoria+'|'+mDiaKey+'|'+clas.key;
+      const celdaKey=categoria+'|'+mDiaKey+'|'+clas.key;
       if(!itemsPorCelda.has(celdaKey))itemsPorCelda.set(celdaKey,[]);
       itemsPorCelda.get(celdaKey).push({...item,tipoMatch:clas.tipo});
       if(clas.tipo==='difuso')celdasDifusas.add(celdaKey);
