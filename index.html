@@ -1181,6 +1181,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         </div>
         <div class="tabs-wrap">
           <div class="tabs-bar" id="cortes-tabs-bar"></div>
+          <div id="cortes-anterior-panel" style="padding:14px 16px 0"></div>
           <div class="toolbar">
             <div class="toolbar-l" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
               <select id="corte-mes" onchange="switchCorteMes(this.value)" style="font-size:12px"></select>
@@ -8252,10 +8253,73 @@ function renderCorteTabs(){
   bar.innerHTML=html;
 }
 function switchCorteSuc(s){currentCorteSuc=s;renderCortes();}
+// Con qué anterior debería arrancar el PRÓXIMO turno de esta sucursal --
+// mismo cálculo que ya usaba el botón "Corregir anterior" de cada corte
+// (los 4 saldos del hotel, o caja/bodega/vales/baucher del restaurante).
+// Se separó a su propia función porque ahora también la usa el panel de
+// arriba, no solo el detalle de un corte puntual.
+function preAnteriorDeCorte(c){
+  const d=c.datos||{};
+  const rr=d.resumen_recepcion||null;
+  if(rr)return{
+    tipo:'hotel',
+    bodega:(rr.totales_cuentas&&rr.totales_cuentas.bodega)||0,
+    baucher:(rr.totales_cuentas&&rr.totales_cuentas.baucher)||0,
+    vales_antonio:(rr.totales_cuentas&&rr.totales_cuentas.vales_antonio)||0,
+    vales_personal:(rr.totales_cuentas&&rr.totales_cuentas.vales_personal)||0,
+  };
+  return{
+    tipo:'restaurante',
+    caja:Math.round(((d.efectivo_monedas||0)+(d.efectivo_billetes||0)+(d.saldo_bodega||0)+(d.saldo_baucher||0)+(d.saldo_vales||0))*100)/100,
+    bodega:d.saldo_bodega||0, vales:d.saldo_vales||0, baucher:d.saldo_baucher||0,
+  };
+}
+// El corte más reciente (por cierre) de una sucursal -- cortesData solo
+// trae cortes YA cerrados (el POS los manda al cerrar turno), así que el
+// más reciente es de donde sale "lo que trae ahorita" cada negocio.
+function ultimoCorteDe(sucursal){
+  const items=cortesData.filter(c=>c.sucursal===sucursal);
+  if(!items.length)return null;
+  return items.reduce((a,b)=>((b.cierre||b.apertura||'')>(a.cierre||a.apertura||'')?b:a));
+}
+// Panel de "Corregir anterior" fuera de cualquier corte en particular --
+// antes vivía colgado del detalle de CADA corte, lo cual no tenía sentido
+// porque una corrección siempre aplica al turno de HOY de esa sucursal, sin
+// importar qué corte pasado estés viendo (pedido explícito del dueño,
+// 4-sept-2026, tras confundirse corrigiendo el anterior de un corte viejo
+// pensando que afectaba a otro). Muestra una tarjeta por negocio (o solo la
+// sucursal activa si hay una pestaña específica elegida) con sus 4
+// anteriores actuales y el botón para corregirlos.
+function renderCorteAnteriorPanel(){
+  const el=document.getElementById('cortes-anterior-panel');
+  if(!el)return;
+  const sucs=[...new Set(cortesData.map(c=>c.sucursal).filter(Boolean))].sort();
+  const objetivo=currentCorteSuc==='TODAS'?sucs:[currentCorteSuc];
+  const tarjetas=objetivo.map(s=>{
+    const c=ultimoCorteDe(s);
+    if(!c)return'';
+    const pre=preAnteriorDeCorte(c);
+    const pendiente=correccionAnteriorPendienteDe(s);
+    const filas=pre.tipo==='hotel'
+      ?[['Vales Sr. Antonio',pre.vales_antonio],['Vales del Personal',pre.vales_personal],['Bodega',pre.bodega],['Baucher',pre.baucher]]
+      :[['Caja',pre.caja],['Bodega',pre.bodega],['Vales',pre.vales],['Baucher',pre.baucher]];
+    return`<div class="acc-card" style="min-width:220px;flex:1;background:${corteBg(s,6)};border-left:4px solid ${corteSucColor(s)}">
+      <div style="font-weight:600;font-size:13px;margin-bottom:6px"><span class="ent-dot" style="background:${corteSucColor(s)}"></span> ${corteSucLabel(s)}</div>
+      ${filas.map(([l,v])=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0"><span style="color:var(--text2)">${l}</span><b>${fmxn(v)}</b></div>`).join('')}
+      ${pendiente?`<div style="font-size:11px;color:var(--amber,#b8860b);margin-top:6px">⏳ Corrección pendiente sin aplicar (${fmtFechaHora(pendiente.creada_at)})</div>`:''}
+      <button class="btn btn-sm" style="margin-top:8px;width:100%" onclick='openCorreccionAnteriorModal(${JSON.stringify(s)},${JSON.stringify(pre)})'>✎ Corregir anterior</button>
+    </div>`;
+  }).join('');
+  el.innerHTML=tarjetas?`
+    <div style="font-size:11px;color:var(--text2);margin-bottom:8px">Con esto arranca el próximo turno de cada negocio -- corrígelo aquí directo, ya no hace falta entrar a un corte en particular.</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">${tarjetas}</div>
+  `:'';
+}
 function renderCortes(){
   const el=document.getElementById('cortes-list');
   if(!el)return;
   renderCorteTabs();
+  renderCorteAnteriorPanel();
   renderCorteMesOptions();
   const soloDif=document.getElementById('corte-solo-dif')?.checked;
   let list=currentCorteSuc==='TODAS'?cortesData:cortesData.filter(c=>c.sucursal===currentCorteSuc);
@@ -9722,18 +9786,13 @@ function openCorteDetail(id){
   const btnPdf=c.pdf_path
     ?`<button class="btn btn-filled" onclick="verCortePdf('${c.pdf_path}')">📄 Ver PDF</button>`
     :'';
-  const preAnterior=rr?{
-    bodega:(rr.totales_cuentas&&rr.totales_cuentas.bodega)||0,
-    baucher:(rr.totales_cuentas&&rr.totales_cuentas.baucher)||0,
-    vales_antonio:(rr.totales_cuentas&&rr.totales_cuentas.vales_antonio)||0,
-    vales_personal:(rr.totales_cuentas&&rr.totales_cuentas.vales_personal)||0,
-  }:{
-    caja:Math.round(((d.efectivo_monedas||0)+(d.efectivo_billetes||0)+(d.saldo_bodega||0)+(d.saldo_baucher||0)+(d.saldo_vales||0))*100)/100,
-    bodega:d.saldo_bodega||0, vales:d.saldo_vales||0, baucher:d.saldo_baucher||0,
-  };
-  const btnAnterior=`<button class="btn" title="Corregir los saldos con los que arranca el próximo turno de ${c.sucursal}" onclick='openCorreccionAnteriorModal(${JSON.stringify(c.sucursal)},${JSON.stringify(preAnterior)})'>✎ Corregir anterior</button>`;
+  // "Corregir anterior" se movió fuera del detalle de corte (panel arriba
+  // de la lista, ver renderCorteAnteriorPanel) -- una corrección siempre
+  // aplica al turno de HOY, sin importar qué corte pasado estés viendo
+  // aquí, así que tenerla colgada de cada corte individual solo confundía
+  // (4-sept-2026).
   document.getElementById('m-corte-detail-ftr').innerHTML=
-    btnPdf+btnAnterior+'<button class="btn" onclick="closeModal(\'m-corte-detail\')">Cerrar</button>';
+    btnPdf+'<button class="btn" onclick="closeModal(\'m-corte-detail\')">Cerrar</button>';
   openModal('m-corte-detail');
 }
 
