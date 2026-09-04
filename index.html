@@ -8274,6 +8274,58 @@ function preAnteriorDeCorte(c){
     bodega:d.saldo_bodega||0, vales:d.saldo_vales||0, baucher:d.saldo_baucher||0,
   };
 }
+// Lo que ESTE corte dice que traía de anterior al ABRIR -- para comparar
+// contra lo que el corte de ANTES dejó al cerrar (preAnteriorDeCorte). Si
+// no coinciden, la cadena se rompió: el turno nuevo no heredó lo que de
+// verdad quedó, sin importar que la Diferencia general del corte salga
+// bien (puede salir "bien" aunque Bodega/Baucher/Vales estén mal, si el
+// error se cancela con otro -- caso real Florida turno #3, 4-sept-2026:
+// Baucher y Vales llegaron ~$16,000 y ~$13,000 de menos, pero la
+// Diferencia mostraba -$0.51 como si nada, porque el "Anterior de caja"
+// general cargaba exactamente el mismo error y se cancelaba solo).
+function anteriorDeCorte(c){
+  const d=c.datos||{};
+  const rr=d.resumen_recepcion||null;
+  if(rr)return{
+    tipo:'hotel',
+    bodega:rr.anterior_bodega||0, baucher:rr.anterior_baucher||0,
+    vales_antonio:rr.anterior_vales_antonio||0, vales_personal:rr.anterior_vales_personal||0,
+  };
+  const cu=d.cuadre||{};
+  return{tipo:'restaurante',bodega:cu.anterior_bodega||0,vales:cu.anterior_vales||0,baucher:cu.anterior_baucher||0};
+}
+// Recorre los cortes de una sucursal en orden y compara, turno por turno,
+// "con qué cerró el anterior" contra "con qué dice que abrió el siguiente"
+// -- cualquier campo (Bodega/Baucher/Vales[/Vales Sr.Antonio/Personal])
+// que no amarre exacto (tolerancia $1, por redondeos) se reporta aquí,
+// aunque el corte en cuestión "cuadre" perfecto por fuera.
+function detectarRupturasCadena(sucursal){
+  // Se acota al mes elegido (igual que la lista de cortes) -- cada mes se
+  // reinicia la administración y el histórico de meses pasados ya se dio
+  // por cerrado, así que una corrección vieja y ya aceptada (ej. la del
+  // 18-ago de Florida) no debe salir marcada como "ruptura" para siempre.
+  let items=cortesData.filter(c=>c.sucursal===sucursal);
+  if(currentCorteMes)items=items.filter(c=>corteMesKey(c)===currentCorteMes);
+  items=items.sort((a,b)=>(a.apertura||'').localeCompare(b.apertura||''));
+  const rupturas=[];
+  const ETIQUETAS={bodega:'Bodega',baucher:'Baucher',vales:'Vales',vales_antonio:'Vales Sr. Antonio',vales_personal:'Vales del Personal'};
+  for(let i=1;i<items.length;i++){
+    const prevFin=preAnteriorDeCorte(items[i-1]);
+    const curIni=anteriorDeCorte(items[i]);
+    const campos=prevFin.tipo==='hotel'?['bodega','baucher','vales_antonio','vales_personal']:['bodega','vales','baucher'];
+    for(const campo of campos){
+      const esperado=Math.round((Number(prevFin[campo])||0)*100)/100;
+      const real=Math.round((Number(curIni[campo])||0)*100)/100;
+      if(Math.abs(esperado-real)>1){
+        rupturas.push({
+          turnoPrevio:items[i-1].turno_id, turno:items[i].turno_id,
+          campo:ETIQUETAS[campo]||campo, esperado, real, dif:Math.round((real-esperado)*100)/100,
+        });
+      }
+    }
+  }
+  return rupturas;
+}
 // El corte más reciente (por cierre) de una sucursal -- cortesData solo
 // trae cortes YA cerrados (el POS los manda al cerrar turno), así que el
 // más reciente es de donde sale "lo que trae ahorita" cada negocio.
@@ -8310,7 +8362,21 @@ function renderCorteAnteriorPanel(){
       <button class="btn btn-sm" style="margin-top:8px;width:100%" onclick='openCorreccionAnteriorModal(${JSON.stringify(s)},${JSON.stringify(pre)})'>✎ Corregir anterior</button>
     </div>`;
   }).join('');
+  // Aviso de cadena rota -- se muestra SIEMPRE que exista, sin importar si
+  // el corte donde ocurrió "cuadraba" bien por fuera (ver detectarRupturasCadena).
+  const rupturasHtml=objetivo.map(s=>{
+    const rupturas=detectarRupturasCadena(s);
+    if(!rupturas.length)return'';
+    return`<div style="background:#fdecea;border:1px solid var(--red);border-radius:8px;padding:10px 14px;margin-bottom:10px">
+      <div style="font-weight:700;color:var(--red);font-size:12.5px;margin-bottom:4px">⚠ ${corteSucLabel(s)}: el arrastre entre turnos no amarra (aunque el corte se vea "Cuadra")</div>
+      ${rupturas.map(r=>`<div style="font-size:12px;color:var(--text2);padding:2px 0">
+        Turno #${r.turnoPrevio} → #${r.turno} · <b>${r.campo}</b>: debía traer ${fmxn(r.esperado)}, trajo ${fmxn(r.real)}
+        <span style="color:var(--red);font-weight:600">(${r.dif>0?'+':''}${fmxn(r.dif)})</span>
+      </div>`).join('')}
+    </div>`;
+  }).join('');
   el.innerHTML=tarjetas?`
+    ${rupturasHtml}
     <div style="font-size:11px;color:var(--text2);margin-bottom:8px">Con esto arranca el próximo turno de cada negocio -- corrígelo aquí directo, ya no hace falta entrar a un corte en particular.</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">${tarjetas}</div>
   `:'';
