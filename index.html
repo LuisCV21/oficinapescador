@@ -7538,7 +7538,6 @@ table{border-collapse:collapse;width:100%;table-layout:fixed}
 .nom-tot td{border:1px solid #0f3d52;font-weight:700;font-size:10px;padding:4px;background:#e2f0f1;color:#0f3d52;border-top:2px solid #e8823e}
 .nom-tot td.nr{text-align:right;font-family:'DM Mono',Consolas,monospace}
 .nom-data tr,.nom-tot{page-break-inside:avoid}
-.foot-note{font-size:9px;color:#5c7d86;margin-top:6px;padding:0 4px}
 .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:'DM Sans',Arial,sans-serif;font-weight:600}
 @media print{.print-btn{display:none}body{padding:0;background:#fff}}
 </style></head><body>
@@ -7572,7 +7571,6 @@ table{border-collapse:collapse;width:100%;table-layout:fixed}
     <td class="nr">$ ${fmxnPlain(totNeto)}</td>
   </tr>
 </table>
-<div class="foot-note">Solo para revisar — coincide con el reporte de nómina de Aspel. Incluye únicamente empleados con nómina timbrada (inscritos IMSS).</div>
 </body></html>`;
   const w=window.open('','_blank');
   w.document.write(html);
@@ -7633,7 +7631,7 @@ function renderHistoricoNominaModal(){
     last.filas.push(f);
   });
   let gTotPerc=0,gTotIsr=0,gTotImss=0,gTotNeto=0;
-  let bodyHtml=`<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Un renglón por cada recibo de nómina de la semana dentro del mes, agrupado por empleado — equivalente al histórico de recibos electrónicos que generaba Aspel NOI. Solo incluye empleados con nómina timbrada (inscritos IMSS).</div><div style="overflow-x:auto">`;
+  let bodyHtml=`<div style="overflow-x:auto">`;
   grupos.forEach(g=>{
     const sPerc=g.filas.reduce((s,f)=>s+f.c.subtotal,0);
     const sIsr=g.filas.reduce((s,f)=>s+(Number(f.l.retencion_isr)||0),0);
@@ -7743,7 +7741,6 @@ table{border-collapse:collapse;width:100%;table-layout:fixed;margin-bottom:14px}
 .emp-sub td{border:1px solid #c9dde0;background:#f2f8f8;font-weight:700;font-size:9.5px;padding:4px 6px;border-top:1.5px solid #e8823e}
 .emp-sub td.nr{text-align:right;font-family:'DM Mono',Consolas,monospace}
 .grand-tot{display:flex;justify-content:flex-end;gap:20px;font-weight:700;font-size:11px;background:#0f3d52;color:#fff;padding:8px 14px;border-radius:6px;margin-top:6px}
-.foot-note{font-size:9px;color:#5c7d86;margin-top:8px}
 .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:'DM Sans',Arial,sans-serif;font-weight:600}
 @media print{.print-btn{display:none}body{padding:0;background:#fff}.hist-body{border:none}}
 </style></head><body>
@@ -7758,7 +7755,6 @@ table{border-collapse:collapse;width:100%;table-layout:fixed;margin-bottom:14px}
 <div class="hist-body">
   ${gruposHtml}
   <div class="grand-tot"><span>PERCEPCIONES: $ ${fmxnPlain(gTotPerc)}</span><span>ISR: $ ${fmxnPlain(gTotIsr)}</span><span>IMSS: $ ${fmxnPlain(gTotImss)}</span><span>NETO: $ ${fmxnPlain(gTotNeto)}</span></div>
-  <div class="foot-note">Un renglón por cada recibo de nómina de la semana dentro del mes, agrupado por empleado — equivalente al histórico de recibos electrónicos de Aspel NOI.</div>
 </div>
 </body></html>`;
   const w=window.open('','_blank');
