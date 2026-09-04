@@ -1325,6 +1325,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             <button class="btn btn-filled" id="nom-add-btn" onclick="addNominaLedgerEntry()">+ Agregar</button>
             <button class="btn" id="nom-cancel-edit-btn" onclick="cancelEditNominaLedger()" style="display:none">Cancelar</button>
           </div>
+          <div class="ledger-add-form" style="margin-top:2px">
+            <div class="f-row" style="min-width:160px"><label>Histórico mensual (como Aspel)</label><input type="month" id="nom-hist-mes"/></div>
+            <button class="btn btn-filled" onclick="abrirHistoricoNominaMensual()">📜 Ver histórico del mes</button>
+          </div>
           <div id="nomina-ledger-list"></div>
         </div>
 
@@ -1471,6 +1475,15 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   <div class="modal-hdr"><div class="modal-title" id="m-gravable-preview-title">Vista previa</div><button class="btn-icon" onclick="closeModal('m-gravable-preview')">✕</button></div>
   <div class="modal-body" id="m-gravable-preview-body"></div>
   <div class="modal-ftr" id="m-gravable-preview-ftr"></div>
+</div>
+</div>
+
+<!-- MODAL HISTÓRICO MENSUAL DE NÓMINA (ESTILO ASPEL) -->
+<div class="modal-overlay" id="m-historico-nomina">
+<div class="modal" style="max-width:920px">
+  <div class="modal-hdr"><div class="modal-title" id="m-historico-nomina-title">Histórico de nómina</div><button class="btn-icon" onclick="closeModal('m-historico-nomina')">✕</button></div>
+  <div class="modal-body" id="m-historico-nomina-body"></div>
+  <div class="modal-ftr" id="m-historico-nomina-ftr"></div>
 </div>
 </div>
 
@@ -7401,7 +7414,7 @@ async function onNomPeriodoSelect(){
 }
 // Vista previa de solo lectura -- parecida al reporte de nómina de Aspel,
 // desglosada por empleado. No se guarda ni se manda a ningún lado.
-let nomPreviewFilas=[];
+let nomPreviewFilas=[],nomPreviewPeriodo=null;
 async function abrirVistaPreviaGravable(){
   const id=document.getElementById('nom-add-periodo').value;
   if(!id)return;
@@ -7414,6 +7427,7 @@ async function abrirVistaPreviaGravable(){
     .filter(l=>Number(l.dias_pagados)>0&&empById[l.empleado_id]&&empById[l.empleado_id].nomina_fiscal!==false)
     .map(l=>({e:empById[l.empleado_id],l,c:nominaCalc(l)}))
     .sort((a,b)=>a.e.nombre.localeCompare(b.e.nombre));
+  nomPreviewPeriodo=periodo;
   renderVistaPreviaGravableModal(periodo);
   openModal('m-gravable-preview');
 }
@@ -7450,7 +7464,306 @@ function renderVistaPreviaGravableModal(periodo){
       </tr></tfoot>
     </table>
     </div>`;
-  document.getElementById('m-gravable-preview-ftr').innerHTML=`<button class="btn" onclick="closeModal('m-gravable-preview')">Cerrar</button>`;
+  document.getElementById('m-gravable-preview-ftr').innerHTML=`
+    <button class="btn" onclick="exportarVistaPreviaGravableXLSX()">📊 Excel</button>
+    <button class="btn" onclick="imprimirVistaPreviaGravablePDF()">🖨 PDF</button>
+    <button class="btn" onclick="closeModal('m-gravable-preview')">Cerrar</button>`;
+}
+// Excel/PDF de la vista previa semanal (misma tabla del modal). Ambos se
+// arman en el momento con lo que ya se calculó para el modal -- no vuelven
+// a pedir nada a Supabase.
+function exportarVistaPreviaGravableXLSX(){
+  if(!nomPreviewPeriodo){toast('Abre primero la vista previa.',true);return;}
+  const periodo=nomPreviewPeriodo,filas=nomPreviewFilas;
+  const tot=k=>Math.round(filas.reduce((s,f)=>s+(k(f)||0),0)*100)/100;
+  const aoa=[
+    [`Bitácora Nómina · ${ENT_LABELS[nomActiveEnt]}`],
+    [`Semana del ${fmtFechaCorta(periodo.semana_inicio)} al ${fmtFechaCorta(periodo.semana_fin)}`],
+    [],
+    ['Empleado','Puesto','Días','Sueldo','Prima dom.','Gravable','ISR','IMSS','Neto'],
+    ...filas.map(f=>[f.e.nombre,puestoNombre(f.e.puesto_id)||'',Number(f.l.dias_pagados)||0,Number(f.c.nominaFiscal)||0,Number(f.c.primaDominical)||0,Number(f.c.subtotal)||0,Number(f.l.retencion_isr)||0,Number(f.l.retencion_imss)||0,Number(f.c.total)||0]),
+    [],
+    ['Totales','','',tot(f=>f.c.nominaFiscal),tot(f=>f.c.primaDominical),tot(f=>f.c.subtotal),tot(f=>Number(f.l.retencion_isr)),tot(f=>Number(f.l.retencion_imss)),tot(f=>f.c.total)],
+  ];
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:28},{wch:16},{wch:6},{wch:11},{wch:11},{wch:11},{wch:10},{wch:10},{wch:11}];
+  XLSX.utils.book_append_sheet(wb,ws,'Gravable');
+  XLSX.writeFile(wb,`Gravable_${ENT_LABELS[nomActiveEnt]}_${periodo.semana_inicio}_a_${periodo.semana_fin}.xlsx`);
+  toast('Excel exportado.');
+}
+function imprimirVistaPreviaGravablePDF(){
+  if(!nomPreviewPeriodo){toast('Abre primero la vista previa.',true);return;}
+  const periodo=nomPreviewPeriodo,filas=nomPreviewFilas;
+  const emp=NOMINA_EMPRESA[nomActiveEnt]||NOMINA_EMPRESA.PUE;
+  const totGravable=filas.reduce((s,f)=>s+f.c.subtotal,0);
+  const totIsr=filas.reduce((s,f)=>s+(Number(f.l.retencion_isr)||0),0);
+  const totImss=filas.reduce((s,f)=>s+(Number(f.l.retencion_imss)||0),0);
+  const totNeto=filas.reduce((s,f)=>s+f.c.total,0);
+  const rows=filas.map((f,i)=>`<tr>
+    <td class="nc">${i+1}</td>
+    <td class="nl">${f.e.nombre.toUpperCase()}</td>
+    <td class="nl">${(puestoNombre(f.e.puesto_id)||'').toUpperCase()}</td>
+    <td class="nc">${f.l.dias_pagados}</td>
+    <td class="nr">$ ${fmxnPlain(f.c.nominaFiscal)}</td>
+    <td class="nr">$ ${fmxnPlain(f.c.primaDominical)}</td>
+    <td class="nr nb">$ ${fmxnPlain(f.c.subtotal)}</td>
+    <td class="nr">$ ${fmxnPlain(f.l.retencion_isr)}</td>
+    <td class="nr">$ ${fmxnPlain(f.l.retencion_imss)}</td>
+    <td class="nr nb">$ ${fmxnPlain(f.c.total)}</td>
+  </tr>`).join('');
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Gravable ${emp.titulo}</title>
+<style>
+@page{size:11in 8.5in;margin:0.6cm}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+html,body{width:100%;height:100%}
+body{font-family:'DM Sans',Arial,sans-serif;margin:0;padding:8px;color:#16323c;background:#eaf4f5}
+table{border-collapse:collapse;width:100%;table-layout:fixed}
+.nom-wrap{border:1.5px solid #0f3d52;border-radius:8px;overflow:hidden}
+.nom-title td{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;text-align:left;padding:0}
+.nom-title-inner{display:flex;align-items:center;gap:12px;padding:7px 16px}
+.nom-title-logo{height:36px;width:36px;object-fit:contain;flex-shrink:0}
+.nom-title-text{font-family:'Fraunces',serif;font-size:16px;font-weight:600;letter-spacing:.03em}
+.nom-head td{border:1px solid #c9dde0;vertical-align:middle;padding:5px 10px;font-size:10.5px}
+.nom-head .box-izq{width:40%}
+.nom-head .box-izq .patron{font-weight:700;text-decoration:underline;font-size:11.5px;color:#0f3d52}
+.nom-head .box-izq .empresa{font-weight:700;margin-top:2px;color:#0f3d52}
+.nom-head .box-der{background:#eaf4f5;text-align:center;font-weight:700;font-size:10.5px;color:#0f3d52}
+.nom-cols th{border:1px solid #c9dde0;background:#e2f0f1;color:#0f3d52;font-size:9px;font-weight:700;text-align:center;padding:4px 3px;vertical-align:bottom;line-height:1.2}
+.nom-data td{border:1px solid #c9dde0;font-size:10px;padding:3px 5px;white-space:nowrap}
+.nom-data td.nl{text-align:left;white-space:normal;word-break:break-word}
+.nom-data td.nc{text-align:center}
+.nom-data td.nr{text-align:right;font-family:'DM Mono',Consolas,monospace}
+.nom-data td.nb{font-weight:700}
+.nom-tot td{border:1px solid #0f3d52;font-weight:700;font-size:10px;padding:4px;background:#e2f0f1;color:#0f3d52;border-top:2px solid #e8823e}
+.nom-tot td.nr{text-align:right;font-family:'DM Mono',Consolas,monospace}
+.nom-data tr,.nom-tot{page-break-inside:avoid}
+.foot-note{font-size:9px;color:#5c7d86;margin-top:6px;padding:0 4px}
+.print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:'DM Sans',Arial,sans-serif;font-weight:600}
+@media print{.print-btn{display:none}body{padding:0;background:#fff}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
+<table class="nom-wrap">
+  <colgroup>
+    <col style="width:3%"><col style="width:22%"><col style="width:14%"><col style="width:6%">
+    <col style="width:11%"><col style="width:10%"><col style="width:11%"><col style="width:9%"><col style="width:9%"><col style="width:11%">
+  </colgroup>
+  <tr class="nom-title"><td colspan="10"><div class="nom-title-inner"><img class="nom-title-logo" src="${PA_LOGO}" alt="El Pescador"><span class="nom-title-text">GRAVABLE DE NÓMINA · ${emp.titulo}</span></div></td></tr>
+  <tr class="nom-head">
+    <td class="box-izq" rowspan="2" colspan="4">
+      <div class="patron">${emp.patron}</div>
+      <div class="empresa">${emp.empresa}</div>
+      <div>${emp.ciudad}</div>
+    </td>
+    <td class="box-der" colspan="6">SEMANA CORRESPONDIENTE:<br>${fmtNominaRango(periodo.semana_inicio,periodo.semana_fin)}</td>
+  </tr>
+  <tr class="nom-head">
+    <td class="box-der" colspan="6">FECHA: ${fmtNominaFecha(periodo.semana_fin)}</td>
+  </tr>
+  <tr class="nom-cols">
+    <th>No</th><th>NOMBRE</th><th>PUESTO</th><th>DÍAS</th><th>SUELDO</th><th>PRIMA<br>DOMINICAL</th><th>GRAVABLE</th><th>ISR</th><th>IMSS</th><th>NETO</th>
+  </tr>
+  <tbody class="nom-data">${rows||'<tr><td colspan="10" style="text-align:center;padding:16px">Sin empleados</td></tr>'}</tbody>
+  <tr class="nom-tot">
+    <td colspan="6" style="text-align:right">TOTALES</td>
+    <td class="nr">$ ${fmxnPlain(totGravable)}</td>
+    <td class="nr">$ ${fmxnPlain(totIsr)}</td>
+    <td class="nr">$ ${fmxnPlain(totImss)}</td>
+    <td class="nr">$ ${fmxnPlain(totNeto)}</td>
+  </tr>
+</table>
+<div class="foot-note">Solo para revisar — coincide con el reporte de nómina de Aspel. Incluye únicamente empleados con nómina timbrada (inscritos IMSS).</div>
+</body></html>`;
+  const w=window.open('','_blank');
+  w.document.write(html);
+  w.document.close();
+}
+// ─── HISTÓRICO MENSUAL DE NÓMINA (equivalente al "Histórico de recibos
+// electrónicos" que exportaba Aspel NOI) ─────────────────────────────
+// Junta todas las semanas (nomina_periodos) de la sucursal activa cuyo
+// F.Pago (semana_fin) cae dentro del mes elegido, trae sus lineas y arma
+// un renglon por recibo agrupado por empleado -- igual que el xls de
+// Aspel, pero con el estado/UUID real del CFDI que ya se timbro via
+// factura.com (facturacom_status/facturacom_uuid en nomina_lineas).
+let nomHistFilas=[],nomHistMeta=null;
+function estadoCfdiHistLabel(l){
+  const map={timbrada:'Timbrado',datos_incompletos:'Datos incompletos',error:'Error',pendiente:'Pendiente'};
+  return map[l.facturacom_status]||'No generado';
+}
+async function abrirHistoricoNominaMensual(){
+  const mesInput=document.getElementById('nom-hist-mes');
+  let mes=mesInput.value;
+  if(!mes){
+    const hoy=new Date();
+    mes=`${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
+    mesInput.value=mes;
+  }
+  const[y,m]=mes.split('-').map(Number);
+  const desde=`${mes}-01`;
+  const hasta=new Date(y,m,0).toISOString().slice(0,10);
+  const{data:periodos,error:pe}=await sb.from('nomina_periodos').select('*').eq('entidad',nomActiveEnt).gte('semana_fin',desde).lte('semana_fin',hasta).order('semana_fin');
+  if(pe){toast('Error: '+pe.message,true);return;}
+  if(!periodos||!periodos.length){toast('No hay periodos de nómina registrados ese mes en '+ENT_LABELS[nomActiveEnt]+'.',true);return;}
+  const periodoById={};periodos.forEach(p=>{periodoById[p.id]=p;});
+  const{data:lineas,error:le}=await sb.from('nomina_lineas').select('*').in('periodo_id',periodos.map(p=>p.id));
+  if(le){toast('Error: '+le.message,true);return;}
+  const empById={};empData.forEach(e=>{empById[e.id]=e;});
+  nomHistFilas=(lineas||[])
+    .filter(l=>Number(l.dias_pagados)>0&&empById[l.empleado_id]&&empById[l.empleado_id].nomina_fiscal!==false)
+    .map(l=>({e:empById[l.empleado_id],l,p:periodoById[l.periodo_id],c:nominaCalc(l)}))
+    .sort((a,b)=>a.e.nombre.localeCompare(b.e.nombre)||a.p.semana_fin.localeCompare(b.p.semana_fin));
+  nomHistMeta={mes,desde,hasta};
+  renderHistoricoNominaModal();
+  openModal('m-historico-nomina');
+}
+function renderHistoricoNominaModal(){
+  const filas=nomHistFilas;
+  const meses=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const[y,m]=nomHistMeta.mes.split('-').map(Number);
+  document.getElementById('m-historico-nomina-title').textContent=`Histórico de nómina · ${ENT_LABELS[nomActiveEnt]} · ${meses[m-1]} ${y}`;
+  const ftr=document.getElementById('m-historico-nomina-ftr');
+  if(!filas.length){
+    document.getElementById('m-historico-nomina-body').innerHTML='<div class="empty"><div class="empty-ico">📋</div>Sin recibos de nómina este mes.</div>';
+    ftr.innerHTML=`<button class="btn" onclick="closeModal('m-historico-nomina')">Cerrar</button>`;
+    return;
+  }
+  const grupos=[];let last=null;
+  filas.forEach(f=>{
+    if(!last||last.e.id!==f.e.id){last={e:f.e,filas:[]};grupos.push(last);}
+    last.filas.push(f);
+  });
+  let gTotPerc=0,gTotIsr=0,gTotImss=0,gTotNeto=0;
+  let bodyHtml=`<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Un renglón por cada recibo de nómina de la semana dentro del mes, agrupado por empleado — equivalente al histórico de recibos electrónicos que generaba Aspel NOI. Solo incluye empleados con nómina timbrada (inscritos IMSS).</div><div style="overflow-x:auto">`;
+  grupos.forEach(g=>{
+    const sPerc=g.filas.reduce((s,f)=>s+f.c.subtotal,0);
+    const sIsr=g.filas.reduce((s,f)=>s+(Number(f.l.retencion_isr)||0),0);
+    const sImss=g.filas.reduce((s,f)=>s+(Number(f.l.retencion_imss)||0),0);
+    const sNeto=g.filas.reduce((s,f)=>s+f.c.total,0);
+    gTotPerc+=sPerc;gTotIsr+=sIsr;gTotImss+=sImss;gTotNeto+=sNeto;
+    bodyHtml+=`<table class="corte-tbl" style="margin-bottom:14px">
+      <thead>
+        <tr style="background:var(--surface2)"><th colspan="7" style="text-align:left">${g.e.nombre} — ${puestoNombre(g.e.puesto_id)||''} — RFC ${g.e.rfc||'—'}</th></tr>
+        <tr><th style="text-align:left">Fecha de pago</th><th class="num">Percepciones</th><th class="num">ISR</th><th class="num">IMSS</th><th class="num">Neto</th><th>Estado CFDI</th><th>UUID</th></tr>
+      </thead>
+      <tbody>${g.filas.map(f=>`<tr>
+        <td>${fmtFechaCorta(f.p.semana_fin)}</td>
+        <td class="num">${fmxn(f.c.subtotal)}</td>
+        <td class="num">${fmxn(f.l.retencion_isr)}</td>
+        <td class="num">${fmxn(f.l.retencion_imss)}</td>
+        <td class="num"><b>${fmxn(f.c.total)}</b></td>
+        <td>${estadoCfdiHistLabel(f.l)}</td>
+        <td style="font-size:10px">${f.l.facturacom_uuid||'—'}</td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr style="font-weight:700;background:var(--surface2)">
+        <td>Subtotal:</td>
+        <td class="num">${fmxn(sPerc)}</td><td class="num">${fmxn(sIsr)}</td><td class="num">${fmxn(sImss)}</td><td class="num">${fmxn(sNeto)}</td><td colspan="2"></td>
+      </tr></tfoot>
+    </table>`;
+  });
+  bodyHtml+=`<div style="display:flex;justify-content:flex-end;gap:24px;font-weight:700;padding:10px 14px;background:var(--surface2);border-radius:8px">
+    <span>Percepciones: ${fmxn(gTotPerc)}</span><span>ISR: ${fmxn(gTotIsr)}</span><span>IMSS: ${fmxn(gTotImss)}</span><span>Neto: ${fmxn(gTotNeto)}</span>
+  </div></div>`;
+  document.getElementById('m-historico-nomina-body').innerHTML=bodyHtml;
+  ftr.innerHTML=`
+    <button class="btn" onclick="exportarHistoricoNominaXLSX()">📊 Excel</button>
+    <button class="btn" onclick="imprimirHistoricoNominaPDF()">🖨 PDF</button>
+    <button class="btn" onclick="closeModal('m-historico-nomina')">Cerrar</button>`;
+}
+function exportarHistoricoNominaXLSX(){
+  if(!nomHistFilas.length){toast('No hay datos para exportar.',true);return;}
+  const tot=k=>Math.round(nomHistFilas.reduce((s,f)=>s+(k(f)||0),0)*100)/100;
+  const aoa=[
+    ['Empleado','RFC','Puesto','Fecha de pago','Percepciones','ISR retenido','IMSS retenido','Deducciones','Neto','Estado CFDI','UUID','Entidad'],
+    ...nomHistFilas.map(f=>{
+      const ded=(Number(f.l.retencion_isr)||0)+(Number(f.l.retencion_imss)||0);
+      return[f.e.nombre,f.e.rfc||'',puestoNombre(f.e.puesto_id)||'',f.p.semana_fin,Number(f.c.subtotal)||0,Number(f.l.retencion_isr)||0,Number(f.l.retencion_imss)||0,Math.round(ded*100)/100,Number(f.c.total)||0,estadoCfdiHistLabel(f.l),f.l.facturacom_uuid||'',ENT_LABELS[nomActiveEnt]];
+    }),
+    [],
+    ['TOTALES','','','',tot(f=>f.c.subtotal),tot(f=>Number(f.l.retencion_isr)),tot(f=>Number(f.l.retencion_imss)),tot(f=>(Number(f.l.retencion_isr)||0)+(Number(f.l.retencion_imss)||0)),tot(f=>f.c.total)],
+  ];
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:30},{wch:14},{wch:16},{wch:12},{wch:12},{wch:11},{wch:11},{wch:11},{wch:12},{wch:14},{wch:38},{wch:9}];
+  XLSX.utils.book_append_sheet(wb,ws,'Histórico');
+  XLSX.writeFile(wb,`Historico_Nomina_${ENT_LABELS[nomActiveEnt]}_${nomHistMeta.mes}.xlsx`);
+  toast('Excel exportado.');
+}
+function imprimirHistoricoNominaPDF(){
+  if(!nomHistFilas.length){toast('No hay datos para exportar.',true);return;}
+  const emp=NOMINA_EMPRESA[nomActiveEnt]||NOMINA_EMPRESA.PUE;
+  const meses=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  const[y,m]=nomHistMeta.mes.split('-').map(Number);
+  const grupos=[];let last=null;
+  nomHistFilas.forEach(f=>{if(!last||last.e.id!==f.e.id){last={e:f.e,filas:[]};grupos.push(last);}last.filas.push(f);});
+  let gTotPerc=0,gTotIsr=0,gTotImss=0,gTotNeto=0;
+  const gruposHtml=grupos.map(g=>{
+    const sPerc=g.filas.reduce((s,f)=>s+f.c.subtotal,0);
+    const sIsr=g.filas.reduce((s,f)=>s+(Number(f.l.retencion_isr)||0),0);
+    const sImss=g.filas.reduce((s,f)=>s+(Number(f.l.retencion_imss)||0),0);
+    const sNeto=g.filas.reduce((s,f)=>s+f.c.total,0);
+    gTotPerc+=sPerc;gTotIsr+=sIsr;gTotImss+=sImss;gTotNeto+=sNeto;
+    return`<table class="nom-wrap emp-block">
+      <colgroup><col style="width:16%"><col style="width:15%"><col style="width:15%"><col style="width:14%"><col style="width:12%"><col style="width:14%"><col style="width:14%"></colgroup>
+      <tr class="emp-hdr"><td colspan="7">${g.e.nombre.toUpperCase()} &nbsp;·&nbsp; ${(puestoNombre(g.e.puesto_id)||'').toUpperCase()} &nbsp;·&nbsp; RFC ${g.e.rfc||'—'}</td></tr>
+      <tr class="nom-cols"><th>FECHA DE PAGO</th><th>PERCEPCIONES</th><th>ISR</th><th>IMSS</th><th>NETO</th><th>ESTADO CFDI</th><th>UUID</th></tr>
+      <tbody class="nom-data">${g.filas.map(f=>`<tr>
+        <td class="nc">${fmtFechaCorta(f.p.semana_fin)}</td>
+        <td class="nr">$ ${fmxnPlain(f.c.subtotal)}</td>
+        <td class="nr">$ ${fmxnPlain(f.l.retencion_isr)}</td>
+        <td class="nr">$ ${fmxnPlain(f.l.retencion_imss)}</td>
+        <td class="nr nb">$ ${fmxnPlain(f.c.total)}</td>
+        <td class="nc">${estadoCfdiHistLabel(f.l)}</td>
+        <td class="uuid">${f.l.facturacom_uuid||'—'}</td>
+      </tr>`).join('')}</tbody>
+      <tr class="emp-sub">
+        <td style="text-align:right">SUBTOTAL</td>
+        <td class="nr">$ ${fmxnPlain(sPerc)}</td><td class="nr">$ ${fmxnPlain(sIsr)}</td><td class="nr">$ ${fmxnPlain(sImss)}</td><td class="nr">$ ${fmxnPlain(sNeto)}</td><td colspan="2"></td>
+      </tr>
+    </table>`;
+  }).join('');
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Histórico de nómina ${emp.titulo}</title>
+<style>
+@page{size:letter;margin:1cm}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+body{font-family:'DM Sans',Arial,sans-serif;margin:0;padding:14px;color:#16323c;background:#eaf4f5}
+table{border-collapse:collapse;width:100%;table-layout:fixed;margin-bottom:14px}
+.hist-header{display:flex;align-items:center;gap:14px;padding:12px 16px;background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;border-radius:8px 8px 0 0}
+.hist-logo{height:40px;width:40px;object-fit:contain}
+.hist-title{font-family:'Fraunces',serif;font-size:18px;font-weight:600}
+.hist-sub{font-size:11px;opacity:.85;margin-top:2px}
+.hist-body{border:1.5px solid #0f3d52;border-top:none;border-radius:0 0 8px 8px;padding:14px;background:#fff}
+.nom-wrap.emp-block{border:1px solid #c9dde0;border-radius:6px;overflow:hidden;page-break-inside:avoid}
+.emp-hdr td{background:#0f3d52;color:#fff;font-weight:700;font-size:11px;padding:5px 10px;letter-spacing:.02em}
+.nom-cols th{border:1px solid #c9dde0;background:#e2f0f1;color:#0f3d52;font-size:9px;font-weight:700;text-align:center;padding:4px 3px}
+.nom-data td{border:1px solid #e2eef0;font-size:9.5px;padding:3px 5px}
+.nom-data td.nc{text-align:center}
+.nom-data td.nr{text-align:right;font-family:'DM Mono',Consolas,monospace}
+.nom-data td.nb{font-weight:700}
+.nom-data td.uuid{font-family:'DM Mono',Consolas,monospace;font-size:8px;color:#5c7d86}
+.emp-sub td{border:1px solid #c9dde0;background:#f2f8f8;font-weight:700;font-size:9.5px;padding:4px 6px;border-top:1.5px solid #e8823e}
+.emp-sub td.nr{text-align:right;font-family:'DM Mono',Consolas,monospace}
+.grand-tot{display:flex;justify-content:flex-end;gap:20px;font-weight:700;font-size:11px;background:#0f3d52;color:#fff;padding:8px 14px;border-radius:6px;margin-top:6px}
+.foot-note{font-size:9px;color:#5c7d86;margin-top:8px}
+.print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:'DM Sans',Arial,sans-serif;font-weight:600}
+@media print{.print-btn{display:none}body{padding:0;background:#fff}.hist-body{border:none}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
+<div class="hist-header">
+  <img class="hist-logo" src="${PA_LOGO}" alt="El Pescador">
+  <div>
+    <div class="hist-title">HISTÓRICO DE NÓMINA — ${emp.titulo}</div>
+    <div class="hist-sub">${meses[m-1]} ${y} &nbsp;·&nbsp; ${emp.patron} &nbsp;·&nbsp; ${emp.empresa}</div>
+  </div>
+</div>
+<div class="hist-body">
+  ${gruposHtml}
+  <div class="grand-tot"><span>PERCEPCIONES: $ ${fmxnPlain(gTotPerc)}</span><span>ISR: $ ${fmxnPlain(gTotIsr)}</span><span>IMSS: $ ${fmxnPlain(gTotImss)}</span><span>NETO: $ ${fmxnPlain(gTotNeto)}</span></div>
+  <div class="foot-note">Un renglón por cada recibo de nómina de la semana dentro del mes, agrupado por empleado — equivalente al histórico de recibos electrónicos de Aspel NOI.</div>
+</div>
+</body></html>`;
+  const w=window.open('','_blank');
+  w.document.write(html);
+  w.document.close();
 }
 async function deleteNominaLedgerEntry(id){
   const n=nominaLedgerData.find(x=>x.id===id);
