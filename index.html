@@ -8406,7 +8406,13 @@ function renderCortes(){
   let out='';
   for(const fecha of[...grupos.keys()].sort().reverse()){
     const items=grupos.get(fecha);
-    out+=`<div class="sec-lbl" style="grid-column:1/-1">${fmtDiaSec(fecha)}</div>`;
+    // fecha es un YYYY-MM-DD "pelón" (para poder agrupar/ordenar) -- sin
+    // hora, new Date() lo interpreta como medianoche UTC, y en zona horaria
+    // de México eso cae en la TARDE DEL DÍA ANTERIOR al mostrarse, corriendo
+    // el encabezado un día para atrás (4-sept-2026, "corte del 3-sep" salía
+    // bajo "martes 2 de septiembre"). Se le pega mediodía para que caiga
+    // siempre dentro del mismo día sin importar el huso horario.
+    out+=`<div class="sec-lbl" style="grid-column:1/-1">${fmtDiaSec(fecha+'T12:00:00')}</div>`;
     out+=items.map(it=>it.tipo==='hotelDia'?renderHotelDiaCard(it.rows):renderCorteCardSingle(it.c)).join('');
   }
   el.innerHTML=out;
