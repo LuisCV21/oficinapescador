@@ -10269,26 +10269,41 @@ async function guardarCorreccionAnterior(sucursal){
   const esHotel=/hotel/i.test(sucursal);
   const motivo=document.getElementById('ca-motivo').value.trim()||null;
   const creadaPor=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina';
+  // Cada campo es OBLIGATORIO (sin ||0 de respaldo): un campo vacío antes se
+  // mandaba como 0 silenciosamente, y como Pescador POS aplica los 4 juntos
+  // (set_override_anterior sobreescribe todos, no solo el que cambiaste),
+  // eso le borraba el saldo real a la cuenta que no querías tocar -- esto
+  // fue lo que corrompió el anterior de Baucher/Vales de Florida turno 3.
+  const leerCampo=(id,etiqueta)=>{
+    const v=parseFloat(document.getElementById(id).value);
+    if(isNaN(v))throw new Error(`${etiqueta} es obligatorio (si de verdad es cero, escribe 0 -- no lo dejes vacío)`);
+    return v;
+  };
   let payload;
-  if(esHotel){
-    payload={
-      sucursal,anterior_caja:0,
-      anterior_bodega:parseFloat(document.getElementById('ca-bodega').value)||0,
-      anterior_baucher:parseFloat(document.getElementById('ca-baucher').value)||0,
-      anterior_vales_antonio:parseFloat(document.getElementById('ca-vales-antonio').value)||0,
-      anterior_vales_personal:parseFloat(document.getElementById('ca-vales-personal').value)||0,
-      motivo,creada_por:creadaPor,
-    };
-  }else{
-    const caja=parseFloat(document.getElementById('ca-caja').value);
-    if(isNaN(caja)){btn.disabled=false;toast('El anterior de caja es obligatorio',true);return;}
-    payload={
-      sucursal,anterior_caja:caja,
-      anterior_bodega:parseFloat(document.getElementById('ca-bodega').value)||0,
-      anterior_vales:parseFloat(document.getElementById('ca-vales').value)||0,
-      anterior_baucher:parseFloat(document.getElementById('ca-baucher').value)||0,
-      motivo,creada_por:creadaPor,
-    };
+  try{
+    if(esHotel){
+      payload={
+        sucursal,anterior_caja:0,
+        anterior_bodega:leerCampo('ca-bodega','Anterior de Bodega'),
+        anterior_baucher:leerCampo('ca-baucher','Anterior de Baucher'),
+        anterior_vales_antonio:leerCampo('ca-vales-antonio','Anterior de Vales Sr. Antonio'),
+        anterior_vales_personal:leerCampo('ca-vales-personal','Anterior de Vales del Personal'),
+        motivo,creada_por:creadaPor,
+      };
+    }else{
+      payload={
+        sucursal,
+        anterior_caja:leerCampo('ca-caja','Anterior de caja'),
+        anterior_bodega:leerCampo('ca-bodega','Anterior de bodega'),
+        anterior_vales:leerCampo('ca-vales','Anterior de vales'),
+        anterior_baucher:leerCampo('ca-baucher','Anterior de baucher'),
+        motivo,creada_por:creadaPor,
+      };
+    }
+  }catch(e){btn.disabled=false;toast(e.message,true);return;}
+  const resumen=Object.entries(payload).filter(([k])=>k.startsWith('anterior_')).map(([k,v])=>`  ${k}: ${fmxn(v)}`).join('\n');
+  if(!confirm(`Se va a mandar esta corrección a ${sucursal} y Pescador POS la aplicará TODA junta al turno (sobreescribe los 4 campos, no solo el que cambiaste):\n\n${resumen}\n\n¿Confirmar?`)){
+    btn.disabled=false;return;
   }
   const {error}=await sb.from('correcciones_anterior_pendientes').insert(payload);
   if(error){btn.disabled=false;toast('No se pudo guardar: '+error.message,true);return;}
