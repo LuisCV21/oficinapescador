@@ -9666,6 +9666,15 @@ function openCorteDetail(id){
   const desglose=d.movimientos_desglose||[];
   const gastosMerc = desglose.filter(m=>m.categoria==='gasto_mercancia');
   const gastosDiv  = desglose.filter(m=>m.categoria==='gasto_diverso');
+  // El hotel manda TODOS sus gastos con categoria='General' (no distingue
+  // mercancía/diverso como sí hacen los restaurantes) -- sin este renglón se
+  // capturaban bien pero quedaban invisibles aquí, el filtro de arriba
+  // nunca los reconocía (4-sept-2026, reportado por el dueño: "no veo los
+  // gastos del hotel" -- sí estaban en el JSON, solo no se mostraban).
+  // El hotel también nombra el campo distinto ("descripcion" en vez de
+  // "concepto", que es lo que ya usa tablaGastos) -- se normaliza aquí para
+  // no tener que tocar tablaGastos, que ya usan los restaurantes.
+  const gastosHotel = rr ? desglose.filter(m=>m.categoria==='General').map(m=>({...m,concepto:m.concepto||m.descripcion})) : [];
   const detVales   = desglose.filter(m=>m.categoria==='vales');
   const detBaucher = desglose.filter(m=>m.medio==='baucher');
   const detBodega  = desglose.filter(m=>m.categoria==='bodega');
@@ -9755,6 +9764,11 @@ function openCorteDetail(id){
       pdfRow('Diferencia',difCuadra?'Cuadra exacto':fmxnSigned(cu.diferencia_cuadre),{color:difCuadra?'var(--green)':'var(--red)',bold:true,sep:true})
     )}
 
+    ${rr?`
+    ${pdfSec('Gastos del turno')}
+    ${tablaGastos(gastosHotel)}
+    ${gastosHotel.length?pdfCard('',pdfRow('Total',`<b>${fmxn(gastosHotel.reduce((s,m)=>s+Number(m.monto||0),0))}</b>`,{sep:true})):''}
+    `:`
     ${pdfSec('Gastos de mercancía')}
     ${tablaGastos(gastosMerc)}
     ${gastosMerc.length?pdfCard('',pdfRow('Total',`<b>${fmxn(gastosMerc.reduce((s,m)=>s+Number(m.monto||0),0))}</b>`,{sep:true})):''}
@@ -9762,6 +9776,7 @@ function openCorteDetail(id){
     ${pdfSec('Gastos diversos')}
     ${tablaGastos(gastosDiv)}
     ${gastosDiv.length?pdfCard('',pdfRow('Total',`<b>${fmxn(gastosDiv.reduce((s,m)=>s+Number(m.monto||0),0))}</b>`,{sep:true})):''}
+    `}
 
     ${rr?
       bloqueCuentaHotel('Vales Sr. Antonio','vales_antonio')+
