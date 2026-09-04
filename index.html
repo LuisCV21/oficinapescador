@@ -8315,6 +8315,53 @@ function renderCorteAnteriorPanel(){
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">${tarjetas}</div>
   `:'';
 }
+function renderCorteCardSingle(c){
+  const dif=Number(c.diferencia_cuadre||0);
+  const cuadra=Math.abs(dif)<0.5;
+  const difColor=cuadra?'var(--green)':'var(--red)';
+  const difTxt=cuadra?'Cuadra':fmxnSigned(dif);
+  const titulo=`Corte ${corteSucLabel(c.sucursal)} ${fmtDiaMes(c.cierre||c.apertura)}`;
+  return`<div class="acc-card" style="cursor:pointer;background:${corteBg(c.sucursal,10)};border-left:4px solid ${corteSucColor(c.sucursal)}" onclick="openCorteDetail('${c.id}')">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <div>
+      <div style="font-weight:600;font-size:14px">${titulo}${c.pdf_path?' 📄':''}</div>
+      <div style="font-size:11px;color:var(--text2);margin-top:2px">Turno #${c.turno_id} · Venta total ${fmxn(c.total_ventas)}</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:10px;color:var(--text2);text-transform:uppercase">Cuadre</div>
+      <div style="font-weight:700;color:${difColor}">${difTxt}</div>
+    </div>
+  </div>
+</div>`;
+}
+// Tarjeta combinada del hotel -- 1 o 2 turnos del mismo día calendario
+// (día+noche). El cuadre que se muestra es el del ÚLTIMO turno del día:
+// cuando el arrastre entre turnos está bien (ver corte_recepcion.py allá),
+// ese turno YA trae el checksum del día completo, igual que el papel.
+function renderHotelDiaCard(rows){
+  const totalVenta=Math.round(rows.reduce((s,r)=>s+Number(r.total_ventas||0),0)*100)/100;
+  const ultimo=rows[rows.length-1];
+  const dif=Number(ultimo.diferencia_cuadre||0);
+  const cuadra=Math.abs(dif)<0.5;
+  const difColor=cuadra?'var(--green)':'var(--red)';
+  const difTxt=cuadra?'Cuadra':fmxnSigned(dif);
+  const suc=rows[0].sucursal;
+  const turnosLbl=rows.map(r=>'#'+r.turno_id).join(' + ');
+  const nota=rows.length===1?` <span style="color:var(--text3);font-weight:400;font-size:11px">(falta el otro turno de este día)</span>`:'';
+  const conPdf=rows.some(r=>r.pdf_path);
+  return`<div class="acc-card" style="cursor:pointer;background:${corteBg(suc,10)};border-left:4px solid ${corteSucColor(suc)}" onclick='openCorteDetail(${JSON.stringify(rows.map(r=>r.id))})'>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <div>
+      <div style="font-weight:600;font-size:14px">Corte ${corteSucLabel(suc)}${nota}${conPdf?' 📄':''}</div>
+      <div style="font-size:11px;color:var(--text2);margin-top:2px">Turno ${turnosLbl} · Venta total ${fmxn(totalVenta)}</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:10px;color:var(--text2);text-transform:uppercase">Cuadre</div>
+      <div style="font-weight:700;color:${difColor}">${difTxt}</div>
+    </div>
+  </div>
+</div>`;
+}
 function renderCortes(){
   const el=document.getElementById('cortes-list');
   if(!el)return;
@@ -8332,34 +8379,35 @@ function renderCortes(){
       (currentCorteSuc==='TODAS'?'Sin cortes recibidos aún':'Sin cortes de '+currentCorteSuc+' aún');
     el.innerHTML=`<div class="empty"><div class="empty-ico">🧾</div>${msg}</div>`;return;
   }
-  const grupos=new Map();
-  list.forEach(c=>{
-    const key=(c.cierre||c.apertura||'').slice(0,10)||'?';
-    if(!grupos.has(key))grupos.set(key,[]);
-    grupos.get(key).push(c);
+  // El hotel abre turno de día y de noche el MISMO día calendario (el de
+  // noche cierra hasta la mañana siguiente) -- agrupando por fecha de
+  // apertura, no de cierre, los 2 turnos de un mismo papel físico siempre
+  // caen juntos. Se combinan en una sola tarjeta (ver combinarCortesHotelDia)
+  // en vez de mostrarlos como 2 cortes sueltos, que era la fuente real de
+  // confusión (pedido explícito del dueño, 4-sept-2026).
+  const esHotelSuc=s=>/hotel/i.test(s||'');
+  const grupos=new Map(); // fecha -> [{tipo:'single',c} | {tipo:'hotelDia',rows}]
+  const addItem=(fecha,item)=>{
+    if(!grupos.has(fecha))grupos.set(fecha,[]);
+    grupos.get(fecha).push(item);
+  };
+  list.filter(c=>!esHotelSuc(c.sucursal)).forEach(c=>{
+    addItem((c.cierre||c.apertura||'').slice(0,10)||'?',{tipo:'single',c});
   });
+  const hotelPorDia=new Map();
+  list.filter(c=>esHotelSuc(c.sucursal)).forEach(c=>{
+    const key=(c.apertura||'').slice(0,10)||'?';
+    if(!hotelPorDia.has(key))hotelPorDia.set(key,[]);
+    hotelPorDia.get(key).push(c);
+  });
+  for(const[fecha,rows] of hotelPorDia){
+    addItem(fecha,{tipo:'hotelDia',rows:rows.sort((a,b)=>(a.apertura||'').localeCompare(b.apertura||''))});
+  }
   let out='';
-  for(const items of grupos.values()){
-    out+=`<div class="sec-lbl" style="grid-column:1/-1">${fmtDiaSec(items[0].cierre||items[0].apertura)}</div>`;
-    out+=items.map(c=>{
-      const dif=Number(c.diferencia_cuadre||0);
-      const cuadra=Math.abs(dif)<0.5;
-      const difColor=cuadra?'var(--green)':'var(--red)';
-      const difTxt=cuadra?'Cuadra':fmxnSigned(dif);
-      const titulo=`Corte ${corteSucLabel(c.sucursal)} ${fmtDiaMes(c.cierre||c.apertura)}`;
-      return`<div class="acc-card" style="cursor:pointer;background:${corteBg(c.sucursal,10)};border-left:4px solid ${corteSucColor(c.sucursal)}" onclick="openCorteDetail('${c.id}')">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-        <div>
-          <div style="font-weight:600;font-size:14px">${titulo}${c.pdf_path?' 📄':''}</div>
-          <div style="font-size:11px;color:var(--text2);margin-top:2px">Turno #${c.turno_id} · Venta total ${fmxn(c.total_ventas)}</div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:10px;color:var(--text2);text-transform:uppercase">Cuadre</div>
-          <div style="font-weight:700;color:${difColor}">${difTxt}</div>
-        </div>
-      </div>
-    </div>`;
-    }).join('');
+  for(const fecha of[...grupos.keys()].sort().reverse()){
+    const items=grupos.get(fecha);
+    out+=`<div class="sec-lbl" style="grid-column:1/-1">${fmtDiaSec(fecha)}</div>`;
+    out+=items.map(it=>it.tipo==='hotelDia'?renderHotelDiaCard(it.rows):renderCorteCardSingle(it.c)).join('');
   }
   el.innerHTML=out;
 }
@@ -9647,9 +9695,62 @@ function buildIncidencias(d){
   return html;
 }
 
-function openCorteDetail(id){
-  const c=cortesData.find(x=>x.id===id);
-  if(!c)return;
+// Combina los turnos de día+noche del hotel (mismo papel físico, ver
+// agruparCortesHotelPorDia) en un solo objeto con la misma forma que un
+// corte normal, para poder reusar openCorteDetail tal cual -- venta y
+// gastos se suman, el cuadre se toma del ÚLTIMO turno del día (que ya
+// arrastra el checksum combinado si el arrastre entre turnos está bien,
+// ver sync_corte.calcular_corte::mismo_dia allá), y los movimientos de
+// cada cuenta se juntan de TODOS los turnos para ver el día completo.
+function combinarCortesHotelDia(rows){
+  const ordenados=[...rows].sort((a,b)=>(a.apertura||'').localeCompare(b.apertura||''));
+  const primero=ordenados[0],ultimo=ordenados[ordenados.length-1];
+  const rrUltimo=(ultimo.datos&&ultimo.datos.resumen_recepcion)||{};
+  const rrPrimero=(primero.datos&&primero.datos.resumen_recepcion)||{};
+  const vpf={};
+  ordenados.forEach(r=>{
+    const v=(r.datos&&r.datos.ventas_por_forma)||{};
+    Object.entries(v).forEach(([k,val])=>{vpf[k]=Math.round(((vpf[k]||0)+Number(val||0))*100)/100;});
+  });
+  const movCuentas=ordenados.flatMap(r=>{
+    const rr=(r.datos&&r.datos.resumen_recepcion)||{};
+    return(rr.movimientos_cuentas||[]).map(m=>({...m,_turno_id:r.turno_id,_turno_lbl:r===primero?'día':'noche'}));
+  });
+  const movDesglose=ordenados.flatMap(r=>((r.datos&&r.datos.movimientos_desglose)||[]).map(m=>({...m,_turno_id:r.turno_id})));
+  const pagosDetalle=ordenados.flatMap(r=>((r.datos&&r.datos.pagos_detalle)||[]).map(p=>({...p,_turno_id:r.turno_id})));
+  return{
+    id:ordenados.map(r=>r.id),
+    _combinado:true,
+    _rows:ordenados,
+    sucursal:primero.sucursal,
+    turno_id:ordenados.map(r=>r.turno_id).join(' + '),
+    apertura:primero.apertura,
+    cierre:ultimo.cierre,
+    total_ventas:Math.round(ordenados.reduce((s,r)=>s+Number(r.total_ventas||0),0)*100)/100,
+    diferencia_cuadre:rrUltimo.diferencia,
+    pdf_path:null,
+    datos:{
+      ventas_por_forma:vpf,
+      movimientos_desglose:movDesglose,
+      pagos_detalle:pagosDetalle,
+      resumen_recepcion:{
+        ...rrUltimo,
+        movimientos_cuentas:movCuentas,
+        anterior_bodega:rrPrimero.anterior_bodega,
+        anterior_baucher:rrPrimero.anterior_baucher,
+        anterior_vales_antonio:rrPrimero.anterior_vales_antonio,
+        anterior_vales_personal:rrPrimero.anterior_vales_personal,
+        anterior:rrPrimero.anterior,
+        ventas:rrUltimo.ventas,
+      },
+    },
+  };
+}
+function openCorteDetail(idOrIds){
+  const ids=Array.isArray(idOrIds)?idOrIds:[idOrIds];
+  const rows=ids.map(id=>cortesData.find(x=>x.id===id)).filter(Boolean);
+  if(!rows.length)return;
+  const c=rows.length>1?combinarCortesHotelDia(rows):rows[0];
   const d=c.datos||{};
   const cu=d.cuadre||{};
   // El hotel manda su cuadre bajo resumen_recepcion (4 cuentas: vales_antonio/
@@ -9718,7 +9819,7 @@ function openCorteDetail(id){
   // liquidación -- mismo criterio de color que filasSaldo arriba.
   const bloqueCuentaHotel=(titulo,cuenta)=>{
     const movs=(rr.movimientos_cuentas||[]).filter(m=>m.cuenta===cuenta);
-    const filas=movs.map(m=>pdfRow(m.concepto||'—',fmxn(m.monto),{color:Number(m.monto)>=0?'var(--green)':'var(--red)'})).join('');
+    const filas=movs.map(m=>pdfRow((m.concepto||'—')+(m._turno_lbl?` <span style="color:var(--text3);font-weight:400">(turno ${m._turno_lbl})</span>`:''),fmxn(m.monto),{color:Number(m.monto)>=0?'var(--green)':'var(--red)'})).join('');
     return pdfSec(titulo)+pdfCard('',
       pdfRow('Anterior',fmxn(rr[`anterior_${cuenta}`]))+
       (movs.length?filas:pdfRow('<span style="color:var(--text3);font-style:italic">Sin movimientos este turno</span>',''))+
@@ -9731,16 +9832,17 @@ function openCorteDetail(id){
   // que Pescador POS la jale y la aplique solo al abrir turno.
   const pagosDetalle=d.pagos_detalle||[];
   const filasFolios=pagosDetalle.map((p,i)=>{
+    const turnoIdReal=p._turno_id!=null?p._turno_id:c.turno_id;
     let estado='',btn='';
     if(p.facturado){
-      btn=accionBtnsVenta(c.sucursal,p.folio,c.turno_id,p.uuid_fiscal);
+      btn=accionBtnsVenta(c.sucursal,p.folio,turnoIdReal,p.uuid_fiscal);
     }else{
       const corr=correccionDe(c.sucursal,p.folio);
       if(corr&&corr.aplicada)estado=`<span class="corte-badge ok">✓ corregido a ${corr.forma_pago_correcta}</span>`;
       else if(corr)estado=`<span class="corte-badge pend">⏳ pendiente → ${corr.forma_pago_correcta}</span>`;
       btn=corr&&!corr.aplicada
         ?`<button class="corte-iconbtn" title="Cancelar corrección pendiente" onclick="cancelarCorreccionPago('${corr.id}')">✕</button>`
-        :`<button class="corte-iconbtn" ${corr?'disabled':''} title="Corregir método de pago" onclick="openCorreccionModal('${c.sucursal}',${p.folio},${c.turno_id})">✎</button>`;
+        :`<button class="corte-iconbtn" ${corr?'disabled':''} title="Corregir método de pago" onclick="openCorreccionModal('${c.sucursal}',${p.folio},${turnoIdReal})">✎</button>`;
     }
     return `<tr><td>${p.folio}</td><td>${p.forma_pago}${estado}</td><td class="num">${fmxn(p.monto)}</td><td style="text-align:center">${btn}</td></tr>`;
   }).join('');
@@ -9813,9 +9915,14 @@ function openCorteDetail(id){
 
     ${buildIncidencias(d)}
   `;
-  const btnPdf=c.pdf_path
-    ?`<button class="btn btn-filled" onclick="verCortePdf('${c.pdf_path}')">📄 Ver PDF</button>`
-    :'';
+  // Combinado: cada turno del día puede traer su propio PDF por separado
+  // (cada uno genera el suyo al cerrar) -- se ofrecen los dos si existen,
+  // en vez de un solo botón como en un corte normal.
+  const btnPdf=c._combinado
+    ?c._rows.filter(r=>r.pdf_path).map((r,i)=>
+        `<button class="btn" onclick="verCortePdf('${r.pdf_path}')">📄 PDF turno ${i===0?'día':'noche'} #${r.turno_id}</button>`
+      ).join('')
+    :(c.pdf_path?`<button class="btn btn-filled" onclick="verCortePdf('${c.pdf_path}')">📄 Ver PDF</button>`:'');
   // "Corregir anterior" se movió fuera del detalle de corte (panel arriba
   // de la lista, ver renderCorteAnteriorPanel) -- una corrección siempre
   // aplica al turno de HOY, sin importar qué corte pasado estés viendo
