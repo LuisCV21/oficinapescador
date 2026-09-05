@@ -8258,6 +8258,7 @@ function switchCorteSuc(s){currentCorteSuc=s;renderCortes();}
 // (los 4 saldos del hotel, o caja/bodega/vales/baucher del restaurante).
 // Se separó a su propia función porque ahora también la usa el panel de
 // arriba, no solo el detalle de un corte puntual.
+const ADO_ENTIDADES=['ado_jalapa','ado_platino','ado_gl','ado_norte','ado_veracruz','ado_puebla'];
 function preAnteriorDeCorte(c){
   const d=c.datos||{};
   const rr=d.resumen_recepcion||null;
@@ -8268,11 +8269,14 @@ function preAnteriorDeCorte(c){
     vales_antonio:(rr.totales_cuentas&&rr.totales_cuentas.vales_antonio)||0,
     vales_personal:(rr.totales_cuentas&&rr.totales_cuentas.vales_personal)||0,
   };
-  return{
+  const sa=d.saldo_ado||{};
+  const pre={
     tipo:'restaurante',
     caja:Math.round(((d.efectivo_monedas||0)+(d.efectivo_billetes||0)+(d.saldo_bodega||0)+(d.saldo_baucher||0)+(d.saldo_vales||0))*100)/100,
     bodega:d.saldo_bodega||0, vales:d.saldo_vales||0, baucher:d.saldo_baucher||0,
   };
+  for(const e of ADO_ENTIDADES)pre[e]=sa[e]||0;
+  return pre;
 }
 // Lo que ESTE corte dice que traía de anterior al ABRIR -- para comparar
 // contra lo que el corte de ANTES dejó al cerrar (preAnteriorDeCorte). Si
@@ -10245,11 +10249,14 @@ function openCorreccionAnteriorModal(sucursal,pre){
     <div class="f-row"><label>Anterior de Bodega</label><input type="number" step="0.01" id="ca-bodega" value="${p.bodega||0}"/></div>
     <div class="f-row"><label>Anterior de Baucher</label><input type="number" step="0.01" id="ca-baucher" value="${p.baucher||0}"/></div>
   `;
+  const ADO_ETIQUETAS={ado_jalapa:'ADO Jalapa',ado_platino:'ADO Platino',ado_gl:'ADO GL',ado_norte:'ADO Norte',ado_veracruz:'ADO Veracruz',ado_puebla:'ADO Puebla'};
   const camposRestaurante=`
     <div class="f-row"><label>Anterior de caja <span class="req">*</span></label><input type="number" step="0.01" id="ca-caja" value="${p.caja}"/></div>
     <div class="f-row"><label>Anterior de bodega</label><input type="number" step="0.01" id="ca-bodega" value="${p.bodega}"/></div>
     <div class="f-row"><label>Anterior de vales</label><input type="number" step="0.01" id="ca-vales" value="${p.vales}"/></div>
     <div class="f-row"><label>Anterior de baucher</label><input type="number" step="0.01" id="ca-baucher" value="${p.baucher}"/></div>
+    <div style="font-size:11px;color:var(--text3);margin:10px 0 4px">ADO (opcional -- deja vacío para no tocarlo, solo se corrige el que llenes)</div>
+    ${ADO_ENTIDADES.map(e=>`<div class="f-row"><label>Anterior de ${ADO_ETIQUETAS[e]}</label><input type="number" step="0.01" id="ca-${e}" placeholder="sin cambio" value="${p[e]?p[e]:''}"/></div>`).join('')}
   `;
   document.getElementById('m-correccion-anterior-body').innerHTML=`
     ${pendiente?`<div style="background:var(--amber-light,#fff3cd);color:var(--amber,#856404);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:12px">Ya hay una corrección pendiente de ${fmtFechaHora(pendiente.creada_at)} sin aplicar todavía — guardar aquí la reemplaza. <a href="#" onclick="event.preventDefault();cancelarCorreccionAnterior('${pendiente.id}');closeModal('m-correccion-anterior')" style="color:inherit;text-decoration:underline">Cancelarla en vez de reemplazarla</a></div>`:''}
@@ -10299,6 +10306,12 @@ async function guardarCorreccionAnterior(sucursal){
         anterior_baucher:leerCampo('ca-baucher','Anterior de baucher'),
         motivo,creada_por:creadaPor,
       };
+      // ADO es opcional: campo vacío = no tocar ese ADO (no se manda la
+      // llave), a diferencia de los 4 de arriba que siempre se mandan.
+      for(const e of ADO_ENTIDADES){
+        const raw=document.getElementById(`ca-${e}`).value;
+        if(raw.trim()!=='')payload[`anterior_${e}`]=parseFloat(raw);
+      }
     }
   }catch(e){btn.disabled=false;toast(e.message,true);return;}
   const resumen=Object.entries(payload).filter(([k])=>k.startsWith('anterior_')).map(([k,v])=>`  ${k}: ${fmxn(v)}`).join('\n');
