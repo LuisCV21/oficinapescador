@@ -16,6 +16,11 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 // respetarla tambien para tarjeta/transferencia fue exactamente el bug que
 // dejo $5,556 (Puebla) y $5,415 (Florida) sin facturar en agosto 2026 (ver
 // el fix en pescador-pos/src/facturacion/tab_global.py::_excluir_efectivo_grupo).
+//
+// Desde el 7-sept-2026, Oficina factura TAMBIEN Efectivo (antes solo
+// tarjeta/transferencia, el efectivo se facturaba aparte en la Global local
+// de cada sucursal) -- "vales" cuenta como Efectivo para esto (ver
+// FORMA_SAT), "ado" sigue totalmente excluido.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,12 +42,27 @@ const ISH_TASA = 0.02; // Impuesto Sobre Hospedaje (Veracruz) -- solo Hotel
 const KEYWORD: Record<string, string> = { HOT: "hotel", PUE: "puebla", FLO: "florida" };
 
 // forma_pago cruda (como la manda cada sucursal, ya en minusculas) -> [clave SAT, nombre]
+//
+// "vales" se mapea a Efectivo (01) a proposito, no queda fuera: un vale de
+// personal se cobra siempre en efectivo real (ver el toggle "Es vale de
+// personal" en Pescador POS, debajo del campo de Efectivo) -- "Vales" es
+// solo la etiqueta interna del negocio para separar ese dinero
+// administrativamente, nunca un metodo de pago que el SAT reconozca, y el
+// folio debe timbrarse con el metodo real (decision del dueño, 7-sept-2026,
+// tras encontrar vales de ADO capturados por error como Vales de personal).
+//
+// "ado" NO tiene entrada aqui a proposito: sigue totalmente fuera de la
+// Global del negocio -- se factura aparte, directo a cada linea de
+// autobuses (Xalapa/Platino/GL/Norte/Veracruz/Puebla), es dinero que ya no
+// es del negocio aunque haya pasado por su caja.
 const FORMA_SAT: Record<string, [string, string]> = {
   credito: ["04", "Tarjeta de crédito"],
   tarjeta_credito: ["04", "Tarjeta de crédito"],
   debito: ["28", "Tarjeta de débito"],
   tarjeta_debito: ["28", "Tarjeta de débito"],
   transferencia: ["03", "Transferencia"],
+  efectivo: ["01", "Efectivo"],
+  vales: ["01", "Efectivo"],
 };
 
 function round2(n: number): number {
@@ -166,10 +186,15 @@ async function candidatosPendientes(
       if (fechaYMD < periodoInicio || fechaYMD > periodoFin) continue;
       const formaKey = String(p.forma_pago || "").toLowerCase();
       const sat = FORMA_SAT[formaKey];
-      if (!sat) continue; // efectivo u otra forma no facturable en Global
+      if (!sat) continue; // ado u otra forma no facturable en Global (se administra aparte)
       if (p.facturado) continue;
-      // OJO: nunca se filtra por p.excluido aqui -- ver nota al inicio del
-      // archivo, ese fue justo el bug de agosto 2026.
+      // La bandera "excluido" SOLO aplica a Efectivo (incluye "vales", que
+      // es efectivo real -- ver FORMA_SAT arriba): marca cuentas que YA se
+      // facturaron por la Global LOCAL de cada sucursal (tab_global.py),
+      // para no duplicar el CFDI. Tarjeta/transferencia NUNCA se filtran
+      // por esto -- ver nota al inicio del archivo, ese fue justo el bug
+      // de agosto 2026.
+      if (sat[0] === "01" && p.excluido) continue;
       candidatos.push({
         folio: Number(p.folio), monto: round2(Number(p.monto || 0)), fecha: p.fecha,
         cuenta: p.cuenta ?? null, sat_code: sat[0], sat_nombre: sat[1],

@@ -9009,8 +9009,52 @@ function gpRenderResultado(){
     <div class="bal-live-row" style="margin-bottom:14px;font-size:14px"><span>Total pendiente de ${corteSucLabel(currentGPSuc)}</span><strong>${fmxn(totalPendiente)}</strong></div>
     ${existentesHtml}
     ${pendientesHtml}
+    ${gpAdoHtml()}
     ${gpVistaDiariaHtml()}
   `;
+}
+
+// ─── ADO por facturar (informativo) ─────────────────────────────────
+// Cuánto se cobró con vale ADO este mes, por entidad (Xalapa/Platino/GL/
+// Norte/Veracruz/Puebla) -- para saber cuánto facturarle a cada línea de
+// autobuses por separado. Solo informativo, NUNCA se mezcla con la Global
+// del negocio (ver FORMA_SAT en oficina-facturacion-global/index.ts, "ado"
+// queda excluido a propósito -- ese dinero ya no es del negocio aunque
+// haya pasado por su caja). Mismo criterio de fechas que gpDatosDiarios().
+function gpDatosAdo(){
+  const mes=Number(document.getElementById('gp-mes')?.value);
+  const anio=Number(document.getElementById('gp-anio')?.value);
+  const desde=`${anio}-${String(mes).padStart(2,'0')}-01`;
+  const hasta=`${anio}-${String(mes).padStart(2,'0')}-31`;
+  const totales={};
+  ADO_ENTIDADES.forEach(e=>totales[e]=0);
+  cortesData.filter(c=>c.sucursal===currentGPSuc).forEach(c=>{
+    const desglose=(c.datos&&c.datos.movimientos_desglose)||[];
+    const corteFecha=(c.cierre||c.apertura||'').slice(0,10);
+    desglose.forEach(m=>{
+      if(!ADO_ENTIDADES.includes(m.categoria))return;
+      const f=(m.fecha||corteFecha||'').slice(0,10);
+      if(!f||f<desde||f>hasta)return;
+      totales[m.categoria]=Math.round((totales[m.categoria]+Number(m.monto||0))*100)/100;
+    });
+  });
+  return totales;
+}
+function gpAdoHtml(){
+  const ADO_ETIQUETAS={ado_jalapa:'ADO Jalapa',ado_platino:'ADO Platino',ado_gl:'ADO GL',ado_norte:'ADO Norte',ado_veracruz:'ADO Veracruz',ado_puebla:'ADO Puebla'};
+  const totales=gpDatosAdo();
+  const conMonto=ADO_ENTIDADES.filter(e=>Math.abs(totales[e])>0.005);
+  if(!conMonto.length)return '';
+  const totalMes=Math.round(conMonto.reduce((s,e)=>s+totales[e],0)*100)/100;
+  return `<div class="sec-lbl" style="margin-top:18px">ADO por facturar aparte (no entra en la Global del negocio)</div>
+    <div class="acc-card" style="margin-bottom:12px">
+      ${conMonto.map(e=>`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px">
+        <span>${ADO_ETIQUETAS[e]}</span><strong>${fmxn(totales[e])}</strong>
+      </div>`).join('')}
+      <div style="display:flex;justify-content:space-between;padding:8px 0 0;margin-top:6px;border-top:1px solid var(--border);font-size:13px;font-weight:700">
+        <span>Total ADO del mes</span><span>${fmxn(totalMes)}</span>
+      </div>
+    </div>`;
 }
 
 // ─── VISTA DIARIA (informativo) ────────────────────────────────────
