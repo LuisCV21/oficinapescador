@@ -1379,6 +1379,15 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 </div>
 </div>
 
+<!-- MODAL TICKET DE CUENTA (Ventas del mes) -->
+<div class="modal-overlay" id="m-cuenta-ticket">
+<div class="modal" style="max-width:420px">
+  <div class="modal-hdr"><div class="modal-title" id="m-cuenta-ticket-title">Cuenta</div><button class="btn-icon" onclick="closeModal('m-cuenta-ticket')">✕</button></div>
+  <div class="modal-body" id="m-cuenta-ticket-body"></div>
+  <div class="modal-ftr" id="m-cuenta-ticket-ftr"></div>
+</div>
+</div>
+
 <!-- MODAL CORTES DE CAJA -->
 <div class="modal-overlay" id="m-corte-detail">
 <div class="modal">
@@ -8554,11 +8563,13 @@ function ventasMesFilas(){
   return filas;
 }
 
+let vmFilasActuales=[]; // última tabla renderizada -- openCuentaTicket(idx) la lee por índice
 function renderVentasMes(){
   const el=document.getElementById('vm-list');
   if(!el)return;
   renderVMTabs();
   const filas=ventasMesFilas();
+  vmFilasActuales=filas;
   const cnt=document.getElementById('vm-count');
   const total=filas.reduce((s,p)=>s+Number(p.monto||0),0);
   if(cnt)cnt.textContent=`${filas.length} folio(s) · ${fmxn(total)}`;
@@ -8566,7 +8577,7 @@ function renderVentasMes(){
     el.innerHTML=`<div class="empty"><div class="empty-ico">📈</div>Sin ventas en este rango</div>`;
     return;
   }
-  const rows=filas.map(p=>{
+  const rows=filas.map((p,idx)=>{
     const fecha=p.fecha?new Date(p.fecha).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
     // Un corte viejo (de antes de que Pescador POS mandara este dato) no
     // trae "facturado" para nada -- distinto de un corte nuevo que sí lo
@@ -8588,13 +8599,11 @@ function renderVentasMes(){
         :'');
     // Qué se vendió en este folio -- platillos (restaurantes, con
     // modificadores) o concepto/habitación (hotel, que no tiene carrito de
-    // productos por folio, cada venta ya es un solo cargo). Se muestra
-    // como tooltip en la celda de "Cuenta" para no ensuciar la tabla con
-    // otra columna -- el ícono 📋 avisa que hay detalle al pasar el mouse.
-    const detalleTxt=ventaDetalleTexto(p);
-    const cuentaCelda=detalleTxt
-      ?`<span title="${detalleTxt.replace(/"/g,'&quot;')}" style="border-bottom:1px dotted var(--text3);cursor:help">${p.cuenta||'—'} 📋</span>`
-      :(p.cuenta||'—');
+    // productos por folio, cada venta ya es un solo cargo). Antes era un
+    // tooltip de solo texto; ahora abre un ticket visual (openCuentaTicket)
+    // igual al que ya conoce el restaurante, por índice a vmFilasActuales
+    // para no tener que meter el objeto completo en el onclick.
+    const cuentaCelda=`<span onclick="openCuentaTicket(${idx})" style="border-bottom:1px dotted var(--copper);cursor:pointer;color:var(--copper);font-weight:600">${p.cuenta||'Folio '+(p.folio??'')} 🧾</span>`;
     return `<tr>
       <td>${fecha}</td>
       <td><span class="ent-dot" style="background:${corteSucColor(p.sucursal)}"></span>${corteSucLabel(p.sucursal)}</td>
@@ -8613,25 +8622,102 @@ function renderVentasMes(){
   </table>`;
 }
 
-// Texto plano (para el atributo title=) con el detalle de qué se vendió en
-// un folio -- lista de platillos con cantidad/modificadores si viene de un
-// restaurante (Pescador POS), o el concepto/habitación si viene del hotel.
-function ventaDetalleTexto(p){
-  if(Array.isArray(p.platillos)&&p.platillos.length){
-    return p.platillos.map(it=>{
-      let l=`${it.cantidad}x ${it.producto||'—'}${it.cancelado?' (CANCELADO)':''} — ${fmxn(it.importe)}`;
-      if(it.modificadores&&it.modificadores.length)l+=`\n   ${it.modificadores.join(', ')}`;
-      if(it.comentario)l+=`\n   📝 ${it.comentario}`;
-      return l;
-    }).join('\n');
-  }
-  if(p.concepto||p.habitacion){
+// ─── TICKET VISUAL DE UNA CUENTA (Ventas del mes) ────────────────────────
+// Al hacer click en la cuenta de un folio, arma una vista tipo comanda/
+// ticket -- platillos con cantidad/modificadores/comentario si viene de un
+// restaurante (Pescador POS), o concepto/habitación si viene del hotel
+// (que no tiene carrito de productos por folio, cada cargo es uno solo) --
+// mismos datos que ya trae pagos_detalle, solo presentados como el papel
+// que conoce el restaurante en vez de una tabla plana.
+function cuentaTicketBodyHtml(p){
+  const fecha=p.fecha?new Date(p.fecha).toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+  const items=Array.isArray(p.platillos)?p.platillos:[];
+  let itemsHtml='';
+  if(items.length){
+    itemsHtml=items.map(it=>{
+      const tachado=it.cancelado?'text-decoration:line-through;opacity:.55':'';
+      const extra=[];
+      if(it.modificadores&&it.modificadores.length)extra.push(it.modificadores.join(', '));
+      if(it.comentario)extra.push('📝 '+it.comentario);
+      if(it.descuento)extra.push('Descuento: -'+fmxn(it.descuento));
+      return `<div style="padding:5px 0;border-bottom:1px dashed var(--border)">
+        <div style="display:flex;justify-content:space-between;gap:8px;${tachado}">
+          <span>${it.cantidad}× ${it.producto||'—'}${it.cancelado?' (CANCELADO)':''}</span>
+          <span style="font-family:var(--mono);white-space:nowrap">${fmxn(it.importe)}</span>
+        </div>
+        ${extra.length?`<div style="font-size:11px;color:var(--text3);margin-top:2px">${extra.join(' · ')}</div>`:''}
+      </div>`;
+    }).join('');
+  }else if(p.concepto||p.habitacion){
     const partes=[];
-    if(p.habitacion)partes.push(`Hab. ${p.habitacion}`);
+    if(p.habitacion)partes.push(`Habitación ${p.habitacion}`);
     if(p.concepto)partes.push(p.concepto);
-    return partes.join(' — ');
+    itemsHtml=`<div style="padding:5px 0;display:flex;justify-content:space-between;gap:8px">
+      <span>${partes.join(' — ')||'Sin detalle'}</span>
+      <span style="font-family:var(--mono)">${fmxn(p.monto)}</span>
+    </div>`;
+  }else{
+    itemsHtml=`<div style="padding:10px 0;text-align:center;color:var(--text3);font-style:italic">Sin detalle de productos para este folio</div>`;
   }
-  return '';
+  const fact=p.facturado===undefined
+    ?{txt:'Sin dato (corte viejo)',color:'var(--text3)'}
+    :p.facturado?{txt:'✓ Facturada'+(p.folio_pac?' — '+p.folio_pac:''),color:'var(--green)'}
+    :p.excluido?{txt:'Excluida (sin CFDI)',color:'var(--text3)'}
+    :{txt:'Sin facturar',color:'var(--amber)'};
+  return `
+    <div style="text-align:center;margin-bottom:10px">
+      <div style="font-family:var(--display);font-size:16px;font-weight:700;color:var(--copper)">${corteSucLabel(p.sucursal)}</div>
+      <div style="font-size:11px;color:var(--text3)">${fecha}</div>
+    </div>
+    <div style="border-top:1.5px dashed var(--copper);border-bottom:1.5px dashed var(--copper);padding:8px 0;margin-bottom:10px;font-size:12.5px">
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Cuenta</span><b>${p.cuenta||'—'}</b></div>
+      ${p.mesa?`<div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Mesa</span><b>${p.mesa}</b></div>`:''}
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Mesero</span><b>${p.mesero||'—'}</b></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Folio</span><b>${p.folio??'—'}</b></div>
+    </div>
+    <div>${itemsHtml}</div>
+    <div style="margin-top:10px;padding-top:8px;border-top:1.5px dashed var(--copper)">
+      <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700">
+        <span>TOTAL</span><span style="font-family:var(--mono)">${fmxn(p.monto)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);margin-top:4px">
+        <span>Forma de pago</span><span>${p.forma_pago||'—'}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:4px">
+        <span style="color:var(--text2)">Facturación</span><span style="color:${fact.color};font-weight:600">${fact.txt}</span>
+      </div>
+    </div>`;
+}
+function openCuentaTicket(idx){
+  const p=vmFilasActuales[idx];
+  if(!p)return;
+  document.getElementById('m-cuenta-ticket-title').textContent=`Cuenta ${p.cuenta||''}`.trim();
+  document.getElementById('m-cuenta-ticket-body').innerHTML=cuentaTicketBodyHtml(p);
+  document.getElementById('m-cuenta-ticket-ftr').innerHTML=
+    `<button class="btn" onclick="imprimirCuentaTicket(${idx})">🖨 Imprimir</button>`+
+    `<button class="btn" onclick="closeModal('m-cuenta-ticket')">Cerrar</button>`;
+  openModal('m-cuenta-ticket');
+}
+// Mismo patrón del resto de Oficina: ventana nueva + botón que usa
+// window.print() -- así se puede guardar como PDF o mandar a la impresora
+// de recibos sin depender de ninguna librería extra.
+function imprimirCuentaTicket(idx){
+  const p=vmFilasActuales[idx];
+  if(!p)return;
+  const bodyHtml=cuentaTicketBodyHtml(p);
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cuenta ${p.cuenta||''}</title>
+  <style>
+    :root{--copper:#B5541A;--green:#276B3A;--amber:#8A5A00;--text2:#6B5747;--text3:#A08070;--border:rgba(181,84,26,.15);--mono:Consolas,'SF Mono',Menlo,monospace;--display:Georgia,serif}
+    @page{size:80mm auto;margin:4mm}
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{font-family:Arial,sans-serif;margin:0;padding:14px;color:#1C1410;background:#fff;font-size:12.5px;max-width:320px}
+    .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:var(--copper);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+    @media print{.print-btn{display:none}body{padding:0;max-width:none}}
+  </style></head><body>
+  <button class="print-btn" onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
+  ${bodyHtml}
+  </body></html>`;
+  const w=window.open('','_blank');w.document.write(html);w.document.close();
 }
 
 // ─── REPORTE DE FACTURACIÓN (formato Excel diario, agosto 2026) ──────────
