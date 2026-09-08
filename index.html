@@ -9064,12 +9064,38 @@ function gpAdoHtml(){
 
 // ─── VISTA DIARIA (informativo) ────────────────────────────────────
 // Cuánto entró cada día por forma de pago -- para que la oficina pueda ir
-// viendo el flujo diario sin esperar al cierre de mes. Es SOLO visual:
-// suma pagos_detalle tal cual vienen en cortesData (ya cargado por
-// Ventas del mes/Control de Gastos), no filtra por facturado/excluido ni
-// toca nada de lo que sí genera/timbra CFDI arriba en esta misma pantalla.
+// viendo el flujo diario sin esperar al cierre de mes. Por default muestra
+// SOLO lo pendiente por facturar (mismo criterio que el panel de arriba:
+// gpUltimoResultado.grupos[].folios, ya filtrado por el Edge Function --
+// facturado, excluido, cubierto por otra Global/individual) -- es la base
+// que le importa a Oficina. Un toggle cambia a "total" (todo lo que entró
+// ese día, ya esté facturado o no), que sí recorre pagos_detalle tal cual
+// vienen en cortesData sin filtrar nada.
 let gpVerDiaria=false;
+let gpDiariaTotal=false; // false=solo pendiente (default), true=total del día
 function gpToggleDiaria(){ gpVerDiaria=!gpVerDiaria; gpRenderResultado(); }
+function gpToggleDiariaModo(){ gpDiariaTotal=!gpDiariaTotal; gpRenderResultado(); }
+
+const GP_SAT_A_COL={'01':'efectivo','28':'debito','04':'credito','03':'transferencia'};
+// Misma agrupación que la tabla de arriba, pero por día -- usa
+// gpUltimoResultado.grupos[].folios, que ya es EXACTAMENTE lo pendiente
+// (el Edge Function ya descontó facturado/excluido/cubierto por otra
+// Global o por una individual), así no se reinventa ese criterio aquí.
+function gpDatosDiariosPendiente(){
+  const dias=new Map();
+  const grupos=(gpUltimoResultado&&gpUltimoResultado.grupos)||[];
+  grupos.forEach(g=>{
+    const col=GP_SAT_A_COL[g.sat_code]||'otro';
+    (g.folios||[]).forEach(p=>{
+      const f=(p.fecha||'').slice(0,10);
+      if(!f)return;
+      const acc=dias.get(f)||{efectivo:0,credito:0,debito:0,transferencia:0,otro:0};
+      acc[col]+=Number(p.monto||0);
+      dias.set(f,acc);
+    });
+  });
+  return dias;
+}
 
 function gpDatosDiarios(){
   const mes=Number(document.getElementById('gp-mes')?.value);
@@ -9100,10 +9126,11 @@ function gpVistaDiariaHtml(){
   const toggleBtn=`<button class="btn-text" style="font-size:12px" onclick="gpToggleDiaria()">${gpVerDiaria?'▲ Ocultar vista diaria':'▼ Ver vista diaria (efectivo/tarjeta/transferencia por día)'}</button>`;
   if(!gpVerDiaria)return `<div style="margin-top:18px">${toggleBtn}</div>`;
 
-  const dias=gpDatosDiarios();
+  const dias=gpDiariaTotal?gpDatosDiarios():gpDatosDiariosPendiente();
+  const modoBtn=`<button class="btn-text" style="font-size:11.5px" onclick="gpToggleDiariaModo()">${gpDiariaTotal?'↩ Ver solo pendiente por facturar':'Ver total del día (facturado + pendiente) →'}</button>`;
   const fechas=[...dias.keys()].sort();
   if(!fechas.length){
-    return `<div style="margin-top:18px">${toggleBtn}<div class="empty" style="padding:20px"><div class="empty-ico">📅</div>Sin ventas registradas este mes</div></div>`;
+    return `<div style="margin-top:18px">${toggleBtn}<div class="empty" style="padding:20px"><div class="empty-ico">📅</div>${gpDiariaTotal?'Sin ventas registradas este mes':'Nada pendiente por facturar este mes'}</div></div>`;
   }
   const tot={efectivo:0,credito:0,debito:0,transferencia:0,otro:0};
   const rows=fechas.map(f=>{
@@ -9122,8 +9149,13 @@ function gpVistaDiariaHtml(){
   const totGeneral=tot.efectivo+tot.credito+tot.debito+tot.transferencia+tot.otro;
   return `<div style="margin-top:18px">
     ${toggleBtn}
-    <div class="sec-lbl" style="margin-top:10px">Vista diaria — ${corteSucLabel(currentGPSuc)}</div>
-    <div class="page-sub" style="margin-bottom:8px">Solo informativo: lo que entró cada día por forma de pago, ya esté facturado o no. No genera ni afecta ninguna Global.</div>
+    <div class="sec-lbl" style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <span>Vista diaria — ${corteSucLabel(currentGPSuc)} · ${gpDiariaTotal?'Total del día':'Pendiente por facturar'}</span>
+      ${modoBtn}
+    </div>
+    <div class="page-sub" style="margin-bottom:8px">${gpDiariaTotal
+      ?'Todo lo que entró cada día por forma de pago, ya esté facturado o no. Solo informativo, no genera ni afecta ninguna Global.'
+      :'Lo mismo que falta por facturar arriba, pero repartido por día -- mismo criterio (ya descuenta lo facturado, lo excluido y lo cubierto por otra Global o individual).'}</div>
     <div style="overflow-x:auto"><table class="corte-tbl">
       <thead><tr><th>Día</th><th class="num">Efectivo</th><th class="num">Crédito</th><th class="num">Débito</th><th class="num">Transferencia</th><th class="num">Total</th></tr></thead>
       <tbody>${rows}</tbody>
