@@ -9866,11 +9866,12 @@ function combinarCortesHotelDia(rows){
     },
   };
 }
-function openCorteDetail(idOrIds){
-  const ids=Array.isArray(idOrIds)?idOrIds:[idOrIds];
-  const rows=ids.map(id=>cortesData.find(x=>x.id===id)).filter(Boolean);
-  if(!rows.length)return;
-  const c=rows.length>1?combinarCortesHotelDia(rows):rows[0];
+// Arma el HTML del detalle de un corte (ventas, cuadre, gastos, desgloses,
+// folios e incidencias) -- lo usa tanto el modal en pantalla (openCorteDetail)
+// como la versión imprimible/PDF (imprimirCorteGenerado), para que una
+// corrección hecha aquí (ver openCorreccionAnteriorModal, guardarCorreccion*)
+// se refleje en AMBAS sin mantener el HTML por duplicado.
+function buildCorteDetailBodyHtml(c){
   const d=c.datos||{};
   const cu=d.cuadre||{};
   // El hotel manda su cuadre bajo resumen_recepcion (4 cuentas: vales_antonio/
@@ -9967,8 +9968,7 @@ function openCorteDetail(idOrIds){
     return `<tr><td>${p.folio}</td><td>${p.forma_pago}${estado}</td><td class="num">${fmxn(p.monto)}</td><td style="text-align:center">${btn}</td></tr>`;
   }).join('');
 
-  document.getElementById('m-corte-detail-title').textContent=`Corte ${c.sucursal||''} · Turno #${c.turno_id}`;
-  document.getElementById('m-corte-detail-body').innerHTML=`
+  return `
     <div class="corte-hdr-info">
       <span>Apertura: <b>${fmtFechaHora(c.apertura)}</b></span>
       <span>Cierre: <b>${fmtFechaHora(c.cierre)}</b></span>
@@ -10035,22 +10035,107 @@ function openCorteDetail(idOrIds){
 
     ${buildIncidencias(d)}
   `;
+}
+
+// Resuelve el/los corte(s) por id (combinando si es el caso del hotel) --
+// lo usan tanto el modal (openCorteDetail) como imprimirCorteGenerado, para
+// no repetir la lógica de combinarCortesHotelDia en dos lados.
+function resolverCorte(idOrIds){
+  const ids=Array.isArray(idOrIds)?idOrIds:[idOrIds];
+  const rows=ids.map(id=>cortesData.find(x=>x.id===id)).filter(Boolean);
+  if(!rows.length)return null;
+  return rows.length>1?combinarCortesHotelDia(rows):rows[0];
+}
+
+function openCorteDetail(idOrIds){
+  const c=resolverCorte(idOrIds);
+  if(!c)return;
+  document.getElementById('m-corte-detail-title').textContent=`Corte ${c.sucursal||''} · Turno #${c.turno_id}`;
+  document.getElementById('m-corte-detail-body').innerHTML=buildCorteDetailBodyHtml(c);
   // Combinado: cada turno del día puede traer su propio PDF por separado
   // (cada uno genera el suyo al cerrar) -- se ofrecen los dos si existen,
   // en vez de un solo botón como en un corte normal.
-  const btnPdf=c._combinado
+  const btnPdfOriginal=c._combinado
     ?c._rows.filter(r=>r.pdf_path).map((r,i)=>
         `<button class="btn" onclick="verCortePdf('${r.pdf_path}')">📄 PDF turno ${i===0?'día':'noche'} #${r.turno_id}</button>`
       ).join('')
-    :(c.pdf_path?`<button class="btn btn-filled" onclick="verCortePdf('${c.pdf_path}')">📄 Ver PDF</button>`:'');
-  // "Corregir anterior" se movió fuera del detalle de corte (panel arriba
-  // de la lista, ver renderCorteAnteriorPanel) -- una corrección siempre
-  // aplica al turno de HOY, sin importar qué corte pasado estés viendo
-  // aquí, así que tenerla colgada de cada corte individual solo confundía
-  // (4-sept-2026).
+    :(c.pdf_path?`<button class="btn" onclick="verCortePdf('${c.pdf_path}')">📄 PDF original de ${c.sucursal.includes('Hotel')?'Recepción':'Puebla/Florida'}</button>`:'');
+  // Generado desde el JSON actual (con cualquier corrección de Oficina ya
+  // reflejada) -- a diferencia del botón de arriba, que muestra el PDF fijo
+  // que mandó el negocio al cerrar el turno y nunca cambia aunque aquí se
+  // corrija algo (ver conversación 8-sept-2026: los cortes de Puebla se
+  // corrigieron en el JSON pero el PDF original se quedó desactualizado).
+  const btnPdfGenerado=`<button class="btn btn-filled" onclick="imprimirCorteGenerado(${JSON.stringify(idOrIds)})">🖨 Generar PDF (con correcciones)</button>`;
   document.getElementById('m-corte-detail-ftr').innerHTML=
-    btnPdf+'<button class="btn" onclick="closeModal(\'m-corte-detail\')">Cerrar</button>';
+    btnPdfGenerado+btnPdfOriginal+'<button class="btn" onclick="closeModal(\'m-corte-detail\')">Cerrar</button>';
   openModal('m-corte-detail');
+}
+
+// Genera un PDF imprimible directo del JSON del corte (mismo contenido que
+// el modal de detalle) -- mismo patrón que el resto de Oficina (ventana
+// nueva + botón "Imprimir/Guardar PDF" que usa window.print()), así
+// cualquier corrección hecha aquí (ver guardarCorreccionAnterior, los
+// UPDATE directos a cortes_caja) se refleja sin depender de que el negocio
+// vuelva a mandar nada.
+function imprimirCorteGenerado(idOrIds){
+  const c=resolverCorte(idOrIds);
+  if(!c)return;
+  const bodyHtml=buildCorteDetailBodyHtml(c);
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Corte ${c.sucursal||''} — Turno ${c.turno_id}</title>
+  <style>
+    :root{
+      --copper:#B5541A;--copper-dark:#8A3E12;--copper-light:#F5E6DC;
+      --slate:#1A3A5C;--green:#276B3A;--green-light:#E8F5EC;
+      --amber:#8A5A00;--amber-light:#FEF6E4;--red:#9B1C1C;--teal:#1A5F6A;--teal-light:#E0F2F5;
+      --surface:#FFFEF9;--surface2:#F7F3EE;--text:#1C1410;--text2:#6B5747;--text3:#A08070;
+      --border:rgba(181,84,26,.15);--border2:rgba(181,84,26,.25);
+      --font:Arial,sans-serif;--mono:Consolas,'SF Mono',Menlo,monospace;
+    }
+    @page{size:letter;margin:1.2cm}
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+    body{font-family:var(--font);margin:0;padding:18px;color:var(--text);background:#fff;font-size:12px}
+    .corte-pdf-hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid var(--copper);padding-bottom:8px;margin-bottom:14px}
+    .corte-pdf-hdr h1{font-size:18px;margin:0;color:var(--copper)}
+    .corte-pdf-hdr span{font-size:11px;color:var(--text3)}
+    .corte-hdr-info{display:flex;flex-wrap:wrap;gap:4px 20px;font-size:11px;color:var(--text2);margin-bottom:14px}
+    .corte-hdr-info b{color:var(--text);font-weight:600}
+    .corte-sec{font-size:11px;font-weight:700;color:var(--slate);text-transform:uppercase;letter-spacing:.05em;
+      margin:18px 0 6px;padding-bottom:4px;border-bottom:2px solid var(--copper)}
+    .corte-card{width:100%;border-collapse:collapse;border:1.5px solid var(--copper);border-radius:6px;
+      overflow:hidden;margin-bottom:4px;font-size:12px}
+    .corte-card-hdr{background:var(--copper);color:#fff;font-size:11px;font-weight:700;
+      text-transform:uppercase;letter-spacing:.03em;padding:6px 12px}
+    .corte-row td{padding:5px 12px;border-bottom:1px solid var(--border)}
+    .corte-row:last-child td{border-bottom:none}
+    .corte-row-label{color:var(--text2);font-size:11.5px}
+    .corte-row-val{text-align:right;font-family:var(--mono);font-size:12px;color:var(--text)}
+    .corte-row-sep td{border-bottom:2px solid var(--copper)}
+    .corte-tbl{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:10px}
+    .corte-tbl th{background:var(--slate);color:#fff;font-size:9.5px;font-weight:700;text-transform:uppercase;
+      letter-spacing:.03em;padding:5px 8px;text-align:left}
+    .corte-tbl th.num{text-align:right}
+    .corte-tbl td{padding:5px 8px;border-bottom:1px solid var(--border);font-family:var(--mono);color:var(--text)}
+    .corte-tbl td.num{text-align:right}
+    .corte-tbl tr:nth-child(even) td{background:var(--surface2)}
+    .corte-tbl .corte-empty{font-family:var(--font);color:var(--text3);font-style:italic;text-align:center;padding:10px}
+    .corte-subtitulo{font-size:11px;font-weight:700;margin:10px 0 4px}
+    .corte-badge{display:inline-flex;align-items:center;gap:3px;font-size:9.5px;font-weight:700;
+      padding:2px 7px;border-radius:999px;margin-left:6px;white-space:nowrap}
+    .corte-badge.pend{background:var(--amber-light);color:var(--amber)}
+    .corte-badge.ok{background:var(--green-light);color:var(--green)}
+    .corte-badge.futura{background:var(--teal-light);color:var(--teal)}
+    .corte-iconbtn{display:none}
+    .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:var(--copper);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+    @media print{.print-btn{display:none}body{padding:0}}
+  </style></head><body>
+  <button class="print-btn" onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
+  <div class="corte-pdf-hdr">
+    <h1>Corte de caja — ${c.sucursal||''}</h1>
+    <span>Turno #${c.turno_id} · Generado desde Oficina el ${fmtFechaHora(new Date().toISOString())}</span>
+  </div>
+  ${bodyHtml}
+  </body></html>`;
+  const w=window.open('','_blank');w.document.write(html);w.document.close();
 }
 
 async function verCortePdf(pdfPath){
