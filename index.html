@@ -8224,7 +8224,12 @@ function corteSucLabel(nombre){ return (corteSucEnt(nombre)||{}).label||(nombre|
 function corteBg(nombre,pct){ return `color-mix(in srgb, ${corteSucColor(nombre)} ${pct}%, var(--surface))`; }
 function fmtDiaMes(iso){
   if(!iso)return'';
-  const d=new Date(iso);
+  // Una fecha "sola" (YYYY-MM-DD, sin hora) la interpreta Date() como
+  // medianoche UTC -- en México (UTC-6) eso cae en la tarde del día
+  // ANTERIOR al mostrarla en hora local, corriendo todo un día para atrás
+  // (ej. "1 de septiembre" salía como "31 de agosto"). Forzamos mediodía
+  // hora local agregando la hora explícita solo cuando el string no la trae.
+  const d=new Date(iso.length<=10?iso+'T12:00:00':iso);
   if(isNaN(d))return'';
   return d.toLocaleDateString('es-MX',{day:'numeric',month:'long'});
 }
