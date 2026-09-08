@@ -8631,6 +8631,19 @@ function renderVentasMes(){
 // que conoce el restaurante en vez de una tabla plana.
 function cuentaTicketBodyHtml(p){
   const fecha=p.fecha?new Date(p.fecha).toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+  // Apertura/cierre de la cuenta -- solo llega en cortes mandados desde
+  // que Pescador POS empezó a incluirlo (8-sept-2026); un corte viejo
+  // simplemente no trae el campo, se omite el renglón en vez de mostrar
+  // "—" como si se hubiera confirmado que no hay dato.
+  const horaCorta=iso=>iso?new Date(iso).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}):'';
+  let duracionTxt='';
+  if(p.apertura&&p.cierre){
+    const mins=Math.round((new Date(p.cierre)-new Date(p.apertura))/60000);
+    if(mins>=0){
+      const h=Math.floor(mins/60), m=mins%60;
+      duracionTxt=h>0?`${h}h ${m}min`:`${m}min`;
+    }
+  }
   const items=Array.isArray(p.platillos)?p.platillos:[];
   let itemsHtml='';
   if(items.length){
@@ -8674,6 +8687,9 @@ function cuentaTicketBodyHtml(p){
       ${p.mesa?`<div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Mesa</span><b>${p.mesa}</b></div>`:''}
       <div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Mesero</span><b>${p.mesero||'—'}</b></div>
       <div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Folio</span><b>${p.folio??'—'}</b></div>
+      ${p.apertura?`<div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Abierta</span><b>${horaCorta(p.apertura)}</b></div>`:''}
+      ${p.cierre?`<div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Cerrada</span><b>${horaCorta(p.cierre)}</b></div>`:''}
+      ${duracionTxt?`<div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Duración</span><b>${duracionTxt}</b></div>`:''}
     </div>
     <div>${itemsHtml}</div>
     <div style="margin-top:10px;padding-top:8px;border-top:1.5px dashed var(--copper)">
