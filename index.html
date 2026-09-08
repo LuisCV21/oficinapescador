@@ -10065,7 +10065,7 @@ function openCorteDetail(idOrIds){
   // que mandó el negocio al cerrar el turno y nunca cambia aunque aquí se
   // corrija algo (ver conversación 8-sept-2026: los cortes de Puebla se
   // corrigieron en el JSON pero el PDF original se quedó desactualizado).
-  const btnPdfGenerado=`<button class="btn btn-filled" onclick="imprimirCorteGenerado(${JSON.stringify(idOrIds)})">🖨 Generar PDF (con correcciones)</button>`;
+  const btnPdfGenerado=`<button class="btn btn-filled" onclick='imprimirCorteGenerado(${JSON.stringify(idOrIds).replace(/'/g,"&#39;")})'>🖨 Generar PDF (con correcciones)</button>`;
   document.getElementById('m-corte-detail-ftr').innerHTML=
     btnPdfGenerado+btnPdfOriginal+'<button class="btn" onclick="closeModal(\'m-corte-detail\')">Cerrar</button>';
   openModal('m-corte-detail');
