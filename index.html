@@ -2363,13 +2363,14 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
     <div class="bal-panel" data-step="1">
       <div class="bal-help">📅 ¿De qué día es este corte? Pueden generar varios balances en el mismo mes para ver cómo van avanzando.</div>
       <div class="f-row"><label>Fecha de corte <span class="req">*</span></label>
-        <input type="date" id="bal-fecha-corte" oninput="updateBalancePreview()"/>
+        <input type="date" id="bal-fecha-corte" oninput="updateBalancePreview();recargarAutoFlorida()"/>
       </div>
     </div>
 
     <!-- PASO 2 — INGRESOS -->
     <div class="bal-panel" data-step="2">
-      <div class="bal-help">💰 Capturen lo facturado de Florida separado por forma de pago — el total y su IVA se calculan solos.</div>
+      <div class="bal-help">💰 Tarjeta y Transferencia se jalan solas de las cortes de Florida (crédito+débito+transferencia, ya facturado + por facturar) — ajústalas a mano solo si de verdad hace falta.</div>
+      <div id="bal-ing-auto-info"></div>
       <div class="f-grid">
         <div class="f-row"><label>💳 Tarjeta</label>
           <input type="number" step="0.01" id="bf-fac-tarjeta" placeholder="0.00" oninput="updateBalancePreview()"/>
@@ -2378,7 +2379,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
           <input type="number" step="0.01" id="bf-fac-transf" placeholder="0.00" oninput="updateBalancePreview()"/>
         </div>
       </div>
-      <div class="f-row"><label>💵 Efectivo</label>
+      <div class="f-row"><label>💵 Efectivo <span style="font-weight:400;color:var(--text3);text-transform:none">(informativo -- no se suma a ingresos)</span></label>
         <input type="number" step="0.01" id="bf-fac-efectivo" placeholder="0.00" oninput="updateBalancePreview()"/>
       </div>
       <div class="bal-live" id="bal-live-florida"></div>
@@ -2432,13 +2433,19 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 
     <!-- PASO 4 — NÓMINA -->
     <div class="bal-panel" data-step="4">
-      <div class="bal-help">👥 Esto se jala de la Bitácora de Nómina (Florida) — el gravable y efectivo de cada semana solo incluyen empleados timbrados (inscritos IMSS); los de recibo simple no cuentan aquí. Marca las semanas que quieres incluir en este balance — las que ya se usaron en otro balance no aparecen aquí.</div>
-      <div class="ledger-add-form" style="margin-bottom:14px">
-        <div class="f-row"><label>Fecha</label><input type="date" id="nom-quick-fecha-FLO"/></div>
-        <div class="f-row"><label>Monto</label><input type="number" step="0.01" id="nom-quick-monto-FLO" placeholder="0.00"/></div>
-        <button type="button" class="btn btn-sm" onclick="quickAddNominaFromBalance('FLO','bf-nomina-pendientes')">+ Agregar semana</button>
+      <div class="bal-help">👥 La nómina ya timbrada (CFDI vía factura.com) de Florida se jala sola. La de recibo simple NO entra aquí -- cuéntala dentro de Egresos.</div>
+      <div id="bal-nom-auto-info"></div>
+      <div style="margin:6px 0 14px">
+        <span class="btn-text" style="font-size:11.5px;cursor:pointer" onclick="document.getElementById('bf-nomina-manual-wrap').style.display=document.getElementById('bf-nomina-manual-wrap').style.display==='none'?'block':'none'">🔓 Ajustar / agregar algo manual a la nómina</span>
       </div>
-      <div id="bf-nomina-pendientes"></div>
+      <div id="bf-nomina-manual-wrap" style="display:none">
+        <div class="ledger-add-form" style="margin-bottom:14px">
+          <div class="f-row"><label>Fecha</label><input type="date" id="nom-quick-fecha-FLO"/></div>
+          <div class="f-row"><label>Monto</label><input type="number" step="0.01" id="nom-quick-monto-FLO" placeholder="0.00"/></div>
+          <button type="button" class="btn btn-sm" onclick="quickAddNominaFromBalance('FLO','bf-nomina-pendientes')">+ Agregar semana</button>
+        </div>
+        <div id="bf-nomina-pendientes"></div>
+      </div>
       <div class="bal-live" id="bal-live-nomina"></div>
       <input type="hidden" id="bf-egr-nomina"/>
     </div>
@@ -2492,28 +2499,30 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
     <div class="bal-panel" data-step="1">
       <div class="bal-help">📅 ¿De qué día es este corte?</div>
       <div class="f-row"><label>Fecha de corte <span class="req">*</span></label>
-        <input type="date" id="bk-fecha" oninput="updateBalanceKatPreview()"/>
+        <input type="date" id="bk-fecha" oninput="updateBalanceKatPreview();recargarAutoKateryn()"/>
       </div>
     </div>
 
     <!-- PASO 2 — INGRESOS -->
     <div class="bal-panel" data-step="2">
-      <div class="bal-help">💰 Facturación de Puebla y de Hotel, separada por forma de pago — el total y el IVA se calculan solos.</div>
+      <div class="bal-help">💰 Tarjeta y Transferencia se jalan solas de las cortes de cada negocio (crédito+débito+transferencia, ya facturado + por facturar) — ajústalas a mano solo si de verdad hace falta.</div>
       <div class="modal-sec">Av. Puebla</div>
+      <div id="bal-ing-auto-info-pue"></div>
       <div class="f-grid">
         <div class="f-row"><label>💳 Tarjeta</label><input type="number" step="0.01" id="bk-pue-tarjeta" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
         <div class="f-row"><label>🏦 Transferencia</label><input type="number" step="0.01" id="bk-pue-transf" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
       </div>
-      <div class="f-row"><label>💵 Efectivo</label><input type="number" step="0.01" id="bk-pue-efectivo" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
+      <div class="f-row"><label>💵 Efectivo <span style="font-weight:400;color:var(--text3);text-transform:none">(informativo -- no se suma a ingresos)</span></label><input type="number" step="0.01" id="bk-pue-efectivo" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
       <div class="bal-live" id="bal-live-puebla"></div>
       <input type="hidden" id="bk-ing-puebla"/>
 
       <div class="modal-sec" style="margin-top:18px">Hotel</div>
+      <div id="bal-ing-auto-info-hot"></div>
       <div class="f-grid">
         <div class="f-row"><label>💳 Tarjeta</label><input type="number" step="0.01" id="bk-hot-tarjeta" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
         <div class="f-row"><label>🏦 Transferencia</label><input type="number" step="0.01" id="bk-hot-transf" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
       </div>
-      <div class="f-row"><label>💵 Efectivo</label><input type="number" step="0.01" id="bk-hot-efectivo" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
+      <div class="f-row"><label>💵 Efectivo <span style="font-weight:400;color:var(--text3);text-transform:none">(informativo -- no se suma a ingresos)</span></label><input type="number" step="0.01" id="bk-hot-efectivo" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
       <div class="bal-live" id="bal-live-hotel"></div>
       <input type="hidden" id="bk-ing-hotel"/>
     </div>
@@ -2562,14 +2571,20 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       <div class="f-row"><label>🏥 IMSS Puebla — Total <span class="req">*</span></label>
         <input type="number" step="0.01" id="bk-egr-imss-pue" placeholder="0.00" oninput="updateBalanceKatPreview()"/>
       </div>
-      <div style="display:flex;justify-content:flex-end;margin:8px 0">
-        <div class="ledger-add-form" style="flex:1">
-          <div class="f-row"><label>Fecha</label><input type="date" id="nom-quick-fecha-PUE"/></div>
-          <div class="f-row"><label>Monto</label><input type="number" step="0.01" id="nom-quick-monto-PUE" placeholder="0.00"/></div>
-          <button type="button" class="btn btn-sm" onclick="quickAddNominaFromBalance('PUE','bk-nomina-pue-pendientes')">+ Agregar semana (Nómina Puebla)</button>
-        </div>
+      <div id="bal-nom-auto-info-pue"></div>
+      <div style="margin:6px 0 10px">
+        <span class="btn-text" style="font-size:11.5px;cursor:pointer" onclick="document.getElementById('bk-nomina-pue-manual-wrap').style.display=document.getElementById('bk-nomina-pue-manual-wrap').style.display==='none'?'block':'none'">🔓 Ajustar / agregar algo manual a la nómina de Puebla</span>
       </div>
-      <div id="bk-nomina-pue-pendientes"></div>
+      <div id="bk-nomina-pue-manual-wrap" style="display:none">
+        <div style="display:flex;justify-content:flex-end;margin:8px 0">
+          <div class="ledger-add-form" style="flex:1">
+            <div class="f-row"><label>Fecha</label><input type="date" id="nom-quick-fecha-PUE"/></div>
+            <div class="f-row"><label>Monto</label><input type="number" step="0.01" id="nom-quick-monto-PUE" placeholder="0.00"/></div>
+            <button type="button" class="btn btn-sm" onclick="quickAddNominaFromBalance('PUE','bk-nomina-pue-pendientes')">+ Agregar semana (Nómina Puebla)</button>
+          </div>
+        </div>
+        <div id="bk-nomina-pue-pendientes"></div>
+      </div>
       <div class="bal-live" id="bal-live-nomina-pue"></div>
       <input type="hidden" id="bk-egr-nomina-pue"/>
 
@@ -2577,14 +2592,20 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       <div class="f-row"><label>🏥 IMSS Hotel — Total <span class="req">*</span></label>
         <input type="number" step="0.01" id="bk-egr-imss-hot" placeholder="0.00" oninput="updateBalanceKatPreview()"/>
       </div>
-      <div style="display:flex;justify-content:flex-end;margin:8px 0">
-        <div class="ledger-add-form" style="flex:1">
-          <div class="f-row"><label>Fecha</label><input type="date" id="nom-quick-fecha-HOT"/></div>
-          <div class="f-row"><label>Monto</label><input type="number" step="0.01" id="nom-quick-monto-HOT" placeholder="0.00"/></div>
-          <button type="button" class="btn btn-sm" onclick="quickAddNominaFromBalance('HOT','bk-nomina-hot-pendientes')">+ Agregar semana (Nómina Hotel)</button>
-        </div>
+      <div id="bal-nom-auto-info-hot"></div>
+      <div style="margin:6px 0 10px">
+        <span class="btn-text" style="font-size:11.5px;cursor:pointer" onclick="document.getElementById('bk-nomina-hot-manual-wrap').style.display=document.getElementById('bk-nomina-hot-manual-wrap').style.display==='none'?'block':'none'">🔓 Ajustar / agregar algo manual a la nómina de Hotel</span>
       </div>
-      <div id="bk-nomina-hot-pendientes"></div>
+      <div id="bk-nomina-hot-manual-wrap" style="display:none">
+        <div style="display:flex;justify-content:flex-end;margin:8px 0">
+          <div class="ledger-add-form" style="flex:1">
+            <div class="f-row"><label>Fecha</label><input type="date" id="nom-quick-fecha-HOT"/></div>
+            <div class="f-row"><label>Monto</label><input type="number" step="0.01" id="nom-quick-monto-HOT" placeholder="0.00"/></div>
+            <button type="button" class="btn btn-sm" onclick="quickAddNominaFromBalance('HOT','bk-nomina-hot-pendientes')">+ Agregar semana (Nómina Hotel)</button>
+          </div>
+        </div>
+        <div id="bk-nomina-hot-pendientes"></div>
+      </div>
       <div class="bal-live" id="bal-live-nomina-hot"></div>
       <input type="hidden" id="bk-egr-nomina-hot"/>
     </div>
@@ -7093,6 +7114,150 @@ let balancesKatData=[],nominaLedgerData=[],adoLedgerData=[];
 let editingBalanceKatId=null;
 let balActiveTab='luis';
 let nomActiveEnt='FLO';
+
+// ─── AUTOMÁTICO DEL BALANCE: ingresos (crédito/débito/transferencia ya
+// facturados + por facturar) y nómina ya timbrada, jalados directo de las
+// cortes y de la nómina CFDI -- pedido explícito del dueño, 9-sept-2026,
+// para que lo único que haya que capturar a mano en el balance sean los
+// egresos. Nunca incluye efectivo (eso no se "factura") ni nómina de
+// recibo simple (nunca llega a facturacom_status='timbrada', ver nominaCalc).
+let balIngAutoFLO=null,balIngAutoPUE=null,balIngAutoHOT=null;
+let balNomAutoFLO=0,balNomAutoPUE=0,balNomAutoHOT=0;
+
+// El Hotel manda su forma de pago como tarjeta_credito/tarjeta_debito en vez
+// de credito/debito (Florida/Puebla) -- se normaliza aquí para que el mismo
+// código sirva para las 3 sucursales.
+function normalizarFormaPagoIngreso(fp){
+  const s=(fp||'').toLowerCase();
+  if(s==='tarjeta_credito')return'credito';
+  if(s==='tarjeta_debito')return'debito';
+  return s;
+}
+
+// Mes calendario que contiene fechaYMD: del día 1 hasta la propia fecha de
+// corte (no fuerza fin de mes, para no jalar días que todavía no pasan si el
+// corte se hace a media mes).
+function mesCalendarioDeCorte(fechaYMD){
+  const f=fechaYMD||todayLocalISO();
+  return{desde:f.slice(0,7)+'-01',hasta:f};
+}
+
+// Ingresos "facturables" (crédito/débito/transferencia) de una sucursal
+// (Florida/Puebla/Hotel, etiqueta corta) en un rango de fechas -- separados
+// en lo que YA tiene un CFDI vigente (facturas_detalle.estado='timbrada',
+// buscado por folio de pago) contra lo que todavía no. El efectivo se
+// regresa aparte solo de referencia -- nunca cuenta como "ingreso facturado".
+// Se jala de cortesData (ya en memoria), sin ir a Supabase de nuevo.
+function ingresosFacturablesPeriodo(sucursalLabel,desdeYMD,hastaYMD){
+  const ya={credito:0,debito:0,transferencia:0},falta={credito:0,debito:0,transferencia:0};
+  let efectivo=0;
+  cortesData.filter(c=>corteSucLabel(c.sucursal)===sucursalLabel).forEach(c=>{
+    const pagos=(c.datos&&c.datos.pagos_detalle)||[];
+    const facturas=(c.datos&&c.datos.facturas_detalle)||[];
+    pagos.forEach(p=>{
+      if(p.excluido)return;
+      const fecha=(p.fecha||'').slice(0,10);
+      if(!fecha||fecha<desdeYMD||fecha>hastaYMD)return;
+      const fp=normalizarFormaPagoIngreso(p.forma_pago);
+      const monto=Number(p.monto||0);
+      if(fp==='efectivo'){efectivo+=monto;return;}
+      if(!(fp in ya))return; // vales/ADO/otros no son "facturables" aquí
+      const vigente=facturas.some(f=>Number(f.folio_pago)===Number(p.folio)&&f.estado==='timbrada');
+      (vigente?ya:falta)[fp]+=monto;
+    });
+  });
+  const r2=x=>Math.round(x*100)/100;
+  return{
+    tarjeta:r2(ya.credito+ya.debito+falta.credito+falta.debito),
+    transferencia:r2(ya.transferencia+falta.transferencia),
+    efectivo:r2(efectivo),
+    yaFacturado:r2(ya.credito+ya.debito+ya.transferencia),
+    faltaFacturar:r2(falta.credito+falta.debito+falta.transferencia),
+  };
+}
+
+// Nómina ya timbrada (CFDI vía factura.com) de una entidad (FLO/PUE/HOT) en
+// un rango de fechas, por periodo semanal cuyo cierre cae en el rango. Los
+// empleados de recibo simple (nomina_fiscal=false) nunca se mandan a
+// timbrar, así que jamás llegan a facturacom_status='timbrada' -- quedan
+// fuera solos, sin necesidad de filtrarlos aparte por empleado.
+async function nominaFacturadaPeriodo(ent,desdeYMD,hastaYMD){
+  const {data:periodos}=await sb.from('nomina_periodos').select('id').eq('entidad',ent).gte('semana_fin',desdeYMD).lte('semana_fin',hastaYMD);
+  if(!periodos||!periodos.length)return 0;
+  const {data:lineas}=await sb.from('nomina_lineas').select('salario_diario,dias_pagados,trabajo_domingo,retencion_isr,retencion_imss')
+    .in('periodo_id',periodos.map(p=>p.id)).eq('facturacom_status','timbrada');
+  return Math.round((lineas||[]).reduce((s,l)=>s+nominaCalc(l).total,0)*100)/100;
+}
+
+function renderIngAutoInfo(containerId,r,desde,hasta,onRecalcFnName){
+  const el=document.getElementById(containerId);
+  if(!el)return;
+  el.innerHTML=`<div style="font-size:11.5px;color:var(--text2);background:var(--surface2);border-radius:6px;padding:6px 10px;margin:4px 0 10px">
+    📅 ${fmtFechaCorta(desde)} – ${fmtFechaCorta(hasta)} · Ya facturado: <b>${fmxn(r.yaFacturado)}</b> · Falta facturar: <b style="color:${r.faltaFacturar>0.5?'var(--amber)':'inherit'}">${fmxn(r.faltaFacturar)}</b>
+    <span class="btn-text" style="font-size:11px;cursor:pointer;margin-left:6px" onclick="${onRecalcFnName}()">🔄 recalcular</span>
+  </div>`;
+}
+function renderNomAutoInfo(containerId,monto,ent){
+  const el=document.getElementById(containerId);
+  if(!el)return;
+  el.innerHTML=`<div style="font-size:11.5px;color:var(--text2);background:var(--surface2);border-radius:6px;padding:6px 10px;margin:4px 0">
+    🧾 Nómina ya timbrada este mes (${ENT_LABELS[ent]||ent}): <b>${fmxn(monto)}</b> — se suma sola a egresos.
+  </div>`;
+}
+// Para un balance ya guardado (editBalance) -- no recalcula solo al abrir
+// (mostraría números de HOY como si fueran los de cuando se guardó), deja el
+// botón para que el usuario decida si quiere refrescarlo con las cortes/
+// nómina actuales.
+function renderAutoHintEstatico(containerId,fnName){
+  const el=document.getElementById(containerId);
+  if(!el)return;
+  el.innerHTML=`<div style="font-size:11.5px;color:var(--text2);background:var(--surface2);border-radius:6px;padding:6px 10px;margin:4px 0 10px">
+    Mostrando los valores ya guardados. <span class="btn-text" style="cursor:pointer" onclick="${fnName}()">🔄 recalcular con las cortes/nómina de hoy</span>
+  </div>`;
+}
+
+async function recargarAutoFlorida(){
+  const fecha=document.getElementById('bal-fecha-corte').value;
+  if(!fecha)return;
+  const{desde,hasta}=mesCalendarioDeCorte(fecha);
+  const r=ingresosFacturablesPeriodo('Florida',desde,hasta);
+  balIngAutoFLO=r;
+  document.getElementById('bf-fac-tarjeta').value=r.tarjeta;
+  document.getElementById('bf-fac-transf').value=r.transferencia;
+  document.getElementById('bf-fac-efectivo').value=r.efectivo;
+  renderIngAutoInfo('bal-ing-auto-info',r,desde,hasta,'recargarAutoFlorida');
+  updateBalancePreview();
+  balNomAutoFLO=await nominaFacturadaPeriodo('FLO',desde,hasta);
+  renderNomAutoInfo('bal-nom-auto-info',balNomAutoFLO,'FLO');
+  updateBalancePreview();
+}
+
+async function recargarAutoKateryn(){
+  const fecha=document.getElementById('bk-fecha').value;
+  if(!fecha)return;
+  const{desde,hasta}=mesCalendarioDeCorte(fecha);
+  const rPue=ingresosFacturablesPeriodo('Puebla',desde,hasta);
+  balIngAutoPUE=rPue;
+  document.getElementById('bk-pue-tarjeta').value=rPue.tarjeta;
+  document.getElementById('bk-pue-transf').value=rPue.transferencia;
+  document.getElementById('bk-pue-efectivo').value=rPue.efectivo;
+  renderIngAutoInfo('bal-ing-auto-info-pue',rPue,desde,hasta,'recargarAutoKateryn');
+
+  const rHot=ingresosFacturablesPeriodo('Hotel',desde,hasta);
+  balIngAutoHOT=rHot;
+  document.getElementById('bk-hot-tarjeta').value=rHot.tarjeta;
+  document.getElementById('bk-hot-transf').value=rHot.transferencia;
+  document.getElementById('bk-hot-efectivo').value=rHot.efectivo;
+  renderIngAutoInfo('bal-ing-auto-info-hot',rHot,desde,hasta,'recargarAutoKateryn');
+  updateBalanceKatPreview();
+
+  const[nomPue,nomHot]=await Promise.all([nominaFacturadaPeriodo('PUE',desde,hasta),nominaFacturadaPeriodo('HOT',desde,hasta)]);
+  balNomAutoPUE=nomPue;balNomAutoHOT=nomHot;
+  renderNomAutoInfo('bal-nom-auto-info-pue',balNomAutoPUE,'PUE');
+  renderNomAutoInfo('bal-nom-auto-info-hot',balNomAutoHOT,'HOT');
+  updateBalanceKatPreview();
+}
+
 let adoActiveTipo='pagada';
 const ENT_LABELS={FLO:'Florida',PUE:'Puebla',HOT:'Hotel'};
 const BAL_NISSAN_DEFAULT=7265.00;
@@ -8051,6 +8216,13 @@ async function openBalanceModal(){
   goToBalStep(1);
   updateBalancePreview();
   openModal('m-balance');
+  if(useDraft){
+    balNomAutoFLO=(draft.nomina_semanas||[]).find(s=>s.origen==='facturacom_auto')?.monto||0;
+    renderAutoHintEstatico('bal-ing-auto-info','recargarAutoFlorida');
+    renderAutoHintEstatico('bal-nom-auto-info','recargarAutoFlorida');
+  }else{
+    await recargarAutoFlorida();
+  }
 }
 
 async function editBalance(id){
@@ -8079,7 +8251,10 @@ async function editBalance(id){
   document.getElementById('bf-gastos-proy-nota').value=b.gastos_proyectados_nota||'';
   const usadasPorEsteBalance=nominaLedgerData.filter(n=>n.balance_luis_id===b.id).map(n=>n.id);
   balNomSel.FLO=new Set([...usadasPorEsteBalance,...nominaLedgerPendientes('FLO').map(n=>n.id)]);
+  balNomAutoFLO=(b.nomina_semanas||[]).find(s=>s.origen==='facturacom_auto')?.monto||0;
   renderNominaPendientesFor('FLO','bf-nomina-pendientes');
+  renderAutoHintEstatico('bal-ing-auto-info','recargarAutoFlorida');
+  renderAutoHintEstatico('bal-nom-auto-info','recargarAutoFlorida');
   goToBalStep(1);
   updateBalancePreview();
   openModal('m-balance');
@@ -8091,6 +8266,7 @@ function getBalanceFormValues(){
   const efectivo=Number(document.getElementById('bf-fac-efectivo').value)||0;
   const nomEntries=nominaLedgerData.filter(n=>balNomSel.FLO.has(n.id));
   const semanas=nomEntries.map(n=>({fecha:n.fecha,monto:Number(n.monto),ledger_id:n.id}));
+  if(balNomAutoFLO)semanas.push({fecha:'AUTO-FACTURADO',monto:balNomAutoFLO,ledger_id:null,origen:'facturacom_auto'});
   const nominaTotal=semanas.reduce((s,w)=>s+w.monto,0);
   return{
     fecha_corte:document.getElementById('bal-fecha-corte').value,
@@ -8099,7 +8275,7 @@ function getBalanceFormValues(){
     facturacion_efectivo:efectivo,
     facturacion_notas_pendientes:Number(document.getElementById('bf-notas-pendientes').value)||0,
     ventas_totales:Number(document.getElementById('bf-ventas-totales').value)||0,
-    ingresos_florida_total:tarjeta+transferencia+efectivo,
+    ingresos_florida_total:tarjeta+transferencia,
     ingresos_nextel_total:Number(document.getElementById('bf-ing-nextel').value)||0,
     ingresos_nextel_iva:Number(document.getElementById('bf-ing-nextel-iva').value)||0,
     ingresos_florida_iva:balFloridaIvaManual?(Number(document.getElementById('bf-ing-florida-iva').value)||0):null,
@@ -8178,7 +8354,7 @@ function updateBalancePreview(){
 async function saveBalance(){
   const v=getBalanceFormValues();
   if(!v.fecha_corte){toast('Falta la fecha de corte',true);goToBalStep(1);return;}
-  if(!v.ingresos_florida_total){toast('Falta capturar los ingresos de Florida (Tarjeta/Transf./Efectivo)',true);goToBalStep(2);return;}
+  if(!v.ingresos_florida_total){toast('Falta capturar los ingresos de Florida (Tarjeta/Transferencia)',true);goToBalStep(2);return;}
   if(!v.egresos_gastos_total){toast('Falta capturar el total de Gastos',true);goToBalStep(3);return;}
   const btn=document.getElementById('bal-next-btn');btn.disabled=true;btn.textContent=editingBalanceId?'Guardando cambios...':'Guardando...';
   const previouslyUsedIds=editingBalanceId?nominaLedgerData.filter(n=>n.balance_luis_id===editingBalanceId).map(n=>n.id):[];
@@ -11258,6 +11434,17 @@ async function openBalanceKatModal(){
   goToBalKatStep(1);
   updateBalanceKatPreview();
   openModal('m-balance-kat');
+  if(useDraft){
+    // El borrador (localStorage) no guarda el desglose auto/manual de la
+    // nómina -- se deja en 0 y basta un clic en "recalcular" si hace falta.
+    balNomAutoPUE=0;balNomAutoHOT=0;
+    renderAutoHintEstatico('bal-ing-auto-info-pue','recargarAutoKateryn');
+    renderAutoHintEstatico('bal-ing-auto-info-hot','recargarAutoKateryn');
+    renderAutoHintEstatico('bal-nom-auto-info-pue','recargarAutoKateryn');
+    renderAutoHintEstatico('bal-nom-auto-info-hot','recargarAutoKateryn');
+  }else{
+    await recargarAutoKateryn();
+  }
 }
 
 async function editBalanceKat(id){
@@ -11290,6 +11477,19 @@ async function editBalanceKat(id){
   goToBalKatStep(1);
   updateBalanceKatPreview();
   openModal('m-balance-kat');
+  // La tabla balances_kateryn no guarda el desglose auto/manual de nómina (a
+  // diferencia de balances_mensuales.nomina_semanas para Florida) -- se
+  // recalcula fresco cada vez que se edita. Debería dar el mismo número que
+  // cuando se guardó, salvo que algún CFDI de nómina se haya cancelado
+  // después (caso raro).
+  renderAutoHintEstatico('bal-ing-auto-info-pue','recargarAutoKateryn');
+  renderAutoHintEstatico('bal-ing-auto-info-hot','recargarAutoKateryn');
+  const{desde,hasta}=mesCalendarioDeCorte(b.fecha_corte);
+  const[nomPue,nomHot]=await Promise.all([nominaFacturadaPeriodo('PUE',desde,hasta),nominaFacturadaPeriodo('HOT',desde,hasta)]);
+  balNomAutoPUE=nomPue;balNomAutoHOT=nomHot;
+  renderNomAutoInfo('bal-nom-auto-info-pue',balNomAutoPUE,'PUE');
+  renderNomAutoInfo('bal-nom-auto-info-hot',balNomAutoHOT,'HOT');
+  updateBalanceKatPreview();
 }
 
 function getBalanceKatFormValues(){
@@ -11304,19 +11504,19 @@ function getBalanceKatFormValues(){
     facturacion_puebla_tarjeta:puebla.tarjeta,
     facturacion_puebla_transferencia:puebla.transf,
     facturacion_puebla_efectivo:puebla.efectivo,
-    ingresos_puebla_total:puebla.tarjeta+puebla.transf+puebla.efectivo,
+    ingresos_puebla_total:puebla.tarjeta+puebla.transf,
     facturacion_hotel_tarjeta:hotel.tarjeta,
     facturacion_hotel_transferencia:hotel.transf,
     facturacion_hotel_efectivo:hotel.efectivo,
-    ingresos_hotel_total:hotel.tarjeta+hotel.transf+hotel.efectivo,
+    ingresos_hotel_total:hotel.tarjeta+hotel.transf,
     ado_pagadas_total:adoPagadasEntries.reduce((s,a)=>s+Number(a.cantidad),0),
     ado_credito_total:adoCreditoEntries.reduce((s,a)=>s+Number(a.cantidad),0),
     egresos_gastos_total:Number(document.getElementById('bk-egr-gastos').value)||0,
     egresos_camioneta_total:Number(document.getElementById('bk-egr-camioneta').value)||0,
     egresos_imss_puebla_total:Number(document.getElementById('bk-egr-imss-pue').value)||0,
-    egresos_nomina_puebla_total:nomPueEntries.reduce((s,n)=>s+Number(n.monto),0),
+    egresos_nomina_puebla_total:nomPueEntries.reduce((s,n)=>s+Number(n.monto),0)+Number(balNomAutoPUE||0),
     egresos_imss_hotel_total:Number(document.getElementById('bk-egr-imss-hot').value)||0,
-    egresos_nomina_hotel_total:nomHotEntries.reduce((s,n)=>s+Number(n.monto),0),
+    egresos_nomina_hotel_total:nomHotEntries.reduce((s,n)=>s+Number(n.monto),0)+Number(balNomAutoHOT||0),
   };
 }
 
