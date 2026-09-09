@@ -10330,7 +10330,6 @@ function etiquetaCategoriaMov(cat){
   const todas=CAT_CAJA_RETIRO.concat(CAT_CAJA_DEPOSITO,CAT_BAUCHER_DEPOSITO,CAT_BAUCHER_RETIRO);
   return (todas.find(([c])=>c===cat)||[cat,cat])[1];
 }
-const VENTAS_FORMA_ETIQUETAS={efectivo:'Efectivo',credito:'Crédito',debito:'Débito',transferencia:'Transferencia',vales:'Vales',ado:'ADO (vales convenio)'};
 
 // Recalcula TODO lo derivado (saldos, gastos, cuadre) a partir de lo editable
 // (efectivo contado, anteriores, ventas por forma, movimientos) -- muta y
@@ -10362,6 +10361,20 @@ function recalcularCorteJson(d){
   d.gastos_por_categoria=gastos;
   cu.gastos_totales=r2(Object.values(gastos).reduce((a,b)=>a+b,0));
 
+  // ventas_por_forma NUNCA se captura a mano -- se recalcula siempre de los
+  // folios (igual que calcular_corte() agrupa pagos por forma_pago), para que
+  // mover un folio de Crédito a Débito sea la única forma de mover dinero
+  // entre formas de pago (pedido explícito del dueño, 9-sept-2026: si no,
+  // el total por forma de pago se podía desincronizar de los folios reales).
+  if(Array.isArray(d.pagos_detalle)&&d.pagos_detalle.length){
+    const vpf={};
+    for(const p of d.pagos_detalle){
+      const fp=(p.forma_pago||'').toLowerCase();
+      if(!fp)continue;
+      vpf[fp]=r2((vpf[fp]||0)+Number(p.monto||0));
+    }
+    d.ventas_por_forma=vpf;
+  }
   const vpf=d.ventas_por_forma||{};
   const tira=r2(Object.values(vpf).reduce((a,b)=>a+Number(b||0),0));
   d.total_ventas=tira;
@@ -10383,7 +10396,6 @@ function openEditarCorteModal(corteId){
   editCorte={
     id:corteId,
     movRows:JSON.parse(JSON.stringify(d.movimientos_desglose||[])),
-    ventasKeys:[...new Set([...Object.keys(VENTAS_FORMA_ETIQUETAS),...Object.keys(d.ventas_por_forma||{})])],
   };
   document.getElementById('m-editar-corte-title').textContent=`Corregir corte — ${c.sucursal||''} · Turno #${c.turno_id}`;
   renderEditarCorteModal();
@@ -10419,8 +10431,8 @@ function renderEditarCorteModal(){
       </div>
       <div>
         <div class="corte-sec" style="border:none;margin:0 0 6px">Ventas por forma de pago</div>
-        ${editCorte.ventasKeys.map(k=>`<div class="f-row"><label>${VENTAS_FORMA_ETIQUETAS[k]||k}</label><input type="number" step="0.01" id="em-vpf-${k}" value="${(d.ventas_por_forma||{})[k]||0}" onchange="renderEditarCortePreview()"/></div>`).join('')}
-        <div id="em-preview" style="margin-top:14px"></div>
+        <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px">Se calcula sola de los folios de pago (abajo) -- no se captura a mano. Para mover dinero de una forma a otra, corrige el folio que le tocaba.</div>
+        <div id="em-preview" style="margin-top:6px"></div>
       </div>
     </div>
 
@@ -10430,12 +10442,40 @@ function renderEditarCorteModal(){
     </div>
     <div style="overflow-x:auto"><table class="corte-tbl" style="margin-bottom:4px" id="em-mov-tabla"></table></div>
 
+    <div class="corte-sec" style="border:none;margin:16px 0 6px">Folios de pago (define las ventas por forma de pago)</div>
+    <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px">El monto de cada folio no se toca aquí -- solo su forma de pago. Si el folio ya se corrigió con "Corregir método de pago" (⏳/✓ en el detalle del corte), cámbiala aquí igual para que el cuadre de Oficina quede al día ahora mismo.</div>
+    <div style="overflow-x:auto;overflow-y:auto;max-height:280px;border:1px solid var(--border,#e5e5e5);border-radius:8px"><table class="corte-tbl" style="margin-bottom:0" id="em-folios-tabla"></table></div>
+
     <div class="f-row" style="margin-top:12px"><label>¿Qué corregiste y por qué? <span class="req">*</span></label>
       <input type="text" id="em-motivo" placeholder="ej. el retiro de $8,000 de bodega en realidad fue $2,500, la cajera se equivocó al capturar"/>
     </div>
   `;
   renderTablaMovimientosEditor();
+  renderTablaFoliosEditor();
   renderEditarCortePreview();
+}
+
+const FORMAS_PAGO_EDITOR=[['efectivo','Efectivo'],['credito','Crédito'],['debito','Débito'],['transferencia','Transferencia'],['vales','Vales'],['ado','ADO (vales convenio)']];
+
+function renderTablaFoliosEditor(){
+  const c=cortesData.find(x=>x.id===editCorte.id);
+  const pagos=(c.datos&&c.datos.pagos_detalle)||[];
+  const el=document.getElementById('em-folios-tabla');
+  if(!pagos.length){el.innerHTML=`<tbody><tr><td class="corte-empty">Este corte no trae folios de pago detallados</td></tr></tbody>`;return;}
+  const fila=(p,i)=>{
+    const fp=(p.forma_pago||'').toLowerCase();
+    return `<tr>
+      <td>${p.folio??'—'}</td>
+      <td class="num">${fmxn(p.monto)}</td>
+      <td><select id="em-fp-${i}" onchange="renderEditarCortePreview()">
+        ${FORMAS_PAGO_EDITOR.map(([v,l])=>`<option value="${v}" ${v===fp?'selected':''}>${l}</option>`).join('')}
+      </select></td>
+    </tr>`;
+  };
+  el.innerHTML=`
+    <thead style="position:sticky;top:0"><tr><th>Folio</th><th class="num">Monto</th><th>Forma de pago</th></tr></thead>
+    <tbody>${pagos.map(fila).join('')}</tbody>
+  `;
 }
 
 function renderTablaMovimientosEditor(){
@@ -10519,13 +10559,14 @@ function leerFormEditarCorte(){
     const el=document.getElementById('em-ant-'+e);
     if(el)d.cuadre['anterior_'+e]=parseFloat(el.value)||0;
   }
-  d.ventas_por_forma=d.ventas_por_forma||{};
-  for(const k of editCorte.ventasKeys){
-    const el=document.getElementById('em-vpf-'+k);
-    if(el)d.ventas_por_forma[k]=parseFloat(el.value)||0;
+  if(Array.isArray(d.pagos_detalle)){
+    d.pagos_detalle=d.pagos_detalle.map((p,i)=>{
+      const el=document.getElementById('em-fp-'+i);
+      return el?{...p,forma_pago:el.value}:p;
+    });
   }
   d.movimientos_desglose=leerMovimientosDeDOM();
-  recalcularCorteJson(d);
+  recalcularCorteJson(d); // ventas_por_forma sale de d.pagos_detalle aquí adentro
   return d;
 }
 
@@ -10534,7 +10575,15 @@ function renderEditarCortePreview(){
   const cu=d.cuadre;
   const sumaAdo=ADO_ENTIDADES.reduce((s,e)=>s+Number((d.saldo_ado||{})[e]||0),0);
   const cuadra=Math.abs(Number(cu.diferencia_cuadre||0))<0.5;
+  const vpfHtml=FORMAS_PAGO_EDITOR.map(([k,l])=>{
+    const v=Number((d.ventas_por_forma||{})[k]||0);
+    return v?`<div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">${l}</span><b>${fmxn(v)}</b></div>`:'';
+  }).join('');
   document.getElementById('em-preview').innerHTML=`
+    <div class="acc-card" style="font-size:12px;margin-bottom:10px">
+      ${vpfHtml}
+      <div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid var(--border,#e5e5e5);margin-top:4px;padding-top:4px"><span>Total ventas</span><b>${fmxn(d.total_ventas)}</b></div>
+    </div>
     <div class="corte-sec" style="border:none;margin:0 0 6px">Cuadre recalculado</div>
     <div class="acc-card" style="font-size:12px">
       <div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">Bodega</span><b>${fmxn(d.saldo_bodega)}</b></div>
