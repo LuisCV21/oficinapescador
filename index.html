@@ -10492,11 +10492,11 @@ function openCorteDetail(idOrIds){
   // corrija algo (ver conversación 8-sept-2026: los cortes de Puebla se
   // corrigieron en el JSON pero el PDF original se quedó desactualizado).
   const btnPdfGenerado=`<button class="btn btn-filled" onclick='imprimirCorteGenerado(${JSON.stringify(idOrIds).replace(/'/g,"&#39;")})'>🖨 Generar PDF (con correcciones)</button>`;
-  // El editor solo aplica a un corte de restaurante individual (Florida/Puebla)
-  // -- el Hotel usa otro formato (resumen_recepcion, 4 cuentas) y un "combinado"
-  // son 2 turnos (día+noche) fusionados solo para mostrarlos juntos, no un
-  // registro real que se pueda guardar de vuelta.
-  const puedeEditar=!c._combinado&&!(c.datos&&c.datos.resumen_recepcion);
+  // El editor soporta restaurante (Florida/Puebla) y Hotel, cada uno con su
+  // propio formulario (ver renderEditarCorteModal) -- lo único que no se
+  // puede editar es un "combinado" (2 turnos día+noche del Hotel fusionados
+  // solo para mostrarlos juntos, no es un registro real que se guarde de vuelta).
+  const puedeEditar=!c._combinado;
   const btnEditar=puedeEditar?`<button class="btn" onclick="openEditarCorteModal('${c.id}')">✎ Corregir corte</button>`:'';
   document.getElementById('m-corte-detail-ftr').innerHTML=
     btnEditar+btnPdfGenerado+btnPdfOriginal+'<button class="btn" onclick="closeModal(\'m-corte-detail\')">Cerrar</button>';
@@ -10665,14 +10665,19 @@ function recalcularCorteJson(d){
   return d;
 }
 
-let editCorte=null; // {id, movRows:[...]}
+let editCorte=null; // {id, esHotel, movRows:[...], cuentaRows:[...], gastoRows:[...]}
 
 function openEditarCorteModal(corteId){
   const c=cortesData.find(x=>x.id===corteId);
   if(!c){toast('No se encontró ese corte.',true);return;}
   const d=c.datos||{};
-  editCorte={
-    id:corteId,
+  const esHotel=!!(d.resumen_recepcion);
+  editCorte=esHotel?{
+    id:corteId,esHotel:true,
+    cuentaRows:JSON.parse(JSON.stringify((d.resumen_recepcion&&d.resumen_recepcion.movimientos_cuentas)||[])),
+    gastoRows:JSON.parse(JSON.stringify(d.movimientos_desglose||[])),
+  }:{
+    id:corteId,esHotel:false,
     movRows:JSON.parse(JSON.stringify(d.movimientos_desglose||[])),
   };
   document.getElementById('m-editar-corte-title').textContent=`Corregir corte — ${c.sucursal||''} · Turno #${c.turno_id}`;
@@ -10684,6 +10689,11 @@ function openEditarCorteModal(corteId){
 }
 
 function renderEditarCorteModal(){
+  if(editCorte.esHotel)return renderEditarCorteModalHotel();
+  return renderEditarCorteModalRestaurante();
+}
+
+function renderEditarCorteModalRestaurante(){
   const c=cortesData.find(x=>x.id===editCorte.id);
   const d=c.datos||{};
   const cu=d.cuadre||{};
@@ -10854,14 +10864,20 @@ function renderEditarCortePreview(){
 }
 
 async function guardarEdicionCorte(){
-  const btn=document.getElementById('em-save-btn');
   const motivo=document.getElementById('em-motivo').value.trim();
   if(!motivo){toast('Escribe qué corregiste y por qué -- queda anotado en el historial del corte.',true);return;}
+  const d=editCorte.esHotel?leerFormEditarCorteHotel():leerFormEditarCorte();
+  await guardarEdicionCorteComun(d,motivo);
+}
+
+// Guardado compartido por restaurante y Hotel -- ambos ya llegan aquí con un
+// `d` completo y recalculado (ver leerFormEditarCorte/leerFormEditarCorteHotel).
+async function guardarEdicionCorteComun(d,motivo){
+  const btn=document.getElementById('em-save-btn');
   btn.disabled=true;
   try{
     const c=cortesData.find(x=>x.id===editCorte.id);
     const difAntes=Number(c.diferencia_cuadre||0);
-    const d=leerFormEditarCorte();
     const nombre=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina';
     d.ediciones=Array.isArray(d.ediciones)?d.ediciones:[];
     d.ediciones.push({
@@ -10880,6 +10896,282 @@ async function guardarEdicionCorte(){
   }finally{
     btn.disabled=false;
   }
+}
+
+// ─── EDITAR CORTE — HOTEL (resumen_recepcion: bodega/baucher/vales Sr.
+// Antonio/vales del Personal, formato distinto al de restaurante) ──────────
+// Mismo espíritu que el editor de restaurante: anteriores + movimientos
+// editables, cuadre recalculado igual que hotel-sistema/src/caja/
+// corte_recepcion.py::totales_turno/total_caja_1 y src/oficina/sync_corte.py
+// (verificado campo por campo contra un corte real, 9-sept-2026). La
+// diferencia de fondo es que aquí el monto de cada movimiento YA es con
+// signo (positivo entra a la cuenta, negativo la liquida) -- no hay
+// medio/tipo separados como en el restaurante -- y los gastos son una lista
+// aparte (tipo RETIRO/INGRESO, categoría siempre "General").
+const CUENTAS_HOTEL=[['bodega','Bodega'],['baucher','Baucher'],['vales_antonio','Vales Sr. Antonio'],['vales_personal','Vales del Personal']];
+
+function recalcularCorteHotelJson(d){
+  const r2=x=>Math.round((Number(x)||0)*100)/100;
+  const rr=d.resumen_recepcion=d.resumen_recepcion||{};
+  const movs=rr.movimientos_cuentas||[];
+  const sumaCuenta=cuenta=>r2(movs.filter(m=>m.cuenta===cuenta).reduce((s,m)=>s+Number(m.monto||0),0));
+  const totales={
+    bodega:r2(Number(rr.anterior_bodega||0)+sumaCuenta('bodega')),
+    baucher:r2(Number(rr.anterior_baucher||0)+sumaCuenta('baucher')),
+    vales_antonio:r2(Number(rr.anterior_vales_antonio||0)+sumaCuenta('vales_antonio')),
+    vales_personal:r2(Number(rr.anterior_vales_personal||0)+sumaCuenta('vales_personal')),
+  };
+  rr.totales_cuentas=totales;
+  rr.total_caja_1=r2(totales.bodega+totales.baucher+totales.vales_antonio+totales.vales_personal+Number(rr.monedas||0)+Number(rr.billetes||0));
+
+  // rr.gastos NO se recalcula aquí -- ver nota grande más abajo (día combinado).
+  rr.total_caja_2=r2(rr.total_caja_1+Number(rr.gastos||0));
+
+  // ventas_por_forma: igual que en restaurante, siempre derivado de
+  // pagos_detalle -- aquí SÍ incluye efectivo (el checksum del corte del
+  // Hotel lo necesita; es el balance mensual de Oficina el que aparte lo
+  // excluye de "ingresos", ver ingresosFacturablesPeriodo).
+  // ventas_por_forma (desglose de folios, SIEMPRE de este turno -- eso sí es
+  // seguro) se deriva de pagos_detalle igual que en restaurante. Pero
+  // "Ventas" y "Gastos" a nivel CHECKSUM (rr.ventas/rr.gastos) NO se tocan
+  // aquí: si este turno es la 2a mitad de un día combinado (mismo_dia en
+  // sync_corte.py, hotel-sistema), esos dos ya vienen acumulados con la 1a
+  // mitad -- recalcularlos solo de d.movimientos_desglose/pagos_detalle de
+  // ESTE turno se comería la mitad anterior sin avisar. Por eso son inputs
+  // editables normales (leerFormEditarCorteHotel los lee tal cual del
+  // formulario, con el botón "usar solo de este turno" como opción explícita
+  // si el usuario sabe que este turno NO está combinado).
+  if(Array.isArray(d.pagos_detalle)&&d.pagos_detalle.length){
+    const vpf={};
+    for(const p of d.pagos_detalle){
+      const fp=(p.forma_pago||'').toLowerCase();
+      if(!fp)continue;
+      vpf[fp]=r2((vpf[fp]||0)+Number(p.monto||0));
+    }
+    d.ventas_por_forma=vpf;
+  }
+  d.total_ventas=r2(Object.values(d.ventas_por_forma||{}).reduce((a,b)=>a+Number(b||0),0));
+
+  rr.total_check=r2(Number(rr.anterior||0)+Number(rr.ventas||0));
+  rr.diferencia=r2(rr.total_caja_2-rr.total_check);
+  d.cuadre=d.cuadre||{};
+  d.cuadre.diferencia_cuadre=rr.diferencia;
+  return d;
+}
+
+// Suma, solo de ESTE turno, lo que tomarían "Ventas" y "Gastos" si NO
+// estuviera combinado con otro del mismo día -- para el botón "usar solo de
+// este turno" (opt-in, nunca automático, ver nota en recalcularCorteHotelJson).
+function ventasSoloDeEsteTurnoHotel(d){
+  return Math.round(Object.values(d.ventas_por_forma||{}).reduce((a,b)=>a+Number(b||0),0)*100)/100;
+}
+function gastosSoloDeEsteTurnoHotel(gastoRows){
+  return Math.round(gastoRows.filter(g=>(g.tipo||'').toUpperCase()==='RETIRO').reduce((s,g)=>s+Number(g.monto||0),0)*100)/100;
+}
+function usarVentasSoloDeEsteTurno(){
+  const d=leerFormEditarCorteHotel();
+  document.getElementById('emh-ventas-check').value=ventasSoloDeEsteTurnoHotel(d);
+  renderEditarCortePreviewHotel();
+}
+function usarGastosSoloDeEsteTurno(){
+  document.getElementById('emh-gastos-check').value=gastosSoloDeEsteTurnoHotel(leerGastosHotelDeDOM());
+  renderEditarCortePreviewHotel();
+}
+
+function renderEditarCorteModalHotel(){
+  const c=cortesData.find(x=>x.id===editCorte.id);
+  const d=c.datos||{};
+  const rr=d.resumen_recepcion||{};
+  document.getElementById('m-editar-corte-body').innerHTML=`
+    <div style="background:var(--amber-light,#fff3cd);color:var(--amber,#856404);border-radius:8px;padding:8px 10px;font-size:11.5px;margin-bottom:12px">
+      Esto corrige el registro que Oficina ya tiene de este corte (y lo recuadra), no lo que quedó en el sistema del Hotel.
+      Si el error viene del arrastre (Bodega/Baucher/Vales que trajo mal el turno siguiente), después de guardar aquí usa además
+      <b>"Corregir anterior"</b> para que el próximo turno de ${c.sucursal} también nazca bien.
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div class="corte-sec" style="border:none;margin:0 0 6px">Efectivo contado</div>
+        <div class="f-row"><label>Monedas</label><input type="number" step="0.01" id="emh-monedas" value="${rr.monedas||0}" onchange="renderEditarCortePreviewHotel()"/></div>
+        <div class="f-row"><label>Billetes</label><input type="number" step="0.01" id="emh-billetes" value="${rr.billetes||0}" onchange="renderEditarCortePreviewHotel()"/></div>
+
+        <div class="corte-sec" style="border:none;margin:14px 0 6px">Anteriores (con qué abrió este turno)</div>
+        <div class="f-row"><label>Anterior de bodega</label><input type="number" step="0.01" id="emh-ant-bodega" value="${rr.anterior_bodega||0}" onchange="renderEditarCortePreviewHotel()"/></div>
+        <div class="f-row"><label>Anterior de baucher</label><input type="number" step="0.01" id="emh-ant-baucher" value="${rr.anterior_baucher||0}" onchange="renderEditarCortePreviewHotel()"/></div>
+        <div class="f-row"><label>Anterior de Vales Sr. Antonio</label><input type="number" step="0.01" id="emh-ant-vales_antonio" value="${rr.anterior_vales_antonio||0}" onchange="renderEditarCortePreviewHotel()"/></div>
+        <div class="f-row"><label>Anterior de Vales del Personal</label><input type="number" step="0.01" id="emh-ant-vales_personal" value="${rr.anterior_vales_personal||0}" onchange="renderEditarCortePreviewHotel()"/></div>
+
+        <div class="corte-sec" style="border:none;margin:14px 0 6px">Checksum del día (Anterior / Ventas / Gastos)</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Ojo: si este turno es la 2a mitad de un día combinado (día+noche del Hotel), estos 3 ya vienen acumulados con la 1a mitad -- no le den "usar solo de este turno" a menos que sepan que este turno NO está combinado.</div>
+        <div class="f-row"><label>Anterior (checksum)</label><input type="number" step="0.01" id="emh-ant-check" value="${rr.anterior||0}" onchange="renderEditarCortePreviewHotel()"/></div>
+        <div class="f-row"><label>Ventas (checksum)</label><input type="number" step="0.01" id="emh-ventas-check" value="${rr.ventas||0}" onchange="renderEditarCortePreviewHotel()"/>
+          <span class="btn-text" style="font-size:11px;cursor:pointer" onclick="usarVentasSoloDeEsteTurno()">usar solo las de este turno</span>
+        </div>
+        <div class="f-row"><label>Gastos (checksum)</label><input type="number" step="0.01" id="emh-gastos-check" value="${rr.gastos||0}" onchange="renderEditarCortePreviewHotel()"/>
+          <span class="btn-text" style="font-size:11px;cursor:pointer" onclick="usarGastosSoloDeEsteTurno()">usar solo los de este turno</span>
+        </div>
+      </div>
+      <div>
+        <div class="corte-sec" style="border:none;margin:0 0 6px">Ventas por forma de pago (folios de este turno)</div>
+        <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px">Se calcula sola de los folios de pago -- no se captura a mano.</div>
+        <div id="emh-preview" style="margin-top:6px"></div>
+      </div>
+    </div>
+
+    <div class="corte-sec" style="border:none;margin:16px 0 6px">
+      Movimientos de cuentas (Bodega / Baucher / Vales)
+      <button class="btn btn-sm" style="margin-left:10px" onclick="agregarFilaCuentaHotel()">+ Agregar movimiento</button>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Un monto positivo entra a la cuenta (sale de caja/baucher); uno negativo la liquida/regresa (vuelve a caja/baucher).</div>
+    <div style="overflow-x:auto"><table class="corte-tbl" style="margin-bottom:4px" id="emh-cuentas-tabla"></table></div>
+
+    <div class="corte-sec" style="border:none;margin:16px 0 6px">
+      Gastos del turno
+      <button class="btn btn-sm" style="margin-left:10px" onclick="agregarFilaGastoHotel()">+ Agregar gasto</button>
+    </div>
+    <div style="overflow-x:auto"><table class="corte-tbl" style="margin-bottom:4px" id="emh-gastos-tabla"></table></div>
+
+    <div class="f-row" style="margin-top:12px"><label>¿Qué corregiste y por qué? <span class="req">*</span></label>
+      <input type="text" id="em-motivo" placeholder="ej. faltaba el depósito de bodega de $5,000 del 8-sept"/>
+    </div>
+  `;
+  renderTablaCuentasHotelEditor();
+  renderTablaGastosHotelEditor();
+  renderEditarCortePreviewHotel();
+}
+
+function renderTablaCuentasHotelEditor(){
+  const rows=editCorte.cuentaRows;
+  const fila=(m,i)=>`<tr>
+    <td><select id="emh-cta-${i}" onchange="renderEditarCortePreviewHotel()">
+      ${CUENTAS_HOTEL.map(([v,l])=>`<option value="${v}" ${v===m.cuenta?'selected':''}>${l}</option>`).join('')}
+    </select></td>
+    <td><input type="number" step="0.01" style="width:110px" id="emh-cta-monto-${i}" value="${m.monto||0}" onchange="renderEditarCortePreviewHotel()"/></td>
+    <td><input type="text" style="width:100%" id="emh-cta-concepto-${i}" value="${(m.concepto||'').replace(/"/g,'&quot;')}" onchange="renderEditarCortePreviewHotel()"/></td>
+    <td style="text-align:center"><button class="corte-iconbtn" style="display:inline" title="Quitar" onclick="eliminarFilaCuentaHotel(${i})">✕</button></td>
+  </tr>`;
+  document.getElementById('emh-cuentas-tabla').innerHTML=`
+    <thead><tr><th>Cuenta</th><th class="num">Monto</th><th>Concepto</th><th></th></tr></thead>
+    <tbody>${rows.length?rows.map(fila).join(''):`<tr><td colspan="4" class="corte-empty">Sin movimientos</td></tr>`}</tbody>
+  `;
+}
+function leerCuentasHotelDeDOM(){
+  return editCorte.cuentaRows.map((orig,i)=>{
+    const el=document.getElementById(`emh-cta-${i}`);
+    if(!el)return orig;
+    return{
+      cuenta:el.value,
+      monto:parseFloat(document.getElementById(`emh-cta-monto-${i}`).value)||0,
+      concepto:document.getElementById(`emh-cta-concepto-${i}`).value.trim(),
+      fecha:orig.fecha||new Date().toISOString(),
+      usuario:orig.usuario||(currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina'),
+    };
+  });
+}
+function agregarFilaCuentaHotel(){
+  editCorte.cuentaRows=leerCuentasHotelDeDOM();
+  editCorte.cuentaRows.push({cuenta:'bodega',monto:0,concepto:'',fecha:new Date().toISOString(),usuario:currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina'});
+  renderTablaCuentasHotelEditor();
+  renderEditarCortePreviewHotel();
+}
+function eliminarFilaCuentaHotel(idx){
+  editCorte.cuentaRows=leerCuentasHotelDeDOM();
+  editCorte.cuentaRows.splice(idx,1);
+  renderTablaCuentasHotelEditor();
+  renderEditarCortePreviewHotel();
+}
+
+function renderTablaGastosHotelEditor(){
+  const rows=editCorte.gastoRows;
+  const fila=(g,i)=>`<tr>
+    <td><select id="emh-gto-tipo-${i}" onchange="renderEditarCortePreviewHotel()">
+      <option value="RETIRO" ${g.tipo==='RETIRO'?'selected':''}>Retiro</option>
+      <option value="INGRESO" ${g.tipo==='INGRESO'?'selected':''}>Ingreso</option>
+    </select></td>
+    <td><input type="number" step="0.01" style="width:110px" id="emh-gto-monto-${i}" value="${g.monto||0}" onchange="renderEditarCortePreviewHotel()"/></td>
+    <td><input type="text" style="width:100%" id="emh-gto-desc-${i}" value="${(g.descripcion||'').replace(/"/g,'&quot;')}" onchange="renderEditarCortePreviewHotel()"/></td>
+    <td style="text-align:center"><button class="corte-iconbtn" style="display:inline" title="Quitar" onclick="eliminarFilaGastoHotel(${i})">✕</button></td>
+  </tr>`;
+  document.getElementById('emh-gastos-tabla').innerHTML=`
+    <thead><tr><th>Tipo</th><th class="num">Monto</th><th>Descripción</th><th></th></tr></thead>
+    <tbody>${rows.length?rows.map(fila).join(''):`<tr><td colspan="4" class="corte-empty">Sin gastos</td></tr>`}</tbody>
+  `;
+}
+function leerGastosHotelDeDOM(){
+  return editCorte.gastoRows.map((orig,i)=>{
+    const el=document.getElementById(`emh-gto-tipo-${i}`);
+    if(!el)return orig;
+    return{
+      tipo:el.value,
+      monto:parseFloat(document.getElementById(`emh-gto-monto-${i}`).value)||0,
+      descripcion:document.getElementById(`emh-gto-desc-${i}`).value.trim(),
+      categoria:'General',
+      fecha:orig.fecha||new Date().toISOString(),
+      usuario:orig.usuario||(currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina'),
+    };
+  });
+}
+function agregarFilaGastoHotel(){
+  editCorte.gastoRows=leerGastosHotelDeDOM();
+  editCorte.gastoRows.push({tipo:'RETIRO',monto:0,descripcion:'',categoria:'General',fecha:new Date().toISOString(),usuario:currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina'});
+  renderTablaGastosHotelEditor();
+  renderEditarCortePreviewHotel();
+}
+function eliminarFilaGastoHotel(idx){
+  editCorte.gastoRows=leerGastosHotelDeDOM();
+  editCorte.gastoRows.splice(idx,1);
+  renderTablaGastosHotelEditor();
+  renderEditarCortePreviewHotel();
+}
+
+function leerFormEditarCorteHotel(){
+  const c=cortesData.find(x=>x.id===editCorte.id);
+  const d=JSON.parse(JSON.stringify(c.datos||{}));
+  d.resumen_recepcion=d.resumen_recepcion||{};
+  const rr=d.resumen_recepcion;
+  rr.monedas=parseFloat(document.getElementById('emh-monedas').value)||0;
+  rr.billetes=parseFloat(document.getElementById('emh-billetes').value)||0;
+  rr.anterior=parseFloat(document.getElementById('emh-ant-check').value)||0;
+  rr.ventas=parseFloat(document.getElementById('emh-ventas-check').value)||0;
+  rr.gastos=parseFloat(document.getElementById('emh-gastos-check').value)||0;
+  rr.anterior_bodega=parseFloat(document.getElementById('emh-ant-bodega').value)||0;
+  rr.anterior_baucher=parseFloat(document.getElementById('emh-ant-baucher').value)||0;
+  rr.anterior_vales_antonio=parseFloat(document.getElementById('emh-ant-vales_antonio').value)||0;
+  rr.anterior_vales_personal=parseFloat(document.getElementById('emh-ant-vales_personal').value)||0;
+  rr.movimientos_cuentas=leerCuentasHotelDeDOM();
+  d.movimientos_desglose=leerGastosHotelDeDOM();
+  recalcularCorteHotelJson(d);
+  return d;
+}
+
+function renderEditarCortePreviewHotel(){
+  const d=leerFormEditarCorteHotel();
+  const rr=d.resumen_recepcion;
+  const cuadra=Math.abs(Number(rr.diferencia||0))<0.5;
+  const vpfHtml=Object.entries(d.ventas_por_forma||{}).map(([k,v])=>
+    `<div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">${k}</span><b>${fmxn(v)}</b></div>`
+  ).join('');
+  document.getElementById('emh-preview').innerHTML=`
+    <div class="acc-card" style="font-size:12px;margin-bottom:10px">
+      ${vpfHtml}
+      <div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid var(--border,#e5e5e5);margin-top:4px;padding-top:4px"><span>Total ventas</span><b>${fmxn(d.total_ventas)}</b></div>
+    </div>
+    <div class="corte-sec" style="border:none;margin:0 0 6px">Cuadre recalculado</div>
+    <div class="acc-card" style="font-size:12px">
+      <div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">Bodega</span><b>${fmxn(rr.totales_cuentas.bodega)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">Baucher</span><b>${fmxn(rr.totales_cuentas.baucher)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">Vales Sr. Antonio</span><b>${fmxn(rr.totales_cuentas.vales_antonio)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">Vales del Personal</span><b>${fmxn(rr.totales_cuentas.vales_personal)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:2px 0;border-top:1px solid var(--border,#e5e5e5);margin-top:4px;padding-top:4px"><span style="color:var(--text2)">Total de caja (1)</span><b>${fmxn(rr.total_caja_1)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">+ Gastos</span><b style="color:var(--red)">${fmxn(rr.gastos)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">Total de caja (2)</span><b>${fmxn(rr.total_caja_2)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:2px 0;border-top:1px solid var(--border,#e5e5e5);margin-top:4px;padding-top:4px"><span style="color:var(--text2)">Anterior</span><b>${fmxn(rr.anterior)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">+ Ventas</span><b style="color:var(--green)">${fmxn(rr.ventas)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">= Total check</span><b>${fmxn(rr.total_check)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;border-top:2px solid var(--border,#e5e5e5);margin-top:4px;font-size:13px">
+        <span>Diferencia</span><b style="color:${cuadra?'var(--green)':'var(--red)'}">${cuadra?'Cuadra exacto':fmxnSigned(rr.diferencia)}</b>
+      </div>
+    </div>
+  `;
 }
 
 // ─── CORRECCIÓN DE MÉTODO DE PAGO (folios de un corte) ───────────────────
