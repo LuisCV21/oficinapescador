@@ -10595,9 +10595,24 @@ async function verCortePdf(pdfPath){
 // el SQLite de la sucursal -- solo la copia que Oficina usa para reportar y
 // cuadrar (para que el siguiente turno de la sucursal herede el arrastre ya
 // corregido, sigue haciendo falta "Corregir anterior" además de esto).
+const ADO_ETIQUETAS_MOV={ado_jalapa:'ADO Jalapa',ado_platino:'ADO Platino',ado_gl:'ADO GL',ado_norte:'ADO Norte',ado_veracruz:'ADO Veracruz',ado_puebla:'ADO Puebla'};
 const CAT_CAJA_RETIRO=[['gasto_mercancia','Gasto de mercancía'],['gasto_diverso','Gasto diverso'],['bodega','Bodega'],['vales','Vales'],
-  ...ADO_ENTIDADES.map(e=>[e,{ado_jalapa:'ADO Jalapa',ado_platino:'ADO Platino',ado_gl:'ADO GL',ado_norte:'ADO Norte',ado_veracruz:'ADO Veracruz',ado_puebla:'ADO Puebla'}[e]])];
-const CAT_CAJA_DEPOSITO=[['bodega','Bodega'],['vales','Vales']];
+  ...ADO_ENTIDADES.map(e=>[e,ADO_ETIQUETAS_MOV[e]])];
+// El POS en vivo NUNCA genera un "depósito" (liquidación) de ADO -- solo
+// "retiro" cuando un cliente paga con vale (ver generar_depositos_ado() en
+// pescador-pos/src/operaciones/caja.py: ahí ADO solo sube). Cuando ADO de
+// verdad paga/liquida, el POS no tiene manera de capturarlo -- se maneja
+// aparte, ajustando el "anterior" del siguiente día vía Oficina. Pero el
+// corte FÍSICO en papel sí anota esa liquidación como una baja dentro de
+// la cajita de esa entidad de ADO (visto en el corte real de Puebla del
+// 8-sept-2026: "-24,418.47" en ADO Norte, "-1,064.98" en ADO Veracruz,
+// "-152.14" en ADO Jalapa) -- y aquí en Oficina SÍ hace falta poder
+// capturarlo así para poder reproducir el papel, aunque el POS mismo nunca
+// lo genere solo. Por eso ADO entra también en depósito aquí (a diferencia
+// de caja.py) -- y NUNCA como "retiro de Vales": esa es una cuenta
+// completamente aparte de cada entidad de ADO, meterlo ahí bajaría la
+// cuenta equivocada.
+const CAT_CAJA_DEPOSITO=[['bodega','Bodega'],['vales','Vales'],...ADO_ENTIDADES.map(e=>[e,ADO_ETIQUETAS_MOV[e]])];
 const CAT_BAUCHER_DEPOSITO=[['transferencia','Transferencia'],['venta_terminal','Venta Terminal'],['ingreso_manual','Ingreso manual']];
 const CAT_BAUCHER_RETIRO=[['vales','Vales'],['gasto_mercancia','Gasto de mercancía'],['gasto_diverso','Gasto diverso']];
 function categoriasMovEditor(medio,tipo){
