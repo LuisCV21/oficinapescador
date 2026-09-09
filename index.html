@@ -10739,6 +10739,20 @@ function renderEditarCorteModalRestaurante(){
       </div>
     </div>
 
+    <div class="corte-sec" style="border:none;margin:16px 0 6px">Liquidar un vale o ADO a gastos</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Cuando un vale (o una entidad de ADO) por fin se paga/factura, sale de esa cuenta y entra a Gastos -- son dos movimientos ligados, no uno solo. Este botón agrega los dos juntos para que nunca quede la mitad a medias (como pasó aquí mismo con Puebla del 8-sept).</div>
+    <div class="ledger-add-form" style="margin-bottom:14px">
+      <div class="f-row"><label>Sale de</label>
+        <select id="em-transf-origen">${FUENTES_TRANSFERENCIA_GASTO.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
+      </div>
+      <div class="f-row"><label>Monto</label><input type="number" step="0.01" id="em-transf-monto" placeholder="0.00"/></div>
+      <div class="f-row"><label>Categoría de gasto</label>
+        <select id="em-transf-gasto"><option value="gasto_diverso">Gasto diverso</option><option value="gasto_mercancia">Gasto de mercancía</option></select>
+      </div>
+      <div class="f-row" style="min-width:200px"><label>Concepto</label><input type="text" id="em-transf-concepto" placeholder="ej. Pago vales ADO Norte"/></div>
+      <button type="button" class="btn btn-sm" onclick="agregarTransferenciaAGastos()">+ Agregar (los 2 movimientos)</button>
+    </div>
+
     <div class="corte-sec" style="border:none;margin:16px 0 6px">
       Movimientos (bodega / baucher / vales / ADO / gastos)
       <button class="btn btn-sm" style="margin-left:10px" onclick="agregarFilaMovimiento()">+ Agregar movimiento</button>
@@ -10810,6 +10824,35 @@ function agregarFilaMovimiento(){
   editCorte.movRows.push({tipo:'retiro',categoria:'gasto_mercancia',medio:'caja',monto:0,concepto:'',fecha:new Date().toISOString(),usuario_nombre:currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina'});
   renderTablaMovimientosEditor();
   renderEditarCortePreview();
+}
+
+// "Sale de" para la liquidación -- Vales (general) o cualquier entidad de
+// ADO, nunca Bodega/Baucher (esas no se "liquidan a gastos" así, tienen su
+// propio movimiento directo).
+const FUENTES_TRANSFERENCIA_GASTO=[['vales','Vales'],...ADO_ENTIDADES.map(e=>[e,ADO_ETIQUETAS_MOV[e]])];
+
+// Agrega los DOS movimientos de una liquidación de vale/ADO en un solo clic
+// -- depósito en la cuenta de origen (la baja) + retiro en el gasto (la
+// entrada) por el mismo monto y concepto, para que nunca se pueda guardar
+// solo una mitad (caso real: Puebla 8-sept-2026, quedó a medias capturado a
+// mano y el cuadre salió $13,568 peor en vez de mejor).
+function agregarTransferenciaAGastos(){
+  const origen=document.getElementById('em-transf-origen').value;
+  const monto=parseFloat(document.getElementById('em-transf-monto').value);
+  const catGasto=document.getElementById('em-transf-gasto').value;
+  const concepto=document.getElementById('em-transf-concepto').value.trim();
+  if(!monto||monto<=0){toast('Pon un monto válido.',true);return;}
+  if(!concepto){toast('Falta el concepto (ej. "Pago vales ADO Norte").',true);return;}
+  editCorte.movRows=leerMovimientosDeDOM();
+  const fecha=new Date().toISOString();
+  const usuario_nombre=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina';
+  editCorte.movRows.push({tipo:'deposito',medio:'caja',categoria:origen,monto,concepto,fecha,usuario_nombre});
+  editCorte.movRows.push({tipo:'retiro',medio:'caja',categoria:catGasto,monto,concepto,fecha,usuario_nombre});
+  document.getElementById('em-transf-monto').value='';
+  document.getElementById('em-transf-concepto').value='';
+  renderTablaMovimientosEditor();
+  renderEditarCortePreview();
+  toast('Agregados los 2 movimientos de la liquidación.');
 }
 function eliminarFilaMovimiento(idx){
   editCorte.movRows=leerMovimientosDeDOM();
