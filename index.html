@@ -10431,7 +10431,7 @@ function renderEditarCorteModal(){
       </div>
       <div>
         <div class="corte-sec" style="border:none;margin:0 0 6px">Ventas por forma de pago</div>
-        <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px">Se calcula sola de los folios de pago (abajo) -- no se captura a mano. Para mover dinero de una forma a otra, corrige el folio que le tocaba.</div>
+        <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px">Se calcula sola de los folios de pago -- no se captura a mano. Para mover dinero de una forma a otra, cierra este editor y usa el ✎ "Corregir método de pago" del folio (en Ventas o en "Folios de pago" del detalle del corte).</div>
         <div id="em-preview" style="margin-top:6px"></div>
       </div>
     </div>
@@ -10442,41 +10442,19 @@ function renderEditarCorteModal(){
     </div>
     <div style="overflow-x:auto"><table class="corte-tbl" style="margin-bottom:4px" id="em-mov-tabla"></table></div>
 
-    <div class="corte-sec" style="border:none;margin:16px 0 6px">Folios de pago (define las ventas por forma de pago)</div>
-    <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px">El monto de cada folio no se toca aquí -- solo su forma de pago. Si el folio ya se corrigió con "Corregir método de pago" (⏳/✓ en el detalle del corte), cámbiala aquí igual para que el cuadre de Oficina quede al día ahora mismo.</div>
-    <div style="overflow-x:auto;overflow-y:auto;max-height:280px;border:1px solid var(--border,#e5e5e5);border-radius:8px"><table class="corte-tbl" style="margin-bottom:0" id="em-folios-tabla"></table></div>
-
     <div class="f-row" style="margin-top:12px"><label>¿Qué corregiste y por qué? <span class="req">*</span></label>
       <input type="text" id="em-motivo" placeholder="ej. el retiro de $8,000 de bodega en realidad fue $2,500, la cajera se equivocó al capturar"/>
     </div>
   `;
   renderTablaMovimientosEditor();
-  renderTablaFoliosEditor();
   renderEditarCortePreview();
 }
 
+// Solo etiquetas para el desglose de solo-lectura del preview -- la forma de
+// pago de un folio se corrige con el ✎ "Corregir método de pago" (Ventas o
+// el detalle del corte), no aquí, para que exista un solo lugar que haga las
+// dos cosas (avisar al POS + recuadrar Oficina). Ver guardarCorreccionPago.
 const FORMAS_PAGO_EDITOR=[['efectivo','Efectivo'],['credito','Crédito'],['debito','Débito'],['transferencia','Transferencia'],['vales','Vales'],['ado','ADO (vales convenio)']];
-
-function renderTablaFoliosEditor(){
-  const c=cortesData.find(x=>x.id===editCorte.id);
-  const pagos=(c.datos&&c.datos.pagos_detalle)||[];
-  const el=document.getElementById('em-folios-tabla');
-  if(!pagos.length){el.innerHTML=`<tbody><tr><td class="corte-empty">Este corte no trae folios de pago detallados</td></tr></tbody>`;return;}
-  const fila=(p,i)=>{
-    const fp=(p.forma_pago||'').toLowerCase();
-    return `<tr>
-      <td>${p.folio??'—'}</td>
-      <td class="num">${fmxn(p.monto)}</td>
-      <td><select id="em-fp-${i}" onchange="renderEditarCortePreview()">
-        ${FORMAS_PAGO_EDITOR.map(([v,l])=>`<option value="${v}" ${v===fp?'selected':''}>${l}</option>`).join('')}
-      </select></td>
-    </tr>`;
-  };
-  el.innerHTML=`
-    <thead style="position:sticky;top:0"><tr><th>Folio</th><th class="num">Monto</th><th>Forma de pago</th></tr></thead>
-    <tbody>${pagos.map(fila).join('')}</tbody>
-  `;
-}
 
 function renderTablaMovimientosEditor(){
   const rows=editCorte.movRows;
@@ -10559,12 +10537,6 @@ function leerFormEditarCorte(){
     const el=document.getElementById('em-ant-'+e);
     if(el)d.cuadre['anterior_'+e]=parseFloat(el.value)||0;
   }
-  if(Array.isArray(d.pagos_detalle)){
-    d.pagos_detalle=d.pagos_detalle.map((p,i)=>{
-      const el=document.getElementById('em-fp-'+i);
-      return el?{...p,forma_pago:el.value}:p;
-    });
-  }
   d.movimientos_desglose=leerMovimientosDeDOM();
   recalcularCorteJson(d); // ventas_por_forma sale de d.pagos_detalle aquí adentro
   return d;
@@ -10633,13 +10605,27 @@ async function guardarEdicionCorte(){
 }
 
 // ─── CORRECCIÓN DE MÉTODO DE PAGO (folios de un corte) ───────────────────
-// Oficina deja aquí la corrección; Pescador POS (sistema aparte, sin
-// servidor expuesto) la jala solo al abrir turno vía la Edge Function
-// pos-correcciones-pago y la aplica con corregir_forma_pago().
+// Único lugar donde se corrige la forma de pago de un folio (se llama desde
+// el módulo de Ventas y desde "Folios de pago" en el detalle del corte --
+// misma acción, dos puertas). Hace DOS cosas a la vez: (1) deja la solicitud
+// en correcciones_pago_pendientes para que Pescador POS (sistema aparte, sin
+// servidor expuesto) la jale sola al abrir turno vía la Edge Function
+// pos-correcciones-pago y la aplique con corregir_forma_pago(); y (2) si el
+// corte de ese folio ya está aquí en cortesData, corrige DE UNA VEZ su
+// pagos_detalle y recalcula el cuadre (ver recalcularCorteJson), para que el
+// reporte de Oficina no se quede esperando a que la sucursal vuelva a abrir
+// turno. Antes solo hacía (1) -- el cuadre de Oficina se quedaba
+// desactualizado hasta que el POS aplicara la corrección.
 const FORMAS_PAGO_POS=['Efectivo','Debito','Credito','Transferencia'];
 
 function correccionDe(sucursal,folio){
   return correccionesData.find(c=>c.sucursal===sucursal&&c.folio===folio);
+}
+
+function corteConFolio(sucursal,folio,turnoId){
+  let candidatos=cortesData.filter(c=>c.sucursal===sucursal&&Array.isArray(c.datos&&c.datos.pagos_detalle));
+  if(turnoId!=null)candidatos=candidatos.filter(c=>c.turno_id===turnoId);
+  return candidatos.find(c=>c.datos.pagos_detalle.some(p=>p.folio===folio))||null;
 }
 
 function openCorreccionModal(sucursal,folio,turnoId){
@@ -10666,10 +10652,31 @@ async function guardarCorreccionPago(sucursal,folio,turnoId){
     sucursal,folio,turno_id:turnoId,forma_pago_correcta:forma,motivo,creada_por:creadaPor,
   });
   if(error){btn.disabled=false;toast('No se pudo guardar: '+error.message,true);return;}
+
+  // Además de dejarla para el POS, si el corte de este folio ya está aquí se
+  // corrige de una vez -- para que el cuadre de Oficina no se quede
+  // desactualizado hasta que la sucursal vuelva a abrir turno.
+  let avisoLocal='';
+  const corte=corteConFolio(sucursal,folio,turnoId);
+  if(corte){
+    const d=JSON.parse(JSON.stringify(corte.datos));
+    d.pagos_detalle=d.pagos_detalle.map(p=>p.folio===folio?{...p,forma_pago:forma.toLowerCase()}:p);
+    recalcularCorteJson(d);
+    d.ediciones=Array.isArray(d.ediciones)?d.ediciones:[];
+    d.ediciones.push({
+      fecha:new Date().toISOString(),usuario:creadaPor,
+      motivo:motivo||`Folio ${folio}: forma de pago corregida a ${forma}`,
+      diferencia_cuadre_antes:Number(corte.diferencia_cuadre||0),diferencia_cuadre_despues:d.cuadre.diferencia_cuadre,
+    });
+    const {error:e2}=await sb.from('cortes_caja').update({datos:d,diferencia_cuadre:d.cuadre.diferencia_cuadre}).eq('id',corte.id);
+    avisoLocal=e2?' (no se pudo recuadrar aquí: '+e2.message+')':' — cuadre de Oficina ya actualizado';
+  }
+
   closeModal('m-correccion-pago');
-  toast('Corrección guardada — se aplicará en el POS al abrir turno');
-  await loadCorrecciones();
-  if(document.getElementById('page-cortes').classList.contains('active'))renderCortes();
+  toast('Corrección guardada — se aplicará en el POS al abrir turno'+avisoLocal);
+  await Promise.all([loadCorrecciones(),loadCortes()]);
+  renderCortes();renderVentasMes(); // ambas se guardan solas si su página no está en pantalla
+  if(document.getElementById('m-corte-detail').classList.contains('open')&&corte)openCorteDetail(corte.id);
 }
 
 async function cancelarCorreccionPago(id){
