@@ -1424,6 +1424,15 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 </div>
 </div>
 
+<!-- MODAL AUDITORÍA DE UN EVENTO DE SEGURIDAD (traspaso/cancelación/cambio) -->
+<div class="modal-overlay" id="m-auditoria-evento">
+<div class="modal" style="max-width:680px">
+  <div class="modal-hdr"><div class="modal-title" id="m-auditoria-evento-title">Auditar evento</div><button class="btn-icon" onclick="closeModal('m-auditoria-evento')">✕</button></div>
+  <div class="modal-body" id="m-auditoria-evento-body"></div>
+  <div class="modal-ftr" id="m-auditoria-evento-ftr"></div>
+</div>
+</div>
+
 <!-- MODAL EDITAR CORTE (bodega/baucher/vales/ADO, ventas por forma, movimientos) -->
 <div class="modal-overlay" id="m-editar-corte">
 <div class="modal" style="max-width:960px">
@@ -9857,20 +9866,28 @@ function horaCorta(iso){ return (iso||'').slice(11,16); }
 // corte.cuentas + bloqueos_productos + traspasos_detalle +
 // cancelaciones_cfdi (agregado 2026-08-18, antes Oficina no recibía esto
 // a propósito). Regresa '' si no hay ninguna incidencia en el turno.
-function buildIncidencias(d){
+// El 🔍 de cada fila (agregado 9-sept-2026) abre "auditarCuenta"/
+// "auditarTraspaso" -- en vez de quedarse solo con el texto libre que manda
+// el POS, va directo a la(s) cuenta(s) involucradas (ver renderCuentaAuditCard)
+// para no tener que reconstruir a mano qué traía cada una. Se omite en la
+// vista combinada del Hotel (corteId llega como arreglo ahí) porque ese
+// negocio no manda `cuentas` en esta forma.
+function buildIncidencias(d,corteId){
+  const puedeAuditar=corteId!=null&&!Array.isArray(corteId);
+  const btnAudit=(onclick)=>puedeAuditar?`<button class="corte-iconbtn" style="display:inline" title="Auditar" onclick='${onclick}'>🔍</button>`:'';
   const cuentas=d.cuentas||[];
   const allCancelados=[],allCambios=[],allDescuentos=[],allFolios=[],allReaperturas=[];
   cuentas.forEach(c=>{
     const folio=c.folio||String(c.id||'');
     const mesa=c.mesa||c.nombre||'';
     if(c.estado==='cancelada'){
-      if(c.items_cuenta_cancelada&&c.items_cuenta_cancelada.length)allFolios.push({...c,_folio:folio,_mesa:mesa});
+      if(c.items_cuenta_cancelada&&c.items_cuenta_cancelada.length)allFolios.push({...c,_folio:folio,_mesa:mesa,_cuenta_id:c.id});
       return;
     }
-    (c.cancelados_detalle||c.cancelados||[]).forEach(it=>allCancelados.push({...it,_folio:folio,_mesa:mesa}));
-    (c.cambios_detalle||[]).forEach(cm=>allCambios.push({...cm,_folio:folio,_mesa:mesa}));
-    (c.descuentos_detalle||[]).forEach(dt=>allDescuentos.push({...dt,_folio:folio,_mesa:mesa}));
-    (c.reaperturas||[]).forEach(r=>allReaperturas.push({...r,_folio:folio,_mesa:mesa}));
+    (c.cancelados_detalle||c.cancelados||[]).forEach(it=>allCancelados.push({...it,_folio:folio,_mesa:mesa,_cuenta_id:c.id}));
+    (c.cambios_detalle||[]).forEach(cm=>allCambios.push({...cm,_folio:folio,_mesa:mesa,_cuenta_id:c.id}));
+    (c.descuentos_detalle||[]).forEach(dt=>allDescuentos.push({...dt,_folio:folio,_mesa:mesa,_cuenta_id:c.id}));
+    (c.reaperturas||[]).forEach(r=>allReaperturas.push({...r,_folio:folio,_mesa:mesa,_cuenta_id:c.id}));
   });
   const bloqueos=d.bloqueos_productos||[];
   const traspasos=d.traspasos_detalle||[];
@@ -9894,36 +9911,39 @@ function buildIncidencias(d){
       const lugar=(c._mesa&&c.nombre&&c._mesa!==c.nombre)?`${c._mesa} — ${c.nombre}`:(c._mesa||c.nombre||'');
       return `<tr><td>${lugar}</td><td>${items}</td><td class="num">${fmxn(pot)}</td>`+
         `<td style="color:var(--red)">${canc.razon||'Sin motivo registrado'}</td><td>${canc.usuario_nombre||'—'}</td>`+
-        `<td style="text-align:center">${horaCorta(canc.fecha)}</td></tr>`;
+        `<td style="text-align:center">${horaCorta(canc.fecha)}</td><td style="text-align:center">${btnAudit(`auditarCuenta(${JSON.stringify(corteId)},${JSON.stringify(c._cuenta_id)})`)}</td></tr>`;
     }).join('')+`<tr><td colspan="2" style="font-weight:700">TOTAL POTENCIAL PERDIDO</td>`+
-      `<td class="num" style="font-weight:700;color:var(--red)">${fmxn(totalPot)}</td><td colspan="3"></td></tr>`;
+      `<td class="num" style="font-weight:700;color:var(--red)">${fmxn(totalPot)}</td><td colspan="4"></td></tr>`;
     html+=pdfSubtitulo('⚠ Cuentas canceladas — requieren justificación','var(--red)')+
-      pdfTabla([{label:'Cuenta/Mesa'},{label:'Contenía'},{label:'Monto',num:true},{label:'Motivo'},{label:'Canceló'},{label:'Hora'}],rows);
+      pdfTabla([{label:'Cuenta/Mesa'},{label:'Contenía'},{label:'Monto',num:true},{label:'Motivo'},{label:'Canceló'},{label:'Hora'},{label:''}],rows);
   }
 
   if(allCancelados.length){
     const rows=allCancelados.map(it=>`<tr><td>${it._folio}</td><td>${it._mesa}</td><td>${it.descripcion||'—'}</td>`+
       `<td style="text-align:center">${it.cantidad||1}</td><td class="num">${fmxn(it.precio_unitario)}</td>`+
       `<td style="color:var(--red)">${it.razon_cancelacion||it.razon||'Sin motivo registrado'}</td>`+
-      `<td>${it.usuario_nombre||'—'}</td><td style="text-align:center">${horaCorta(it.fecha_captura)}</td></tr>`).join('');
+      `<td>${it.usuario_nombre||'—'}</td><td style="text-align:center">${horaCorta(it.fecha_captura)}</td>`+
+      `<td style="text-align:center">${btnAudit(`auditarCuenta(${JSON.stringify(corteId)},${JSON.stringify(it._cuenta_id)})`)}</td></tr>`).join('');
     html+=pdfSubtitulo('⛔ Cancelaciones de producto','var(--red)')+
-      pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Producto cancelado'},{label:'Cant'},{label:'Precio',num:true},{label:'Motivo'},{label:'Canceló'},{label:'Hora'}],rows);
+      pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Producto cancelado'},{label:'Cant'},{label:'Precio',num:true},{label:'Motivo'},{label:'Canceló'},{label:'Hora'},{label:''}],rows);
   }
 
   if(allReaperturas.length){
     const rows=allReaperturas.map(r=>`<tr><td>${r._folio}</td><td>${r._mesa}</td>`+
       `<td style="color:var(--red)">${r.razon||'Sin motivo registrado'}</td><td>${r.usuario_nombre||'—'}</td>`+
-      `<td style="text-align:center">${horaCorta(r.fecha)}</td></tr>`).join('');
+      `<td style="text-align:center">${horaCorta(r.fecha)}</td>`+
+      `<td style="text-align:center">${btnAudit(`auditarCuenta(${JSON.stringify(corteId)},${JSON.stringify(r._cuenta_id)})`)}</td></tr>`).join('');
     html+=pdfSubtitulo('⚠ Reaperturas de cuenta','var(--red)')+
-      pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Motivo'},{label:'Reabrió'},{label:'Hora'}],rows);
+      pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Motivo'},{label:'Reabrió'},{label:'Hora'},{label:''}],rows);
   }
 
   if(allCambios.length){
     const rows=allCambios.map(cm=>`<tr><td>${cm._folio}</td><td>${cm._mesa}</td><td>${cm.descripcion||'—'}</td>`+
       `<td style="color:var(--copper)">${cm.razon||'Sin motivo registrado'}</td><td>${cm.usuario_nombre||'—'}</td>`+
-      `<td style="text-align:center">${horaCorta(cm.fecha)}</td></tr>`).join('');
+      `<td style="text-align:center">${horaCorta(cm.fecha)}</td>`+
+      `<td style="text-align:center">${btnAudit(`auditarCuenta(${JSON.stringify(corteId)},${JSON.stringify(cm._cuenta_id)})`)}</td></tr>`).join('');
     html+=pdfSubtitulo('⇄ Cambios de platillo','var(--copper)')+
-      pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Descripción del cambio'},{label:'Motivo'},{label:'Usuario'},{label:'Hora'}],rows);
+      pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Descripción del cambio'},{label:'Motivo'},{label:'Usuario'},{label:'Hora'},{label:''}],rows);
   }
 
   if(allDescuentos.length){
@@ -9935,11 +9955,12 @@ function buildIncidencias(d){
       return `<tr><td>${dt._folio}</td><td>${dt._mesa}</td><td>${dt.descripcion||'—'}</td>`+
         `<td style="text-align:center">${cant}</td><td class="num">${fmxn(precio)}</td>`+
         `<td class="num" style="color:var(--purple);font-weight:700">${fmxn(monto)} <span style="font-weight:400;font-size:9.5px">(${pct}%)</span></td>`+
-        `<td class="num">${fmxn(precio*cant-monto)}</td><td style="text-align:center">${horaCorta(dt.fecha_captura)}</td></tr>`;
+        `<td class="num">${fmxn(precio*cant-monto)}</td><td style="text-align:center">${horaCorta(dt.fecha_captura)}</td>`+
+        `<td style="text-align:center">${btnAudit(`auditarCuenta(${JSON.stringify(corteId)},${JSON.stringify(dt._cuenta_id)})`)}</td></tr>`;
     }).join('')+`<tr><td colspan="5" style="font-weight:700">TOTAL DESCUENTOS</td>`+
-      `<td class="num" style="font-weight:700;color:var(--purple)">${fmxn(totalDto)}</td><td colspan="2"></td></tr>`;
+      `<td class="num" style="font-weight:700;color:var(--purple)">${fmxn(totalDto)}</td><td colspan="3"></td></tr>`;
     html+=pdfSubtitulo('✓ Descuentos aplicados','var(--purple)')+
-      pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Producto'},{label:'Cant'},{label:'Precio',num:true},{label:'Descuento',num:true},{label:'Cobrado',num:true},{label:'Hora'}],rows);
+      pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Producto'},{label:'Cant'},{label:'Precio',num:true},{label:'Descuento',num:true},{label:'Cobrado',num:true},{label:'Hora'},{label:''}],rows);
   }
 
   if(bloqueos.length){
@@ -9949,9 +9970,10 @@ function buildIncidencias(d){
   }
 
   if(traspasos.length){
-    const rows=traspasos.map(t=>`<tr><td style="text-align:center">${horaCorta(t.fecha)}</td><td>${t.descripcion||''}</td><td>${t.usuario_nombre||'—'}</td></tr>`).join('');
+    const rows=traspasos.map(t=>`<tr><td style="text-align:center">${horaCorta(t.fecha)}</td><td>${t.descripcion||''}</td><td>${t.usuario_nombre||'—'}</td>`+
+      `<td style="text-align:center">${btnAudit(`auditarTraspaso(${JSON.stringify(corteId)},${JSON.stringify(t.fecha)},${JSON.stringify(t.cuenta_nombre)},${JSON.stringify(t.descripcion)})`)}</td></tr>`).join('');
     html+=pdfSubtitulo('⇆ Traspasos de producto entre cuentas/mesas','var(--teal)')+
-      pdfTabla([{label:'Hora'},{label:'Detalle'},{label:'Autorizó'}],rows);
+      pdfTabla([{label:'Hora'},{label:'Detalle'},{label:'Autorizó'},{label:''}],rows);
   }
 
   if(cfdiCancel.length){
@@ -9961,6 +9983,86 @@ function buildIncidencias(d){
   }
 
   return html;
+}
+
+// ─── AUDITORÍA DE EVENTOS DE SEGURIDAD (traspasos, cancelaciones, cambios) ──
+// Resuelve el texto libre de un evento contra el arreglo `cuentas` del corte
+// para mostrar la cuenta completa (qué traía, mesero, folio) en vez de dejar
+// que se tenga que ir a reconstruirlo a mano.
+function renderCuentaAuditCard(cuenta,titulo){
+  if(!cuenta)return`<div class="acc-card" style="flex:1;min-width:220px"><div style="font-weight:700;margin-bottom:6px">${titulo}</div>`+
+    `<div style="color:var(--text3);font-style:italic;font-size:12px">No se encontró esa cuenta en este corte (puede ser de otro turno, o el nombre se reusó y no se pudo distinguir cuál).</div></div>`;
+  const platillos=(cuenta.platillos||[]).filter(p=>!p.cancelado);
+  const filas=platillos.map(p=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0">`+
+    `<span>${p.producto}${p.cantidad>1?' ×'+p.cantidad:''}${(p.modificadores||[]).length?` <span style="color:var(--text3)">(${p.modificadores.join(', ')})</span>`:''}</span>`+
+    `<b>${fmxn(p.importe)}</b></div>`).join('')||`<div style="color:var(--text3);font-style:italic;font-size:12px">Sin productos (cuenta vacía)</div>`;
+  const folioBadge=cuenta.folio?`<span class="corte-badge ok">Folio ${cuenta.folio}</span>`:
+    `<span class="corte-badge" style="background:var(--surface2);color:var(--text3)">Sin folio (no se cobró en esta cuenta)</span>`;
+  return `<div class="acc-card" style="flex:1;min-width:220px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;gap:8px">
+      <div style="font-weight:700">${titulo}: ${cuenta.nombre||cuenta.mesa||'—'}</div>${folioBadge}
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Mesero: ${cuenta.mesero||'—'} · Abrió ${fmtFechaHora(cuenta.apertura)}${cuenta.cierre?' · Cerró '+fmtFechaHora(cuenta.cierre):''}</div>
+    ${filas}
+    <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:700;border-top:1px solid var(--border,#e5e5e5);margin-top:6px;padding-top:4px"><span>Total</span><span>${fmxn(cuenta.total)}</span></div>
+  </div>`;
+}
+
+// Encuentra, dentro de las `cuentas` de un corte, la que se llamaba `nombre`
+// y estaba abierta en el momento `fechaISO` -- un mismo nombre de mesa/cuenta
+// se reusa varias veces en el día, así que hace falta la hora del evento
+// para saber cuál de todas era.
+function cuentaEnMomento(cuentas,nombre,fechaISO){
+  if(!nombre)return null;
+  const candidatos=(cuentas||[]).filter(c=>c.nombre===nombre||c.mesa===nombre);
+  if(!candidatos.length)return null;
+  const t=fechaISO?new Date(fechaISO).getTime():null;
+  if(t==null)return candidatos[0];
+  const enVentana=candidatos.filter(c=>{
+    const ap=c.apertura?new Date(c.apertura).getTime():null;
+    const ci=c.cierre?new Date(c.cierre).getTime():Infinity;
+    return ap!=null&&ap<=t&&t<=ci;
+  });
+  return enVentana[0]||candidatos[0];
+}
+
+// El POS solo manda el texto libre "N producto(s) traspasados de la cuenta
+// ORIGEN a DESTINO" (ver traspasar_items en src/operaciones/cuentas.py del
+// POS) -- el origen ya llega aparte en `cuenta_nombre`, así que solo hace
+// falta despegar el destino de la frase completa.
+function parsearDestinoTraspaso(descripcion,origenNombre){
+  const prefijo=`de la cuenta ${origenNombre} a `;
+  const idx=(descripcion||'').indexOf(prefijo);
+  return idx>=0?descripcion.slice(idx+prefijo.length).trim():null;
+}
+
+function abrirModalAuditoria(titulo,bodyHtml){
+  document.getElementById('m-auditoria-evento-title').textContent=titulo;
+  document.getElementById('m-auditoria-evento-body').innerHTML=bodyHtml;
+  document.getElementById('m-auditoria-evento-ftr').innerHTML=`<button class="btn" onclick="closeModal('m-auditoria-evento')">Cerrar</button>`;
+  openModal('m-auditoria-evento');
+}
+
+function auditarCuenta(corteId,cuentaId){
+  const c=cortesData.find(x=>x.id===corteId);
+  const cuenta=((c&&c.datos&&c.datos.cuentas)||[]).find(x=>String(x.id)===String(cuentaId));
+  abrirModalAuditoria('Detalle de la cuenta',`<div style="display:flex;gap:14px;flex-wrap:wrap">${renderCuentaAuditCard(cuenta,'Cuenta')}</div>`);
+}
+
+function auditarTraspaso(corteId,fecha,origenNombre,descripcion){
+  const c=cortesData.find(x=>x.id===corteId);
+  const cuentas=(c&&c.datos&&c.datos.cuentas)||[];
+  const destinoNombre=parsearDestinoTraspaso(descripcion,origenNombre);
+  const origen=cuentaEnMomento(cuentas,origenNombre,fecha);
+  const destino=cuentaEnMomento(cuentas,destinoNombre,fecha);
+  abrirModalAuditoria(`Traspaso de producto — ${fmtFechaHora(fecha)}`,`
+    <div style="font-size:11.5px;color:var(--text3);margin-bottom:10px">Cuentas resueltas por nombre + hora del movimiento (el POS todavía no manda el id exacto de cada cuenta en el traspaso) -- si un nombre se repitió varias veces ese día, se elige la que estaba abierta en ese momento.</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+      ${renderCuentaAuditCard(origen,'De')}
+      <div style="font-size:20px;text-align:center;flex:0 0 auto">→</div>
+      ${renderCuentaAuditCard(destino,'A')}
+    </div>
+  `);
 }
 
 // Combina los turnos de día+noche del hotel (mismo papel físico, ver
@@ -10181,7 +10283,7 @@ function buildCorteDetailBodyHtml(c){
       'Sin detalle de folios en este corte',
     )}
 
-    ${buildIncidencias(d)}
+    ${buildIncidencias(d,c.id)}
   `;
 }
 
