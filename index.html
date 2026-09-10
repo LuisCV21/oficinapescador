@@ -10052,7 +10052,7 @@ function buildIncidencias(d,corteId){
   const puedeAuditar=corteId!=null&&!Array.isArray(corteId);
   const btnAudit=(onclick)=>puedeAuditar?`<button class="corte-iconbtn" style="display:inline" title="Auditar" onclick='${onclick}'>🔍</button>`:'';
   const cuentas=d.cuentas||[];
-  const allCancelados=[],allCambios=[],allDescuentos=[],allFolios=[],allReaperturas=[];
+  const allCancelados=[],allCambios=[],allDescuentos=[],allFolios=[],allReaperturas=[],allReimpresiones=[];
   cuentas.forEach(c=>{
     const folio=c.folio||String(c.id||'');
     const mesa=c.mesa||c.nombre||'';
@@ -10064,19 +10064,20 @@ function buildIncidencias(d,corteId){
     (c.cambios_detalle||[]).forEach(cm=>allCambios.push({...cm,_folio:folio,_mesa:mesa,_cuenta_id:c.id}));
     (c.descuentos_detalle||[]).forEach(dt=>allDescuentos.push({...dt,_folio:folio,_mesa:mesa,_cuenta_id:c.id}));
     (c.reaperturas||[]).forEach(r=>allReaperturas.push({...r,_folio:folio,_mesa:mesa,_cuenta_id:c.id}));
+    (c.reimpresiones_detalle||[]).forEach(rp=>allReimpresiones.push({...rp,_folio:folio,_mesa:mesa,_cuenta_id:c.id}));
   });
   const bloqueos=d.bloqueos_productos||[];
   const traspasos=d.traspasos_detalle||[];
   const cfdiCancel=d.cancelaciones_cfdi||[];
 
   if(!allCancelados.length&&!allCambios.length&&!allDescuentos.length&&!allFolios.length
-     &&!allReaperturas.length&&!bloqueos.length&&!traspasos.length&&!cfdiCancel.length)return'';
+     &&!allReaperturas.length&&!bloqueos.length&&!traspasos.length&&!cfdiCancel.length&&!allReimpresiones.length)return'';
 
   let html=pdfSec('⛔ Incidencias de seguridad')+
     `<p style="font-size:11px;color:var(--text3);margin:-4px 0 12px">`+
     `${allFolios.length} cuenta(s) cancelada(s) · ${allCancelados.length} cancelación(es) de producto · `+
     `${allCambios.length} cambio(s) de platillo · ${allDescuentos.length} descuento(s) · `+
-    `${allReaperturas.length} reapertura(s) — cualquier incidencia debe ser justificada por el responsable de turno.</p>`;
+    `${allReaperturas.length} reapertura(s) · ${allReimpresiones.length} reimpresión(es) — cualquier incidencia debe ser justificada por el responsable de turno.</p>`;
 
   if(allFolios.length){
     let totalPot=0;
@@ -10111,6 +10112,14 @@ function buildIncidencias(d,corteId){
       `<td style="text-align:center">${btnAudit(`auditarCuenta(${JSON.stringify(corteId)},${JSON.stringify(r._cuenta_id)})`)}</td></tr>`).join('');
     html+=pdfSubtitulo('⚠ Reaperturas de cuenta','var(--red)')+
       pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Motivo'},{label:'Reabrió'},{label:'Hora'},{label:''}],rows);
+  }
+
+  if(allReimpresiones.length){
+    const rows=allReimpresiones.map(rp=>`<tr><td>${rp._folio}</td><td>${rp._mesa}</td><td>${renderReimpresionInline(rp.descripcion)}</td>`+
+      `<td>${rp.usuario_nombre||'—'}</td><td style="text-align:center">${horaCorta(rp.fecha)}</td>`+
+      `<td style="text-align:center">${btnAudit(`auditarReimpresion(${JSON.stringify(corteId)},${JSON.stringify(rp._cuenta_id)},${JSON.stringify(rp.descripcion)},${JSON.stringify(rp.fecha)},${JSON.stringify(rp.usuario_nombre)})`)}</td></tr>`).join('');
+    html+=pdfSubtitulo('🖨 Reimpresiones de producto','var(--teal)')+
+      pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Detalle'},{label:'Usuario'},{label:'Hora'},{label:''}],rows);
   }
 
   if(allCambios.length){
@@ -10232,6 +10241,25 @@ function renderTraspasoInline(descripcion){
   return `${descripcion.slice(0,idx)}: <b style="color:var(--teal)">${productos}</b>`;
 }
 
+// El registro de reimpresión en el POS (ver dialogo_reimprimir.py y los
+// endpoints /reimprimir y /reimprimir-comanda en server.py) viene en 3
+// formas: "Producto 'X' reimpreso en cuenta 'Y'" (una sola pieza),
+// "N producto(s) reimpresos en cuenta 'Y': prod1, prod2" (varias, desde
+// escritorio), o "Comanda completa reimpresa en cuenta 'Y'" (todo el
+// pedido, desde comandera) -- esta última no trae producto puntual.
+function parsearProductosReimpresion(descripcion){
+  const m=/^Producto '(.+)' reimpreso/.exec(descripcion||'');
+  if(m)return m[1];
+  const idx=(descripcion||'').indexOf(': ');
+  return idx>=0?descripcion.slice(idx+2).trim():null;
+}
+
+function renderReimpresionInline(descripcion){
+  const productos=parsearProductosReimpresion(descripcion);
+  if(!productos)return descripcion||'';
+  return `<b style="color:var(--teal)">${productos}</b>`;
+}
+
 // El registro de "cambio de platillo" en el POS (ver _audit en
 // dialogo_cambiar_producto.py) siempre arma la descripción como
 // «ORIGINAL» cambiado por «NUEVO» -- se parsea aquí para poder mostrar el
@@ -10311,6 +10339,24 @@ function auditarCancelacion(corteId,cuentaId,descripcion,cantidad,precioUnitario
   const meta=`<div style="font-size:11.5px;color:var(--text3);margin-bottom:14px">`+
     `${razon?`Motivo: <b>${razon}</b> · `:''}${usuarioNombre?`Canceló: <b>${usuarioNombre}</b> · `:''}${fecha?horaCorta(fecha):''}</div>`;
   abrirModalAuditoria(`Cancelación de producto${fecha?' — '+fmtFechaHora(fecha):''}`,`
+    ${visual}${meta}
+    <div style="display:flex;gap:14px;flex-wrap:wrap">${renderCuentaAuditCard(cuenta,'Cuenta actual')}</div>
+  `);
+}
+
+function auditarReimpresion(corteId,cuentaId,descripcion,fecha,usuarioNombre){
+  const c=cortesData.find(x=>x.id===corteId);
+  const cuenta=((c&&c.datos&&c.datos.cuentas)||[]).find(x=>String(x.id)===String(cuentaId));
+  const productos=parsearProductosReimpresion(descripcion);
+  const visual=productos?
+    `<div style="background:var(--teal-light);border:1px solid var(--teal);border-radius:8px;padding:10px 12px;margin-bottom:14px">
+      <div style="font-size:10px;color:var(--teal);font-weight:700;margin-bottom:2px">SE REIMPRIMIÓ</div>
+      <div style="color:var(--teal);font-weight:700">${productos}</div>
+    </div>`
+    :`<div style="margin-bottom:14px;color:var(--text3);font-style:italic;font-size:12px">${descripcion||'Sin descripción'}</div>`;
+  const meta=`<div style="font-size:11.5px;color:var(--text3);margin-bottom:14px">`+
+    `${usuarioNombre?`Reimprimió: <b>${usuarioNombre}</b> · `:''}${fecha?horaCorta(fecha):''}</div>`;
+  abrirModalAuditoria(`Reimpresión de producto${fecha?' — '+fmtFechaHora(fecha):''}`,`
     ${visual}${meta}
     <div style="display:flex;gap:14px;flex-wrap:wrap">${renderCuentaAuditCard(cuenta,'Cuenta actual')}</div>
   `);
