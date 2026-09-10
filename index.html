@@ -10146,7 +10146,7 @@ function buildIncidencias(d,corteId){
   }
 
   if(traspasos.length){
-    const rows=traspasos.map(t=>`<tr><td style="text-align:center">${horaCorta(t.fecha)}</td><td>${t.descripcion||''}</td><td>${t.usuario_nombre||'—'}</td>`+
+    const rows=traspasos.map(t=>`<tr><td style="text-align:center">${horaCorta(t.fecha)}</td><td>${renderTraspasoInline(t.descripcion)}</td><td>${t.usuario_nombre||'—'}</td>`+
       `<td style="text-align:center">${btnAudit(`auditarTraspaso(${JSON.stringify(corteId)},${JSON.stringify(t.fecha)},${JSON.stringify(t.cuenta_nombre)},${JSON.stringify(t.descripcion)})`)}</td></tr>`).join('');
     html+=pdfSubtitulo('⇆ Traspasos de producto entre cuentas/mesas','var(--teal)')+
       pdfTabla([{label:'Hora'},{label:'Detalle'},{label:'Autorizó'},{label:''}],rows);
@@ -10202,14 +10202,34 @@ function cuentaEnMomento(cuentas,nombre,fechaISO){
   return enVentana[0]||candidatos[0];
 }
 
-// El POS solo manda el texto libre "N producto(s) traspasados de la cuenta
-// ORIGEN a DESTINO" (ver traspasar_items en src/operaciones/cuentas.py del
-// POS) -- el origen ya llega aparte en `cuenta_nombre`, así que solo hace
-// falta despegar el destino de la frase completa.
+// El POS manda el texto libre "N producto(s) traspasados de la cuenta ORIGEN
+// a DESTINO: prod1 x2, prod2" (el ": prod1..." se agregó el 10-sept-2026, ver
+// _traspasar en dialogo_dividir.py y traspasar_endpoint en server.py del
+// POS -- traspasos de antes de esa fecha no traen esa parte) -- el origen ya
+// llega aparte en `cuenta_nombre`, así que solo hace falta despegar el
+// destino de la frase completa, cortando antes del ": " si lo trae.
 function parsearDestinoTraspaso(descripcion,origenNombre){
   const prefijo=`de la cuenta ${origenNombre} a `;
   const idx=(descripcion||'').indexOf(prefijo);
-  return idx>=0?descripcion.slice(idx+prefijo.length).trim():null;
+  if(idx<0)return null;
+  let resto=descripcion.slice(idx+prefijo.length).trim();
+  const idxColon=resto.indexOf(': ');
+  if(idxColon>=0)resto=resto.slice(0,idxColon).trim();
+  return resto;
+}
+
+// Extrae la lista de productos que se traspasaron, si el POS la mandó
+// (ver nota arriba) -- null en traspasos viejos que no la traen.
+function parsearProductosTraspaso(descripcion){
+  const idx=(descripcion||'').indexOf(': ');
+  return idx>=0?descripcion.slice(idx+2).trim():null;
+}
+
+function renderTraspasoInline(descripcion){
+  const productos=parsearProductosTraspaso(descripcion);
+  if(!productos)return descripcion||'';
+  const idx=descripcion.indexOf(': ');
+  return `${descripcion.slice(0,idx)}: <b style="color:var(--teal)">${productos}</b>`;
 }
 
 // El registro de "cambio de platillo" en el POS (ver _audit en
@@ -10302,7 +10322,15 @@ function auditarTraspaso(corteId,fecha,origenNombre,descripcion){
   const destinoNombre=parsearDestinoTraspaso(descripcion,origenNombre);
   const origen=cuentaEnMomento(cuentas,origenNombre,fecha);
   const destino=cuentaEnMomento(cuentas,destinoNombre,fecha);
+  const productos=parsearProductosTraspaso(descripcion);
+  const visualProductos=productos?
+    `<div style="background:var(--teal-light);border:1px solid var(--teal);border-radius:8px;padding:10px 12px;margin-bottom:14px">
+      <div style="font-size:10px;color:var(--teal);font-weight:700;margin-bottom:2px">SE MOVIÓ</div>
+      <div style="color:var(--teal);font-weight:700">${productos}</div>
+    </div>`
+    :`<div style="margin-bottom:14px;color:var(--text3);font-style:italic;font-size:12px">Este traspaso es de antes del 10-sept-2026 -- el POS todavía no mandaba qué producto fue, solo el conteo.</div>`;
   abrirModalAuditoria(`Traspaso de producto — ${fmtFechaHora(fecha)}`,`
+    ${visualProductos}
     <div style="font-size:11.5px;color:var(--text3);margin-bottom:10px">Cuentas resueltas por nombre + hora del movimiento (el POS todavía no manda el id exacto de cada cuenta en el traspaso) -- si un nombre se repitió varias veces ese día, se elige la que estaba abierta en ese momento.</div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
       ${renderCuentaAuditCard(origen,'De')}
