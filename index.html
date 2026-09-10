@@ -10095,11 +10095,11 @@ function buildIncidencias(d,corteId){
   }
 
   if(allCancelados.length){
-    const rows=allCancelados.map(it=>`<tr><td>${it._folio}</td><td>${it._mesa}</td><td>${it.descripcion||'—'}</td>`+
+    const rows=allCancelados.map(it=>`<tr><td>${it._folio}</td><td>${it._mesa}</td><td style="text-decoration:line-through;color:var(--red)">${it.descripcion||'—'}</td>`+
       `<td style="text-align:center">${it.cantidad||1}</td><td class="num">${fmxn(it.precio_unitario)}</td>`+
       `<td style="color:var(--red)">${it.razon_cancelacion||it.razon||'Sin motivo registrado'}</td>`+
       `<td>${it.usuario_nombre||'—'}</td><td style="text-align:center">${horaCorta(it.fecha_captura)}</td>`+
-      `<td style="text-align:center">${btnAudit(`auditarCuenta(${JSON.stringify(corteId)},${JSON.stringify(it._cuenta_id)})`)}</td></tr>`).join('');
+      `<td style="text-align:center">${btnAudit(`auditarCancelacion(${JSON.stringify(corteId)},${JSON.stringify(it._cuenta_id)},${JSON.stringify(it.descripcion)},${JSON.stringify(it.cantidad)},${JSON.stringify(it.precio_unitario)},${JSON.stringify(it.fecha_captura)},${JSON.stringify(it.usuario_nombre)},${JSON.stringify(it.razon_cancelacion||it.razon)})`)}</td></tr>`).join('');
     html+=pdfSubtitulo('⛔ Cancelaciones de producto','var(--red)')+
       pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Producto cancelado'},{label:'Cant'},{label:'Precio',num:true},{label:'Motivo'},{label:'Canceló'},{label:'Hora'},{label:''}],rows);
   }
@@ -10268,6 +10268,29 @@ function auditarCambio(corteId,cuentaId,descripcion,fecha,usuarioNombre,razon){
   const meta=`<div style="font-size:11.5px;color:var(--text3);margin-bottom:14px">`+
     `${razon?`Motivo: <b>${razon}</b> · `:''}${usuarioNombre?`Autorizó: <b>${usuarioNombre}</b> · `:''}${fecha?horaCorta(fecha):''}</div>`;
   abrirModalAuditoria(`Cambio de platillo${fecha?' — '+fmtFechaHora(fecha):''}`,`
+    ${visual}${meta}
+    <div style="display:flex;gap:14px;flex-wrap:wrap">${renderCuentaAuditCard(cuenta,'Cuenta actual')}</div>
+  `);
+}
+
+// Mismo problema que auditarCambio: el producto cancelado ya no aparece en
+// la cuenta actual (renderCuentaAuditCard filtra los cancelados), así que
+// antes el 🔍 no mostraba nada del producto que se quitó. Aquí se arma la
+// tarjeta en rojo directo con los datos del propio evento de cancelación.
+function auditarCancelacion(corteId,cuentaId,descripcion,cantidad,precioUnitario,fecha,usuarioNombre,razon){
+  const c=cortesData.find(x=>x.id===corteId);
+  const cuenta=((c&&c.datos&&c.datos.cuentas)||[]).find(x=>String(x.id)===String(cuentaId));
+  const visual=`
+    <div style="background:var(--red-light);border:1px solid var(--red-mid);border-radius:8px;padding:10px 12px;margin-bottom:14px">
+      <div style="font-size:10px;color:var(--red);font-weight:700;margin-bottom:2px">PRODUCTO CANCELADO</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+        <span style="text-decoration:line-through;color:var(--red);font-weight:600">${descripcion||'—'}${cantidad>1?' ×'+cantidad:''}</span>
+        <b style="color:var(--red)">${fmxn((precioUnitario||0)*(cantidad||1))}</b>
+      </div>
+    </div>`;
+  const meta=`<div style="font-size:11.5px;color:var(--text3);margin-bottom:14px">`+
+    `${razon?`Motivo: <b>${razon}</b> · `:''}${usuarioNombre?`Canceló: <b>${usuarioNombre}</b> · `:''}${fecha?horaCorta(fecha):''}</div>`;
+  abrirModalAuditoria(`Cancelación de producto${fecha?' — '+fmtFechaHora(fecha):''}`,`
     ${visual}${meta}
     <div style="display:flex;gap:14px;flex-wrap:wrap">${renderCuentaAuditCard(cuenta,'Cuenta actual')}</div>
   `);
