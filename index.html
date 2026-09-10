@@ -10114,10 +10114,10 @@ function buildIncidencias(d,corteId){
   }
 
   if(allCambios.length){
-    const rows=allCambios.map(cm=>`<tr><td>${cm._folio}</td><td>${cm._mesa}</td><td>${cm.descripcion||'—'}</td>`+
+    const rows=allCambios.map(cm=>`<tr><td>${cm._folio}</td><td>${cm._mesa}</td><td>${renderCambioInline(cm.descripcion)}</td>`+
       `<td style="color:var(--copper)">${cm.razon||'Sin motivo registrado'}</td><td>${cm.usuario_nombre||'—'}</td>`+
       `<td style="text-align:center">${horaCorta(cm.fecha)}</td>`+
-      `<td style="text-align:center">${btnAudit(`auditarCuenta(${JSON.stringify(corteId)},${JSON.stringify(cm._cuenta_id)})`)}</td></tr>`).join('');
+      `<td style="text-align:center">${btnAudit(`auditarCambio(${JSON.stringify(corteId)},${JSON.stringify(cm._cuenta_id)},${JSON.stringify(cm.descripcion)},${JSON.stringify(cm.fecha)},${JSON.stringify(cm.usuario_nombre)},${JSON.stringify(cm.razon)})`)}</td></tr>`).join('');
     html+=pdfSubtitulo('⇄ Cambios de platillo','var(--copper)')+
       pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Descripción del cambio'},{label:'Motivo'},{label:'Usuario'},{label:'Hora'},{label:''}],rows);
   }
@@ -10212,6 +10212,23 @@ function parsearDestinoTraspaso(descripcion,origenNombre){
   return idx>=0?descripcion.slice(idx+prefijo.length).trim():null;
 }
 
+// El registro de "cambio de platillo" en el POS (ver _audit en
+// dialogo_cambiar_producto.py) siempre arma la descripción como
+// «ORIGINAL» cambiado por «NUEVO» -- se parsea aquí para poder mostrar el
+// antes/después visualmente (tachado vs resaltado) en vez de solo el texto
+// plano, que no dejaba claro a simple vista qué platillo se quitó y cuál
+// llegó en su lugar.
+function parsearCambioProducto(descripcion){
+  const m=/«(.+)»\s*cambiado por\s*«(.+)»/.exec(descripcion||'');
+  return m?{original:m[1],nuevo:m[2]}:null;
+}
+
+function renderCambioInline(descripcion){
+  const p=parsearCambioProducto(descripcion);
+  if(!p)return descripcion||'—';
+  return `<span style="text-decoration:line-through;color:var(--red)">${p.original}</span> → <b style="color:var(--green)">${p.nuevo}</b>`;
+}
+
 function abrirModalAuditoria(titulo,bodyHtml){
   document.getElementById('m-auditoria-evento-title').textContent=titulo;
   document.getElementById('m-auditoria-evento-body').innerHTML=bodyHtml;
@@ -10223,6 +10240,37 @@ function auditarCuenta(corteId,cuentaId){
   const c=cortesData.find(x=>x.id===corteId);
   const cuenta=((c&&c.datos&&c.datos.cuentas)||[]).find(x=>String(x.id)===String(cuentaId));
   abrirModalAuditoria('Detalle de la cuenta',`<div style="display:flex;gap:14px;flex-wrap:wrap">${renderCuentaAuditCard(cuenta,'Cuenta')}</div>`);
+}
+
+// A diferencia de auditarCuenta (que muestra la cuenta actual completa),
+// aquí el platillo que se quitó ya no aparece en la cuenta (quedó cancelado
+// y renderCuentaAuditCard filtra los cancelados) -- por eso el cambio no se
+// veía visualmente antes. Se arma el antes/después directo desde la
+// descripción del evento (ver parsearCambioProducto), y la cuenta actual
+// solo se deja como referencia de contexto (folio/mesero/dónde fue).
+function auditarCambio(corteId,cuentaId,descripcion,fecha,usuarioNombre,razon){
+  const c=cortesData.find(x=>x.id===corteId);
+  const cuenta=((c&&c.datos&&c.datos.cuentas)||[]).find(x=>String(x.id)===String(cuentaId));
+  const p=parsearCambioProducto(descripcion);
+  const visual=p?`
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <div style="flex:1;min-width:160px;background:var(--red-light);border:1px solid var(--red-mid);border-radius:8px;padding:10px 12px">
+        <div style="font-size:10px;color:var(--red);font-weight:700;margin-bottom:2px">SE QUITÓ</div>
+        <div style="text-decoration:line-through;color:var(--red);font-weight:600">${p.original}</div>
+      </div>
+      <div style="font-size:20px;color:var(--text3);flex:0 0 auto">→</div>
+      <div style="flex:1;min-width:160px;background:var(--green-light);border:1px solid var(--green-mid);border-radius:8px;padding:10px 12px">
+        <div style="font-size:10px;color:var(--green);font-weight:700;margin-bottom:2px">SE PUSO</div>
+        <div style="color:var(--green);font-weight:700">${p.nuevo}</div>
+      </div>
+    </div>`
+    :`<div style="margin-bottom:14px;color:var(--text3);font-style:italic;font-size:12px">${descripcion||'Sin descripción'}</div>`;
+  const meta=`<div style="font-size:11.5px;color:var(--text3);margin-bottom:14px">`+
+    `${razon?`Motivo: <b>${razon}</b> · `:''}${usuarioNombre?`Autorizó: <b>${usuarioNombre}</b> · `:''}${fecha?horaCorta(fecha):''}</div>`;
+  abrirModalAuditoria(`Cambio de platillo${fecha?' — '+fmtFechaHora(fecha):''}`,`
+    ${visual}${meta}
+    <div style="display:flex;gap:14px;flex-wrap:wrap">${renderCuentaAuditCard(cuenta,'Cuenta actual')}</div>
+  `);
 }
 
 function auditarTraspaso(corteId,fecha,origenNombre,descripcion){
