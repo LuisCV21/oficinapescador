@@ -918,6 +918,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <span class="sb-item-icon">🧮</span>
         <span class="sb-item-label">Control de Gastos</span>
       </div>
+      <div class="sb-item" onclick="showPage('polizabanco')" id="si-polizabanco">
+        <span class="sb-item-icon">🏦</span>
+        <span class="sb-item-label">Póliza Banco</span>
+      </div>
       <div class="sb-sep"></div>
       <div class="sb-item" onclick="showPage('archivos')" id="si-archivos">
         <span class="sb-item-icon">🗂️</span>
@@ -1287,6 +1291,34 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         </div>
       </div>
 
+      <!-- PÓLIZA BANCO -->
+      <div class="page" id="page-polizabanco">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">Póliza Banco</div>
+            <div class="page-sub">Día por día: lo que cayó de Crédito y Débito por terminal contra lo que ya se facturó de esos pagos -- mismo cuadre que la contadora pide, ya no a mano en Excel</div>
+          </div>
+        </div>
+        <div class="tabs-wrap">
+          <div class="tabs-bar" id="pb-tabs-bar"></div>
+          <div class="toolbar">
+            <div class="toolbar-l" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+                Mes <select id="pb-mes" onchange="renderPolizaBanco()" style="font-size:12px"></select>
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+                Año <select id="pb-anio" onchange="renderPolizaBanco()" style="font-size:12px"></select>
+              </label>
+            </div>
+            <div class="toolbar-r" style="display:flex;gap:8px">
+              <button class="btn btn-sm" onclick="exportarPolizaBancoXLSX()">📊 Excel</button>
+              <button class="btn btn-sm" onclick="imprimirPolizaBancoPDF()">🖨 PDF</button>
+            </div>
+          </div>
+          <div style="padding:16px" id="pb-content"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+        </div>
+      </div>
+
       <!-- BALANCE MENSUAL -->
       <div class="page" id="page-balance">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
@@ -1507,6 +1539,15 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   <div class="modal-hdr"><div class="modal-title" id="m-cg-detalle-title">Detalle</div><button class="btn-icon" onclick="closeModal('m-cg-detalle')">✕</button></div>
   <div class="modal-body" id="m-cg-detalle-body"></div>
   <div class="modal-ftr"><button class="btn" onclick="closeModal('m-cg-detalle')">Cerrar</button></div>
+</div>
+</div>
+
+<!-- MODAL DETALLE DE CELDA -- PÓLIZA BANCO -->
+<div class="modal-overlay" id="m-pb-detalle">
+<div class="modal" style="max-width:560px">
+  <div class="modal-hdr"><div class="modal-title" id="m-pb-detalle-title">Detalle</div><button class="btn-icon" onclick="closeModal('m-pb-detalle')">✕</button></div>
+  <div class="modal-body" id="m-pb-detalle-body"></div>
+  <div class="modal-ftr"><button class="btn" onclick="closeModal('m-pb-detalle')">Cerrar</button></div>
 </div>
 </div>
 
@@ -2910,6 +2951,7 @@ function showPage(id){
   else if(id==='ventasmes')renderVentasMes();
   else if(id==='globalespreview')renderVistaPreviaGlobales();
   else if(id==='controlgastos')renderControlGastos();
+  else if(id==='polizabanco')renderPolizaBanco();
   else if(id==='nominayasist')reloadModuloActivo();
   else if(id==='config'){
     if(configTabCurrent==='cuentas')renderConfigCuentas();
@@ -10127,6 +10169,289 @@ function abrirDetalleCeldaGastos(grupoKey,diaKey,catKey){
 async function cgReasignarDesdeDetalle(sucursal,turnoId,fecha,categoriaFinal){
   await cgGuardarClasificacion(sucursal,turnoId,fecha,categoriaFinal);
   closeModal('m-cg-detalle');
+}
+
+// ─── PÓLIZA BANCO ───────────────────────────────────────────────────────
+// Mismo cuadre que la contadora pedía a mano en Excel ("Póliza Banco"): lo
+// que el corte del POS reporta que cayó de Crédito/Débito por terminal
+// cada día (ventas_por_forma, mismo dato que ya usa Control de Gastos)
+// contra lo que YA se facturó de esos pagos -- facturas_individuales (ya
+// trae su fecha_venta) más los folios de facturas_globales (cada folio ya
+// trae su propia fecha real, ver oficina-facturacion-global/index.ts:
+// Pago.fecha) -- para ver día por día qué falta por facturar de tarjeta,
+// sin tener que llevarlo aparte a mano.
+let currentPBSuc='';
+let pbFacturasIndivData=[];
+let pbFacturasGlobData=[];
+let pbDatosCargados=false;
+let pbUltimoDatos=null;
+let pbItemsPorCeldaActual=new Map();
+
+async function loadFacturasPoliza(){
+  if(pbDatosCargados)return;
+  const[indiv,glob]=await Promise.all([
+    sb.from('facturas_individuales').select('entidad,folio,fecha_venta,forma_pago,total,estado,razon_social'),
+    sb.from('facturas_globales').select('entidad,forma_pago,estado,folios'),
+  ]);
+  pbFacturasIndivData=indiv.data||[];
+  pbFacturasGlobData=glob.data||[];
+  pbDatosCargados=true;
+}
+
+function populatePBMesAnio(){
+  const selMes=document.getElementById('pb-mes'), selAnio=document.getElementById('pb-anio');
+  if(!selMes||!selAnio||selMes.options.length)return;
+  const hoy=new Date();
+  selMes.innerHTML=MESES_ES.map((m,i)=>`<option value="${i+1}">${m}</option>`).join('');
+  selMes.value=hoy.getMonth()+1;
+  const anioActual=hoy.getFullYear();
+  selAnio.innerHTML=[anioActual,anioActual-1].map(a=>`<option value="${a}">${a}</option>`).join('');
+  selAnio.value=anioActual;
+}
+function pbRangoMes(){
+  populatePBMesAnio();
+  const mes=Number(document.getElementById('pb-mes')?.value||(new Date().getMonth()+1));
+  const anio=Number(document.getElementById('pb-anio')?.value||new Date().getFullYear());
+  return{desde:`${anio}-${String(mes).padStart(2,'0')}-01`,hasta:`${anio}-${String(mes).padStart(2,'0')}-31`};
+}
+function pbTituloRango(){
+  const[y,m]=pbUltimoDatos.desde.split('-').map(Number);
+  return`${MESES_ES[m-1]} ${y}`;
+}
+function renderPBTabs(){
+  const bar=document.getElementById('pb-tabs-bar');
+  if(!bar)return;
+  const sucs=[...new Set(cortesData.map(c=>c.sucursal).filter(Boolean))].sort();
+  if(!sucs.includes(currentPBSuc))currentPBSuc=sucs[0]||'';
+  bar.innerHTML=sucs.map(s=>
+    `<div class="tab ${currentPBSuc===s?'active':''}" onclick="switchPBSuc('${s.replace(/'/g,"\\'")}')"><span class="ent-dot" style="background:${corteSucColor(s)}"></span>${s}</div>`
+  ).join('');
+}
+function switchPBSuc(s){currentPBSuc=s;renderPolizaBanco();}
+
+// Calcula todo lo que necesita tanto renderPolizaBanco (pantalla) como las
+// exportaciones -- una sola fuente de verdad, guardada en pbUltimoDatos.
+function pbCalcularDatos(){
+  const entKey=(Object.entries(ENTS).find(([,e])=>String(currentPBSuc||'').toLowerCase().includes(e.label.toLowerCase()))||[])[0];
+  const{desde,hasta}=pbRangoMes();
+  const cortes=cortesData.filter(c=>c.sucursal===currentPBSuc&&(c.cierre||c.apertura||'').slice(0,10)>=desde&&(c.cierre||c.apertura||'').slice(0,10)<=hasta);
+
+  const dias=new Map(); // diaKey -> {credito:{pos,facturado,items:[]}, debito:{pos,facturado,items:[]}}
+  const diaDe=(dk)=>{
+    if(!dias.has(dk))dias.set(dk,{credito:{pos:0,facturado:0,items:[]},debito:{pos:0,facturado:0,items:[]}});
+    return dias.get(dk);
+  };
+  // Lado terminal/POS: lo que cada corte reporta que entró de Crédito/Débito ese día.
+  cortes.forEach(c=>{
+    const dk=(c.cierre||c.apertura||'').slice(0,10);
+    const vpf=(c.datos&&c.datos.ventas_por_forma)||{};
+    const d=diaDe(dk);
+    d.credito.pos+=Number(vpf.credito||0);
+    d.debito.pos+=Number(vpf.debito||0);
+  });
+  // Lado facturado -- individuales, ya con su propia fecha_venta.
+  pbFacturasIndivData
+    .filter(f=>f.entidad===entKey&&f.estado==='timbrada'&&(f.forma_pago==='04'||f.forma_pago==='28')&&f.fecha_venta>=desde&&f.fecha_venta<=hasta)
+    .forEach(f=>{
+      const dk=String(f.fecha_venta).slice(0,10);
+      const bucket=f.forma_pago==='04'?diaDe(dk).credito:diaDe(dk).debito;
+      bucket.facturado=Math.round((bucket.facturado+(Number(f.total)||0))*100)/100;
+      bucket.items.push({folio:f.folio,monto:Number(f.total)||0,quien:f.razon_social||''});
+    });
+  // Lado facturado -- globales: se expande "folios", cada uno ya trae su
+  // propia fecha real de venta (no la fecha en que se generó la global).
+  pbFacturasGlobData
+    .filter(f=>f.entidad===entKey&&f.estado==='timbrada'&&(f.forma_pago==='04'||f.forma_pago==='28'))
+    .forEach(f=>{
+      (f.folios||[]).forEach(folio=>{
+        const dk=String(folio.fecha||'').slice(0,10);
+        if(!dk||dk<desde||dk>hasta)return;
+        const bucket=f.forma_pago==='04'?diaDe(dk).credito:diaDe(dk).debito;
+        bucket.facturado=Math.round((bucket.facturado+(Number(folio.monto)||0))*100)/100;
+        bucket.items.push({folio:folio.folio,monto:Number(folio.monto)||0,quien:'Público en general'});
+      });
+    });
+
+  const diasOrdenados=[...dias.keys()].sort();
+  const datos={entKey,desde,hasta,cortes,dias,diasOrdenados};
+  pbUltimoDatos=datos;
+  return datos;
+}
+
+async function renderPolizaBanco(){
+  await loadFacturasPoliza();
+  const el=document.getElementById('pb-content');
+  if(!el)return;
+  renderPBTabs();
+  const{cortes,dias,diasOrdenados}=pbCalcularDatos();
+  pbItemsPorCeldaActual=new Map();
+  diasOrdenados.forEach(dk=>{
+    const d=dias.get(dk);
+    pbItemsPorCeldaActual.set(dk+'|credito',d.credito.items);
+    pbItemsPorCeldaActual.set(dk+'|debito',d.debito.items);
+  });
+  if(!cortes.length&&!diasOrdenados.length){
+    el.innerHTML=`<div class="empty"><div class="empty-ico">🏦</div>Sin cortes ni facturas en este rango para ${corteSucLabel(currentPBSuc)}</div>`;
+    return;
+  }
+  const celdaFacturado=(dk,forma,valor)=>{
+    const items=pbItemsPorCeldaActual.get(dk+'|'+forma)||[];
+    if(!items.length)return`<td class="num">${fmxn(valor)}</td>`;
+    return`<td class="num" title="Clic para ver las facturas" style="cursor:pointer;text-decoration:underline dotted" onclick="abrirDetallePolizaBanco('${dk}','${forma}')">${fmxn(valor)}</td>`;
+  };
+  const rows=diasOrdenados.map(dk=>{
+    const d=dias.get(dk);
+    const totalPos=Math.round((d.credito.pos+d.debito.pos)*100)/100;
+    const totalFact=Math.round((d.credito.facturado+d.debito.facturado)*100)/100;
+    if(!totalPos&&!totalFact)return'';
+    const{texto:difTxt,color:difColor}=cuadreLabel(Math.round((totalFact-totalPos)*100)/100);
+    return`<tr>
+      <td>${fmtDiaMes(dk)}</td>
+      <td class="num">${fmxn(d.credito.pos)}</td>
+      ${celdaFacturado(dk,'credito',d.credito.facturado)}
+      <td class="num">${fmxn(d.debito.pos)}</td>
+      ${celdaFacturado(dk,'debito',d.debito.facturado)}
+      <td class="num"><b>${fmxn(totalFact)}</b></td>
+      <td class="num" style="color:${difColor}"><b>${difTxt}</b></td>
+    </tr>`;
+  }).join('');
+  const tot=diasOrdenados.reduce((a,dk)=>{const d=dias.get(dk);a.cPos+=d.credito.pos;a.cFac+=d.credito.facturado;a.dPos+=d.debito.pos;a.dFac+=d.debito.facturado;return a;},{cPos:0,cFac:0,dPos:0,dFac:0});
+  const totPos=Math.round((tot.cPos+tot.dPos)*100)/100, totFac=Math.round((tot.cFac+tot.dFac)*100)/100;
+  const{texto:totTxt,color:totColor}=cuadreLabel(Math.round((totFac-totPos)*100)/100);
+  el.innerHTML=`<div style="overflow-x:auto"><table class="corte-tbl">
+    <thead><tr><th>Día</th><th class="num">Crédito (terminal)</th><th class="num">Crédito facturado</th><th class="num">Débito (terminal)</th><th class="num">Débito facturado</th><th class="num">Total facturado</th><th class="num">Diferencia</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr style="font-weight:700;background:var(--surface2)">
+      <td>Total</td><td class="num">${fmxn(tot.cPos)}</td><td class="num">${fmxn(tot.cFac)}</td><td class="num">${fmxn(tot.dPos)}</td><td class="num">${fmxn(tot.dFac)}</td><td class="num">${fmxn(totFac)}</td><td class="num" style="color:${totColor}">${totTxt}</td>
+    </tr></tfoot>
+  </table></div>
+  <div style="font-size:11px;color:var(--text2);margin-top:10px">Clic en "Crédito facturado" o "Débito facturado" para ver el detalle de folios de ese día. Diferencia = facturado − lo que reportó el corte por terminal (negativo = todavía falta facturar).</div>`;
+}
+
+function abrirDetallePolizaBanco(dk,forma){
+  const items=pbItemsPorCeldaActual.get(dk+'|'+forma)||[];
+  const total=items.reduce((s,i)=>s+i.monto,0);
+  document.getElementById('m-pb-detalle-title').textContent=`${forma==='credito'?'Crédito':'Débito'} facturado · ${fmtDiaMes(dk)}`;
+  document.getElementById('m-pb-detalle-body').innerHTML=items.length?`
+    <div style="overflow-x:auto"><table class="corte-tbl">
+      <thead><tr><th>Folio</th><th>Cliente</th><th class="num">Monto</th></tr></thead>
+      <tbody>${items.map(i=>`<tr><td>${i.folio}</td><td>${i.quien}</td><td class="num">${fmxn(i.monto)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr style="font-weight:700;background:var(--surface2)"><td colspan="2">Total</td><td class="num">${fmxn(total)}</td></tr></tfoot>
+    </table></div>`:'<div class="empty"><div class="empty-ico">📋</div>Sin facturas ese día.</div>';
+  openModal('m-pb-detalle');
+}
+
+function exportarPolizaBancoXLSX(){
+  if(!pbUltimoDatos||!pbUltimoDatos.diasOrdenados.length){toast('No hay datos para exportar.',true);return;}
+  const{dias,diasOrdenados}=pbUltimoDatos;
+  const wb=XLSX.utils.book_new();
+
+  const aoaResumen=[
+    ['Día','Crédito (terminal)','Crédito facturado','Débito (terminal)','Débito facturado','Total facturado','Diferencia'],
+    ...diasOrdenados.map(dk=>{
+      const d=dias.get(dk);
+      const totalPos=Math.round((d.credito.pos+d.debito.pos)*100)/100;
+      const totalFact=Math.round((d.credito.facturado+d.debito.facturado)*100)/100;
+      return[fmtDiaMes(dk),d.credito.pos,d.credito.facturado,d.debito.pos,d.debito.facturado,totalFact,Math.round((totalFact-totalPos)*100)/100];
+    }),
+  ];
+  const tot=diasOrdenados.reduce((a,dk)=>{const d=dias.get(dk);a.cPos+=d.credito.pos;a.cFac+=d.credito.facturado;a.dPos+=d.debito.pos;a.dFac+=d.debito.facturado;return a;},{cPos:0,cFac:0,dPos:0,dFac:0});
+  const totPos=Math.round((tot.cPos+tot.dPos)*100)/100, totFac=Math.round((tot.cFac+tot.dFac)*100)/100;
+  aoaResumen.push([],['Total',tot.cPos,tot.cFac,tot.dPos,tot.dFac,totFac,Math.round((totFac-totPos)*100)/100]);
+  const wsResumen=XLSX.utils.aoa_to_sheet(aoaResumen);
+  wsResumen['!cols']=[{wch:12},{wch:16},{wch:16},{wch:14},{wch:14},{wch:14},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,wsResumen,'Resumen');
+
+  const aoaFact=[['Día','Forma','Folio','Cliente','Monto']];
+  diasOrdenados.forEach(dk=>{
+    const d=dias.get(dk);
+    d.credito.items.forEach(i=>aoaFact.push([fmtDiaMes(dk),'Crédito',i.folio,i.quien,i.monto]));
+    d.debito.items.forEach(i=>aoaFact.push([fmtDiaMes(dk),'Débito',i.folio,i.quien,i.monto]));
+  });
+  const wsFact=XLSX.utils.aoa_to_sheet(aoaFact);
+  wsFact['!cols']=[{wch:12},{wch:10},{wch:10},{wch:34},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,wsFact,'Facturas');
+
+  XLSX.writeFile(wb,`Poliza_Banco_${corteSucLabel(currentPBSuc)}_${pbUltimoDatos.desde.slice(0,7)}.xlsx`);
+  toast('Excel exportado.');
+}
+
+function imprimirPolizaBancoPDF(){
+  if(!pbUltimoDatos||!pbUltimoDatos.diasOrdenados.length){toast('No hay datos para exportar.',true);return;}
+  const{dias,diasOrdenados}=pbUltimoDatos;
+
+  const tablaFacturas=(items)=>{
+    if(!items.length)return'<p class="pb-empty">Sin facturas.</p>';
+    return`<table class="pb-tbl"><thead><tr><th>Folio</th><th>Cliente</th><th>Monto</th></tr></thead>
+      <tbody>${items.map(i=>`<tr><td class="tc">${i.folio}</td><td class="tc">${i.quien}</td><td class="tn">${fmxn(i.monto)}</td></tr>`).join('')}</tbody>
+    </table>`;
+  };
+  let gTotPos=0,gTotFac=0;
+  const bloques=diasOrdenados.map(dk=>{
+    const d=dias.get(dk);
+    const totalPos=Math.round((d.credito.pos+d.debito.pos)*100)/100;
+    const totalFact=Math.round((d.credito.facturado+d.debito.facturado)*100)/100;
+    if(!totalPos&&!totalFact)return'';
+    gTotPos+=totalPos;gTotFac+=totalFact;
+    const dif=Math.round((totalFact-totalPos)*100)/100;
+    const{texto:difTxt,color:difColor}=cuadreLabel(dif);
+    return`<div class="pb-dia">
+      <div class="pb-dia-hdr">${fmtDiaMes(dk)} &nbsp;·&nbsp; Terminal: ${fmxn(totalPos)} &nbsp;·&nbsp; Facturado: ${fmxn(totalFact)} &nbsp;·&nbsp; <span style="color:${difColor}">${difTxt}</span></div>
+      <div class="pb-dia-cols">
+        <div class="pb-col">
+          <div class="pb-col-hdr">CRÉDITO — terminal ${fmxn(d.credito.pos)} · facturado ${fmxn(d.credito.facturado)}</div>
+          ${tablaFacturas(d.credito.items)}
+        </div>
+        <div class="pb-col">
+          <div class="pb-col-hdr">DÉBITO — terminal ${fmxn(d.debito.pos)} · facturado ${fmxn(d.debito.facturado)}</div>
+          ${tablaFacturas(d.debito.items)}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  const{texto:gTxt,color:gColor}=cuadreLabel(Math.round((gTotFac-gTotPos)*100)/100);
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Póliza Banco ${corteSucLabel(currentPBSuc)}</title>
+<style>
+@page{size:letter;margin:1cm}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+body{font-family:'DM Sans',Arial,sans-serif;margin:0;padding:14px;color:#16323c;background:#eaf4f5}
+.pb-header{display:flex;align-items:center;gap:14px;padding:12px 16px;background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;border-radius:8px 8px 0 0}
+.pb-logo{height:40px;width:40px;object-fit:contain}
+.pb-title{font-family:'Fraunces',serif;font-size:18px;font-weight:600}
+.pb-sub{font-size:11px;opacity:.85;margin-top:2px}
+.pb-body{border:1.5px solid #0f3d52;border-top:none;border-radius:0 0 8px 8px;padding:14px;background:#fff}
+.pb-dia{border:1px solid #c9dde0;border-radius:6px;overflow:hidden;page-break-inside:avoid;margin-bottom:12px}
+.pb-dia-hdr{background:#0f3d52;color:#fff;font-weight:700;font-size:11px;padding:5px 10px}
+.pb-dia-cols{display:flex;gap:8px;padding:8px}
+.pb-col{flex:1;min-width:0}
+.pb-col-hdr{font-size:9.5px;font-weight:700;color:#0f3d52;margin-bottom:3px}
+table.pb-tbl{border-collapse:collapse;width:100%;table-layout:fixed}
+.pb-tbl th{border:1px solid #c9dde0;background:#e2f0f1;color:#0f3d52;font-size:8.5px;font-weight:700;padding:3px}
+.pb-tbl td{border:1px solid #e2eef0;font-size:8.5px;padding:2px 4px}
+.pb-tbl td.tc{text-align:left}
+.pb-tbl td.tn{text-align:right;font-family:'DM Mono',Consolas,monospace}
+.pb-empty{font-size:9px;color:#7f8c8d;margin:2px 0}
+.grand-tot{display:flex;justify-content:flex-end;gap:20px;font-weight:700;font-size:11px;background:#0f3d52;color:#fff;padding:8px 14px;border-radius:6px;margin-top:6px}
+.print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:'DM Sans',Arial,sans-serif;font-weight:600}
+@media print{.print-btn{display:none}body{padding:0;background:#fff}.pb-body{border:none}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
+<div class="pb-header">
+  <img class="pb-logo" src="${PA_LOGO}" alt="El Pescador">
+  <div>
+    <div class="pb-title">PÓLIZA BANCO — ${corteSucLabel(currentPBSuc).toUpperCase()}</div>
+    <div class="pb-sub">${pbTituloRango().toUpperCase()}</div>
+  </div>
+</div>
+<div class="pb-body">
+  ${bloques}
+  <div class="grand-tot"><span>TERMINAL: ${fmxn(gTotPos)}</span><span>FACTURADO: ${fmxn(gTotFac)}</span><span style="color:#fff">DIFERENCIA: <span style="color:${gColor==='var(--green)'?'#8fd6a8':'#ff9b9b'}">${gTxt}</span></span></div>
+</div>
+</body></html>`;
+  const w=window.open('','_blank');
+  w.document.write(html);
+  w.document.close();
 }
 
 // Helpers de estilo "reporte" -- calcan las tarjetas/tablas del PDF que
