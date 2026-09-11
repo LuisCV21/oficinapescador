@@ -10177,26 +10177,21 @@ async function cgReasignarDesdeDetalle(sucursal,turnoId,fecha,categoriaFinal){
 // cada día (ventas_por_forma, mismo dato que ya usa Control de Gastos)
 // contra lo que YA se facturó de esos pagos -- facturas_individuales (ya
 // trae su fecha_venta) más los folios de facturas_globales (cada folio ya
-// trae su propia fecha real, ver oficina-facturacion-global/index.ts:
-// Pago.fecha) -- para ver día por día qué falta por facturar de tarjeta,
-// sin tener que llevarlo aparte a mano.
+// trae su propia fecha real -- ver datos.facturas_detalle en cada corte) --
+// para ver día por día qué falta por facturar de tarjeta, sin tener que
+// llevarlo aparte a mano.
+//
+// OJO: el lado facturado NO sale de facturas_individuales/facturas_globales
+// (esas tablas son de un flujo aparte -- facturación iniciada desde
+// Oficina -- que todavía no se usa, están vacías). La factura real de cada
+// venta la timbra el POS de cada sucursal y viaja YA incluida dentro del
+// corte que manda al cerrar turno, en datos.facturas_detalle -- cada
+// elemento trae total, estado ('timbrada'/'pendiente'/'cancelada'),
+// fecha_venta y clave_forma_pago (SAT: 04 crédito, 28 débito). Por eso el
+// lado facturado se saca de cortesData, igual que el lado del POS.
 let currentPBSuc='';
-let pbFacturasIndivData=[];
-let pbFacturasGlobData=[];
-let pbDatosCargados=false;
 let pbUltimoDatos=null;
 let pbItemsPorCeldaActual=new Map();
-
-async function loadFacturasPoliza(){
-  if(pbDatosCargados)return;
-  const[indiv,glob]=await Promise.all([
-    sb.from('facturas_individuales').select('entidad,folio,fecha_venta,forma_pago,total,estado,razon_social'),
-    sb.from('facturas_globales').select('entidad,forma_pago,estado,folios'),
-  ]);
-  pbFacturasIndivData=indiv.data||[];
-  pbFacturasGlobData=glob.data||[];
-  pbDatosCargados=true;
-}
 
 function populatePBMesAnio(){
   const selMes=document.getElementById('pb-mes'), selAnio=document.getElementById('pb-anio');
@@ -10232,7 +10227,6 @@ function switchPBSuc(s){currentPBSuc=s;renderPolizaBanco();}
 // Calcula todo lo que necesita tanto renderPolizaBanco (pantalla) como las
 // exportaciones -- una sola fuente de verdad, guardada en pbUltimoDatos.
 function pbCalcularDatos(){
-  const entKey=(Object.entries(ENTS).find(([,e])=>String(currentPBSuc||'').toLowerCase().includes(e.label.toLowerCase()))||[])[0];
   const{desde,hasta}=pbRangoMes();
   const cortes=cortesData.filter(c=>c.sucursal===currentPBSuc&&(c.cierre||c.apertura||'').slice(0,10)>=desde&&(c.cierre||c.apertura||'').slice(0,10)<=hasta);
 
@@ -10241,45 +10235,37 @@ function pbCalcularDatos(){
     if(!dias.has(dk))dias.set(dk,{credito:{pos:0,facturado:0,items:[]},debito:{pos:0,facturado:0,items:[]}});
     return dias.get(dk);
   };
-  // Lado terminal/POS: lo que cada corte reporta que entró de Crédito/Débito ese día.
   cortes.forEach(c=>{
-    const dk=(c.cierre||c.apertura||'').slice(0,10);
+    // Lado terminal/POS: lo que este corte reporta que entró de Crédito/Débito.
+    const dkCorte=(c.cierre||c.apertura||'').slice(0,10);
     const vpf=(c.datos&&c.datos.ventas_por_forma)||{};
-    const d=diaDe(dk);
-    d.credito.pos+=Number(vpf.credito||0);
-    d.debito.pos+=Number(vpf.debito||0);
-  });
-  // Lado facturado -- individuales, ya con su propia fecha_venta.
-  pbFacturasIndivData
-    .filter(f=>f.entidad===entKey&&f.estado==='timbrada'&&(f.forma_pago==='04'||f.forma_pago==='28')&&f.fecha_venta>=desde&&f.fecha_venta<=hasta)
-    .forEach(f=>{
-      const dk=String(f.fecha_venta).slice(0,10);
-      const bucket=f.forma_pago==='04'?diaDe(dk).credito:diaDe(dk).debito;
+    const dPos=diaDe(dkCorte);
+    dPos.credito.pos+=Number(vpf.credito||0);
+    dPos.debito.pos+=Number(vpf.debito||0);
+    // Lado facturado: cada factura ya timbrada por el POS trae su propia
+    // fecha_venta -- puede ser de un día distinto al del corte donde se
+    // generó (ej. una factura global de días anteriores), así que se
+    // agrupa por su propia fecha, no por la del corte.
+    const facturas=(c.datos&&c.datos.facturas_detalle)||[];
+    facturas.forEach(f=>{
+      if(f.estado!=='timbrada')return;
+      const clave=f.clave_forma_pago;
+      if(clave!=='04'&&clave!=='28')return;
+      const dk=String(f.fecha_venta||dkCorte).slice(0,10);
+      if(dk<desde||dk>hasta)return;
+      const bucket=clave==='04'?diaDe(dk).credito:diaDe(dk).debito;
       bucket.facturado=Math.round((bucket.facturado+(Number(f.total)||0))*100)/100;
-      bucket.items.push({folio:f.folio,monto:Number(f.total)||0,quien:f.razon_social||''});
+      bucket.items.push({folio:f.folio_interno||f.folio_cfdi||f.folio_pago||'',monto:Number(f.total)||0,quien:f.razon_social||''});
     });
-  // Lado facturado -- globales: se expande "folios", cada uno ya trae su
-  // propia fecha real de venta (no la fecha en que se generó la global).
-  pbFacturasGlobData
-    .filter(f=>f.entidad===entKey&&f.estado==='timbrada'&&(f.forma_pago==='04'||f.forma_pago==='28'))
-    .forEach(f=>{
-      (f.folios||[]).forEach(folio=>{
-        const dk=String(folio.fecha||'').slice(0,10);
-        if(!dk||dk<desde||dk>hasta)return;
-        const bucket=f.forma_pago==='04'?diaDe(dk).credito:diaDe(dk).debito;
-        bucket.facturado=Math.round((bucket.facturado+(Number(folio.monto)||0))*100)/100;
-        bucket.items.push({folio:folio.folio,monto:Number(folio.monto)||0,quien:'Público en general'});
-      });
-    });
+  });
 
   const diasOrdenados=[...dias.keys()].sort();
-  const datos={entKey,desde,hasta,cortes,dias,diasOrdenados};
+  const datos={desde,hasta,cortes,dias,diasOrdenados};
   pbUltimoDatos=datos;
   return datos;
 }
 
-async function renderPolizaBanco(){
-  await loadFacturasPoliza();
+function renderPolizaBanco(){
   const el=document.getElementById('pb-content');
   if(!el)return;
   renderPBTabs();
