@@ -1278,6 +1278,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
                 Año <select id="cg-anio" onchange="renderControlGastos()" style="font-size:12px"></select>
               </label>
             </div>
+            <div class="toolbar-r" style="display:flex;gap:8px">
+              <button class="btn btn-sm" onclick="exportarControlGastosXLSX()">📊 Excel</button>
+              <button class="btn btn-sm" onclick="imprimirControlGastosPDF()">🖨 PDF</button>
+            </div>
           </div>
           <div style="padding:16px" id="cg-content"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
@@ -8171,6 +8175,18 @@ function calcIva16(total){
   return subtotal*0.16;
 }
 function fmxnSigned(n){n=Number(n)||0;return(n<0?'-':'')+fmxn(Math.abs(n));}
+// Etiqueta+color de una diferencia de cuadre: verde y "Cuadra" si es
+// prácticamente cero, verde y "Sobra $X" si hay más dinero del esperado
+// (diferencia positiva), rojo y "Falta $X" si hay menos (diferencia
+// negativa) -- mismo criterio de signo que usa Pescador POS (ver
+// calcular_cuadre_diario en operaciones/caja.py: diferencia = lo que de
+// verdad se contó - lo que se esperaba).
+function cuadreLabel(dif,textoCuadra){
+  dif=Number(dif)||0;
+  if(Math.abs(dif)<0.5)return{texto:textoCuadra||'Cuadra',color:'var(--green)'};
+  if(dif>0)return{texto:`Sobra ${fmxn(dif)}`,color:'var(--green)'};
+  return{texto:`Falta ${fmxn(Math.abs(dif))}`,color:'var(--red)'};
+}
 
 function addNominaSemana(fecha,monto){
   const wrap=document.getElementById('bf-nomina-semanas');
@@ -8500,58 +8516,6 @@ function preAnteriorDeCorte(c){
   for(const e of ADO_ENTIDADES)pre[e]=sa[e]||0;
   return pre;
 }
-// Lo que ESTE corte dice que traía de anterior al ABRIR -- para comparar
-// contra lo que el corte de ANTES dejó al cerrar (preAnteriorDeCorte). Si
-// no coinciden, la cadena se rompió: el turno nuevo no heredó lo que de
-// verdad quedó, sin importar que la Diferencia general del corte salga
-// bien (puede salir "bien" aunque Bodega/Baucher/Vales estén mal, si el
-// error se cancela con otro -- caso real Florida turno #3, 4-sept-2026:
-// Baucher y Vales llegaron ~$16,000 y ~$13,000 de menos, pero la
-// Diferencia mostraba -$0.51 como si nada, porque el "Anterior de caja"
-// general cargaba exactamente el mismo error y se cancelaba solo).
-function anteriorDeCorte(c){
-  const d=c.datos||{};
-  const rr=d.resumen_recepcion||null;
-  if(rr)return{
-    tipo:'hotel',
-    bodega:rr.anterior_bodega||0, baucher:rr.anterior_baucher||0,
-    vales_antonio:rr.anterior_vales_antonio||0, vales_personal:rr.anterior_vales_personal||0,
-  };
-  const cu=d.cuadre||{};
-  return{tipo:'restaurante',bodega:cu.anterior_bodega||0,vales:cu.anterior_vales||0,baucher:cu.anterior_baucher||0};
-}
-// Recorre los cortes de una sucursal en orden y compara, turno por turno,
-// "con qué cerró el anterior" contra "con qué dice que abrió el siguiente"
-// -- cualquier campo (Bodega/Baucher/Vales[/Vales Sr.Antonio/Personal])
-// que no amarre exacto (tolerancia $1, por redondeos) se reporta aquí,
-// aunque el corte en cuestión "cuadre" perfecto por fuera.
-function detectarRupturasCadena(sucursal){
-  // Se acota al mes elegido (igual que la lista de cortes) -- cada mes se
-  // reinicia la administración y el histórico de meses pasados ya se dio
-  // por cerrado, así que una corrección vieja y ya aceptada (ej. la del
-  // 18-ago de Florida) no debe salir marcada como "ruptura" para siempre.
-  let items=cortesData.filter(c=>c.sucursal===sucursal);
-  if(currentCorteMes)items=items.filter(c=>corteMesKey(c)===currentCorteMes);
-  items=items.sort((a,b)=>(a.apertura||'').localeCompare(b.apertura||''));
-  const rupturas=[];
-  const ETIQUETAS={bodega:'Bodega',baucher:'Baucher',vales:'Vales',vales_antonio:'Vales Sr. Antonio',vales_personal:'Vales del Personal'};
-  for(let i=1;i<items.length;i++){
-    const prevFin=preAnteriorDeCorte(items[i-1]);
-    const curIni=anteriorDeCorte(items[i]);
-    const campos=prevFin.tipo==='hotel'?['bodega','baucher','vales_antonio','vales_personal']:['bodega','vales','baucher'];
-    for(const campo of campos){
-      const esperado=Math.round((Number(prevFin[campo])||0)*100)/100;
-      const real=Math.round((Number(curIni[campo])||0)*100)/100;
-      if(Math.abs(esperado-real)>1){
-        rupturas.push({
-          turnoPrevio:items[i-1].turno_id, turno:items[i].turno_id,
-          campo:ETIQUETAS[campo]||campo, esperado, real, dif:Math.round((real-esperado)*100)/100,
-        });
-      }
-    }
-  }
-  return rupturas;
-}
 // El corte más reciente (por cierre) de una sucursal -- cortesData solo
 // trae cortes YA cerrados (el POS los manda al cerrar turno), así que el
 // más reciente es de donde sale "lo que trae ahorita" cada negocio.
@@ -8588,30 +8552,14 @@ function renderCorteAnteriorPanel(){
       <button class="btn btn-sm" style="margin-top:8px;width:100%" onclick='openCorreccionAnteriorModal(${JSON.stringify(s)},${JSON.stringify(pre)})'>✎ Corregir anterior</button>
     </div>`;
   }).join('');
-  // Aviso de cadena rota -- se muestra SIEMPRE que exista, sin importar si
-  // el corte donde ocurrió "cuadraba" bien por fuera (ver detectarRupturasCadena).
-  const rupturasHtml=objetivo.map(s=>{
-    const rupturas=detectarRupturasCadena(s);
-    if(!rupturas.length)return'';
-    return`<div style="background:#fdecea;border:1px solid var(--red);border-radius:8px;padding:10px 14px;margin-bottom:10px">
-      <div style="font-weight:700;color:var(--red);font-size:12.5px;margin-bottom:4px">⚠ ${corteSucLabel(s)}: el arrastre entre turnos no amarra (aunque el corte se vea "Cuadra")</div>
-      ${rupturas.map(r=>`<div style="font-size:12px;color:var(--text2);padding:2px 0">
-        Turno #${r.turnoPrevio} → #${r.turno} · <b>${r.campo}</b>: debía traer ${fmxn(r.esperado)}, trajo ${fmxn(r.real)}
-        <span style="color:var(--red);font-weight:600">(${r.dif>0?'+':''}${fmxn(r.dif)})</span>
-      </div>`).join('')}
-    </div>`;
-  }).join('');
   el.innerHTML=tarjetas?`
-    ${rupturasHtml}
     <div style="font-size:11px;color:var(--text2);margin-bottom:8px">Con esto arranca el próximo turno de cada negocio -- corrígelo aquí directo, ya no hace falta entrar a un corte en particular.</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">${tarjetas}</div>
   `:'';
 }
 function renderCorteCardSingle(c){
   const dif=Number(c.diferencia_cuadre||0);
-  const cuadra=Math.abs(dif)<0.5;
-  const difColor=cuadra?'var(--green)':'var(--red)';
-  const difTxt=cuadra?'Cuadra':fmxnSigned(dif);
+  const{texto:difTxt,color:difColor}=cuadreLabel(dif);
   const titulo=`Corte ${corteSucLabel(c.sucursal)} ${fmtDiaMes(c.cierre||c.apertura)}`;
   return`<div class="acc-card" style="cursor:pointer;background:${corteBg(c.sucursal,10)};border-left:4px solid ${corteSucColor(c.sucursal)}" onclick="openCorteDetail('${c.id}')">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
@@ -8634,9 +8582,7 @@ function renderHotelDiaCard(rows){
   const totalVenta=Math.round(rows.reduce((s,r)=>s+Number(r.total_ventas||0),0)*100)/100;
   const ultimo=rows[rows.length-1];
   const dif=Number(ultimo.diferencia_cuadre||0);
-  const cuadra=Math.abs(dif)<0.5;
-  const difColor=cuadra?'var(--green)':'var(--red)';
-  const difTxt=cuadra?'Cuadra':fmxnSigned(dif);
+  const{texto:difTxt,color:difColor}=cuadreLabel(dif);
   const suc=rows[0].sucursal;
   const turnosLbl=rows.map(r=>'#'+r.turno_id).join(' + ');
   const nota=rows.length===1?` <span style="color:var(--text3);font-weight:400;font-size:11px">(falta el otro turno de este día)</span>`:'';
@@ -9812,6 +9758,7 @@ let currentCGSuc='';
 let gastosOverridesData=[];
 let cgItemsPorCeldaActual=new Map(); // se llena en cada render, la usan los onclick de las celdas
 let cgEntKeyActual=null;
+let cgUltimoDatos=null; // último resultado de cgCalcularDatos(), lo usan los botones de exportar
 async function loadGastosOverrides(){
   const{data}=await sb.from('gastos_clasificacion_overrides').select('*');
   gastosOverridesData=data||[];
@@ -9857,19 +9804,15 @@ function cgRangoMes(){
   return{desde:`${anio}-${String(mes).padStart(2,'0')}-01`,hasta:`${anio}-${String(mes).padStart(2,'0')}-31`};
 }
 
-async function renderControlGastos(){
-  if(!gastosOverridesData.length)await loadGastosOverrides();
-  const el=document.getElementById('cg-content');
-  if(!el)return;
-  renderCGTabs();
+// Calcula todo lo que necesita tanto renderControlGastos (pantalla) como
+// las exportaciones (Excel/PDF) -- una sola fuente de verdad para que lo
+// exportado sea EXACTAMENTE lo que se ve en pantalla. Guarda su resultado en
+// cgUltimoDatos para que los botones de exportar no tengan que recalcular.
+function cgCalcularDatos(){
   const entKey=(Object.entries(ENTS).find(([,e])=>String(currentCGSuc||'').toLowerCase().includes(e.label.toLowerCase()))||[])[0];
   const esHotel=entKey==='HOT';
   const{desde,hasta}=cgRangoMes();
   const cortes=cortesData.filter(c=>c.sucursal===currentCGSuc&&(c.cierre||c.apertura||'').slice(0,10)>=desde&&(c.cierre||c.apertura||'').slice(0,10)<=hasta);
-  if(!cortes.length){
-    el.innerHTML=`<div class="empty"><div class="empty-ico">🧮</div>Sin cortes en este rango para ${corteSucLabel(currentCGSuc)}</div>`;
-    return;
-  }
   const dias=new Map(); // diaKey -> {venta,credito,debito,transferencia,efectivo,diferencia}
   const merc=new Map(); // diaKey -> {CATKEY: monto}
   const div=new Map();
@@ -9926,14 +9869,31 @@ async function renderControlGastos(){
       if(clas.tipo==='difuso')celdasDifusas.add(celdaKey);
     });
   });
+  const diasOrdenados=[...dias.keys()].sort();
+  const listaMerc=esHotel?CG_HOTEL_MERC:CG_MERCANCIA;
+  const listaDiv=esHotel?CG_HOTEL_DIV:CG_DIVERSOS;
+  const datos={entKey,esHotel,desde,hasta,cortes,dias,merc,div,sinClasificar,itemsPorCelda,celdasDifusas,diasOrdenados,listaMerc,listaDiv};
+  cgUltimoDatos=datos;
+  return datos;
+}
+
+async function renderControlGastos(){
+  if(!gastosOverridesData.length)await loadGastosOverrides();
+  const el=document.getElementById('cg-content');
+  if(!el)return;
+  renderCGTabs();
+  const{entKey,esHotel,cortes,dias,merc,div,sinClasificar,itemsPorCelda,celdasDifusas,diasOrdenados,listaMerc,listaDiv}=cgCalcularDatos();
   cgItemsPorCeldaActual=itemsPorCelda;
   cgEntKeyActual=entKey;
-  const diasOrdenados=[...dias.keys()].sort();
+  if(!cortes.length){
+    el.innerHTML=`<div class="empty"><div class="empty-ico">🧮</div>Sin cortes en este rango para ${corteSucLabel(currentCGSuc)}</div>`;
+    return;
+  }
 
   function tablaVentas(){
     const rows=diasOrdenados.map(dk=>{
       const v=dias.get(dk);
-      const difColor=Math.abs(v.diferencia)<0.5?'var(--green)':'var(--red)';
+      const difColor=cuadreLabel(v.diferencia).color;
       return`<tr><td>${fmtDiaMes(dk)}</td><td class="num">${fmxn(v.venta)}</td><td class="num">${fmxn(v.credito)}</td><td class="num">${fmxn(v.debito)}</td><td class="num">${fmxn(v.transferencia)}</td><td class="num">${fmxn(v.efectivo)}</td><td class="num" style="color:${difColor}">${fmxn(v.diferencia)}</td></tr>`;
     }).join('');
     const tot=diasOrdenados.reduce((a,dk)=>{const v=dias.get(dk);a.venta+=v.venta;a.credito+=v.credito;a.debito+=v.debito;a.transferencia+=v.transferencia;a.efectivo+=v.efectivo;a.diferencia+=v.diferencia;return a;},{venta:0,credito:0,debito:0,transferencia:0,efectivo:0,diferencia:0});
@@ -9988,8 +9948,6 @@ async function renderControlGastos(){
     </div>`;
   }
 
-  const listaMerc=esHotel?CG_HOTEL_MERC:CG_MERCANCIA;
-  const listaDiv=esHotel?CG_HOTEL_DIV:CG_DIVERSOS;
   el.innerHTML=`
     <div class="sec-lbl">Ventas</div>
     <div style="overflow-x:auto">${tablaVentas()}</div>
@@ -9999,6 +9957,141 @@ async function renderControlGastos(){
     ${tablaGastos(div,listaDiv,'gastos diversos','gasto_diverso')}
     ${seccionSinClasificar()}
   `;
+}
+
+// ── Exportar Control de Gastos (Excel / PDF) ─────────────────────────────
+// Reusan cgUltimoDatos (lo deja listo cgCalcularDatos() en cada render) para
+// que lo exportado sea EXACTAMENTE lo que se ve en pantalla en ese momento.
+function cgTituloRango(){
+  const meses=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const[y,m]=cgUltimoDatos.desde.split('-').map(Number);
+  return`${meses[m-1]} ${y}`;
+}
+function exportarControlGastosXLSX(){
+  if(!cgUltimoDatos||!cgUltimoDatos.cortes.length){toast('No hay datos para exportar.',true);return;}
+  const{esHotel,dias,merc,div,sinClasificar,diasOrdenados,listaMerc,listaDiv}=cgUltimoDatos;
+  const wb=XLSX.utils.book_new();
+
+  // Hoja Ventas
+  const aoaVentas=[
+    ['Día','Venta','T. Crédito','T. Débito','Transferencia','Efectivo','Diferencia'],
+    ...diasOrdenados.map(dk=>{const v=dias.get(dk);return[fmtDiaMes(dk),v.venta,v.credito,v.debito,v.transferencia,v.efectivo,v.diferencia];}),
+  ];
+  const totV=diasOrdenados.reduce((a,dk)=>{const v=dias.get(dk);a.venta+=v.venta;a.credito+=v.credito;a.debito+=v.debito;a.transferencia+=v.transferencia;a.efectivo+=v.efectivo;a.diferencia+=v.diferencia;return a;},{venta:0,credito:0,debito:0,transferencia:0,efectivo:0,diferencia:0});
+  aoaVentas.push([],['Total',totV.venta,totV.credito,totV.debito,totV.transferencia,totV.efectivo,totV.diferencia]);
+  const wsVentas=XLSX.utils.aoa_to_sheet(aoaVentas);
+  wsVentas['!cols']=[{wch:12},{wch:12},{wch:12},{wch:12},{wch:13},{wch:12},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,wsVentas,'Ventas');
+
+  // Hojas de gastos (mercancía y diversos) -- misma forma para ambas
+  const hojaGastos=(mapa,lista,nombreHoja)=>{
+    const catsConDatos=lista.filter(([key])=>diasOrdenados.some(dk=>(mapa.get(dk)||{})[key]));
+    if(!catsConDatos.length)return null;
+    const aoa=[['Día',...catsConDatos.map(([,label])=>label),'Total']];
+    diasOrdenados.forEach(dk=>{
+      const dm=mapa.get(dk)||{};
+      const totalDia=catsConDatos.reduce((s,[key])=>s+(dm[key]||0),0);
+      if(!totalDia)return;
+      aoa.push([fmtDiaMes(dk),...catsConDatos.map(([key])=>dm[key]||0),totalDia]);
+    });
+    const totCols=catsConDatos.map(([key])=>diasOrdenados.reduce((s,dk)=>s+((mapa.get(dk)||{})[key]||0),0));
+    aoa.push([],['Total',...totCols,totCols.reduce((s,v)=>s+v,0)]);
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols']=[{wch:12},...catsConDatos.map(()=>({wch:14})),{wch:12}];
+    XLSX.utils.book_append_sheet(wb,ws,nombreHoja);
+    return ws;
+  };
+  hojaGastos(merc,listaMerc,esHotel?'Gastos del Hotel':'Gastos de Mercancía');
+  hojaGastos(div,listaDiv,esHotel?'Gastos Diversos Hotel':'Gastos Diversos');
+
+  // Hoja de sin clasificar, si hay
+  if(sinClasificar.length){
+    const aoaSC=[
+      ['Día','Concepto','Grupo','Monto'],
+      ...sinClasificar.map(m=>[fmtDiaMes(m.diaKey),m.concepto,m.categoria==='gasto_mercancia'?'Mercancía':'Diverso',Number(m.monto)||0]),
+    ];
+    const wsSC=XLSX.utils.aoa_to_sheet(aoaSC);
+    wsSC['!cols']=[{wch:12},{wch:30},{wch:12},{wch:12}];
+    XLSX.utils.book_append_sheet(wb,wsSC,'Sin clasificar');
+  }
+
+  XLSX.writeFile(wb,`Control_Gastos_${corteSucLabel(currentCGSuc)}_${cgUltimoDatos.desde.slice(0,7)}.xlsx`);
+  toast('Excel exportado.');
+}
+function imprimirControlGastosPDF(){
+  if(!cgUltimoDatos||!cgUltimoDatos.cortes.length){toast('No hay datos para exportar.',true);return;}
+  const{esHotel,dias,merc,div,sinClasificar,diasOrdenados,listaMerc,listaDiv}=cgUltimoDatos;
+
+  const tablaHtml=(headers,rows,totales)=>`<table class="cg-tbl">
+    <thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td class="${i===0?'tc':'tn'}">${c}</td>`).join('')}</tr>`).join('')}</tbody>
+    <tfoot><tr>${totales.map((t,i)=>`<td class="${i===0?'tc':'tn'}"><b>${t}</b></td>`).join('')}</tr></tfoot>
+  </table>`;
+
+  const ventasHtml=(()=>{
+    const rows=diasOrdenados.map(dk=>{const v=dias.get(dk);return[fmtDiaMes(dk),fmxn(v.venta),fmxn(v.credito),fmxn(v.debito),fmxn(v.transferencia),fmxn(v.efectivo),fmxn(v.diferencia)];});
+    const tot=diasOrdenados.reduce((a,dk)=>{const v=dias.get(dk);a.venta+=v.venta;a.credito+=v.credito;a.debito+=v.debito;a.transferencia+=v.transferencia;a.efectivo+=v.efectivo;a.diferencia+=v.diferencia;return a;},{venta:0,credito:0,debito:0,transferencia:0,efectivo:0,diferencia:0});
+    return tablaHtml(['Día','Venta','T. Crédito','T. Débito','Transf.','Efectivo','Diferencia'],rows,['Total',fmxn(tot.venta),fmxn(tot.credito),fmxn(tot.debito),fmxn(tot.transferencia),fmxn(tot.efectivo),fmxn(tot.diferencia)]);
+  })();
+  const gastosHtml=(mapa,lista)=>{
+    const catsConDatos=lista.filter(([key])=>diasOrdenados.some(dk=>(mapa.get(dk)||{})[key]));
+    if(!catsConDatos.length)return'<p class="cg-empty">Sin gastos clasificados en este rango.</p>';
+    const rows=diasOrdenados.map(dk=>{
+      const dm=mapa.get(dk)||{};
+      const totalDia=catsConDatos.reduce((s,[key])=>s+(dm[key]||0),0);
+      if(!totalDia)return null;
+      return[fmtDiaMes(dk),...catsConDatos.map(([key])=>fmxn(dm[key]||0)),fmxn(totalDia)];
+    }).filter(Boolean);
+    const totCols=catsConDatos.map(([key])=>diasOrdenados.reduce((s,dk)=>s+((mapa.get(dk)||{})[key]||0),0));
+    return tablaHtml(['Día',...catsConDatos.map(([,label])=>label),'Total'],rows,['Total',...totCols.map(fmxn),fmxn(totCols.reduce((s,v)=>s+v,0))]);
+  };
+  const sinClasificarHtml=sinClasificar.length?`
+    <div class="sec-lbl">⚠️ Sin clasificar (${sinClasificar.length}, ${fmxn(sinClasificar.reduce((s,m)=>s+Number(m.monto||0),0))})</div>
+    ${tablaHtml(['Día','Concepto','Grupo','Monto'],sinClasificar.map(m=>[fmtDiaMes(m.diaKey),m.concepto,m.categoria==='gasto_mercancia'?'Mercancía':'Diverso',fmxn(m.monto)]),['','','',''])}
+  `:'';
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Control de Gastos ${corteSucLabel(currentCGSuc)}</title>
+<style>
+@page{size:letter landscape;margin:1cm}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+body{font-family:'DM Sans',Arial,sans-serif;margin:0;padding:14px;color:#16323c;background:#eaf4f5}
+.cg-header{display:flex;align-items:center;gap:14px;padding:12px 16px;background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;border-radius:8px 8px 0 0}
+.cg-logo{height:40px;width:40px;object-fit:contain}
+.cg-title{font-family:'Fraunces',serif;font-size:18px;font-weight:600}
+.cg-sub{font-size:11px;opacity:.85;margin-top:2px}
+.cg-body{border:1.5px solid #0f3d52;border-top:none;border-radius:0 0 8px 8px;padding:14px;background:#fff}
+.sec-lbl{font-weight:700;font-size:12px;color:#0f3d52;margin:16px 0 6px;text-transform:uppercase;letter-spacing:.03em}
+table.cg-tbl{border-collapse:collapse;width:100%;margin-bottom:8px;table-layout:fixed;page-break-inside:avoid}
+.cg-tbl th{border:1px solid #c9dde0;background:#e2f0f1;color:#0f3d52;font-size:8.5px;font-weight:700;text-align:center;padding:4px 3px}
+.cg-tbl td{border:1px solid #e2eef0;font-size:9px;padding:3px 5px}
+.cg-tbl td.tc{text-align:left}
+.cg-tbl td.tn{text-align:right;font-family:'DM Mono',Consolas,monospace}
+.cg-tbl tfoot td{background:#f2f8f8;font-weight:700;border-top:1.5px solid #e8823e}
+.cg-empty{font-size:11px;color:#7f8c8d;padding:6px 0}
+.print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:'DM Sans',Arial,sans-serif;font-weight:600}
+@media print{.print-btn{display:none}body{padding:0;background:#fff}.cg-body{border:none}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
+<div class="cg-header">
+  <img class="cg-logo" src="${PA_LOGO}" alt="El Pescador">
+  <div>
+    <div class="cg-title">CONTROL DE GASTOS — ${corteSucLabel(currentCGSuc).toUpperCase()}</div>
+    <div class="cg-sub">${cgTituloRango().toUpperCase()}</div>
+  </div>
+</div>
+<div class="cg-body">
+  <div class="sec-lbl">Ventas</div>
+  ${ventasHtml}
+  <div class="sec-lbl">${esHotel?'Gastos del Hotel':'Gastos de Mercancía'}</div>
+  ${gastosHtml(merc,listaMerc)}
+  <div class="sec-lbl">${esHotel?'Gastos Diversos Hotel':'Gastos Diversos'}</div>
+  ${gastosHtml(div,listaDiv)}
+  ${sinClasificarHtml}
+</div>
+</body></html>`;
+  const w=window.open('','_blank');
+  w.document.write(html);
+  w.document.close();
 }
 
 // Detalle de una celda del Control de Gastos -- lista los gastos que caen
@@ -10489,7 +10582,7 @@ function buildCorteDetailBodyHtml(c){
     cu.anterior_baucher=rr.anterior_baucher;
     cu.anterior_bodega=rr.anterior_bodega;
   }
-  const difCuadra=Math.abs(Number(cu.diferencia_cuadre||0))<0.5;
+  const{texto:difTxtCuadre,color:difColorCuadre}=cuadreLabel(cu.diferencia_cuadre,'Cuadra exacto');
 
   const desglose=d.movimientos_desglose||[];
   const gastosMerc = desglose.filter(m=>m.categoria==='gasto_mercancia');
@@ -10589,7 +10682,7 @@ function buildCorteDetailBodyHtml(c){
       pdfRow('+ Tira (venta total)',fmxn(cu.tira),{color:'var(--green)'})+
       pdfRow('= Total esperado',fmxn(cu.esperado),{bold:true,sep:true})+
       pdfRow('Total Caja (segundo)',fmxn(cu.segundo_total_caja))+
-      pdfRow('Diferencia',difCuadra?'Cuadra exacto':fmxnSigned(cu.diferencia_cuadre),{color:difCuadra?'var(--green)':'var(--red)',bold:true,sep:true})
+      pdfRow('Diferencia',difTxtCuadre,{color:difColorCuadre,bold:true,sep:true})
     )}
 
     ${rr?`
@@ -11057,7 +11150,7 @@ function renderEditarCortePreview(){
   const d=leerFormEditarCorte();
   const cu=d.cuadre;
   const sumaAdo=ADO_ENTIDADES.reduce((s,e)=>s+Number((d.saldo_ado||{})[e]||0),0);
-  const cuadra=Math.abs(Number(cu.diferencia_cuadre||0))<0.5;
+  const{texto:difTxtEdicion,color:difColorEdicion}=cuadreLabel(cu.diferencia_cuadre,'Cuadra exacto');
   const vpfHtml=FORMAS_PAGO_EDITOR.map(([k,l])=>{
     const v=Number((d.ventas_por_forma||{})[k]||0);
     return v?`<div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">${l}</span><b>${fmxn(v)}</b></div>`:'';
@@ -11080,7 +11173,7 @@ function renderEditarCortePreview(){
       <div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">+ Tira (venta total)</span><b style="color:var(--green)">${fmxn(cu.tira)}</b></div>
       <div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">= Esperado</span><b>${fmxn(cu.esperado)}</b></div>
       <div style="display:flex;justify-content:space-between;padding:4px 0;border-top:2px solid var(--border,#e5e5e5);margin-top:4px;font-size:13px">
-        <span>Diferencia</span><b style="color:${cuadra?'var(--green)':'var(--red)'}">${cuadra?'Cuadra exacto':fmxnSigned(cu.diferencia_cuadre)}</b>
+        <span>Diferencia</span><b style="color:${difColorEdicion}">${difTxtEdicion}</b>
       </div>
     </div>
   `;
@@ -11369,7 +11462,7 @@ function leerFormEditarCorteHotel(){
 function renderEditarCortePreviewHotel(){
   const d=leerFormEditarCorteHotel();
   const rr=d.resumen_recepcion;
-  const cuadra=Math.abs(Number(rr.diferencia||0))<0.5;
+  const{texto:difTxtHotel,color:difColorHotel}=cuadreLabel(rr.diferencia,'Cuadra exacto');
   const vpfHtml=Object.entries(d.ventas_por_forma||{}).map(([k,v])=>
     `<div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">${k}</span><b>${fmxn(v)}</b></div>`
   ).join('');
@@ -11391,7 +11484,7 @@ function renderEditarCortePreviewHotel(){
       <div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">+ Ventas</span><b style="color:var(--green)">${fmxn(rr.ventas)}</b></div>
       <div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">= Total check</span><b>${fmxn(rr.total_check)}</b></div>
       <div style="display:flex;justify-content:space-between;padding:4px 0;border-top:2px solid var(--border,#e5e5e5);margin-top:4px;font-size:13px">
-        <span>Diferencia</span><b style="color:${cuadra?'var(--green)':'var(--red)'}">${cuadra?'Cuadra exacto':fmxnSigned(rr.diferencia)}</b>
+        <span>Diferencia</span><b style="color:${difColorHotel}">${difTxtHotel}</b>
       </div>
     </div>
   `;
