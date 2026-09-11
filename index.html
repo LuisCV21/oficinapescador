@@ -10061,7 +10061,7 @@ function buildIncidencias(d,corteId){
   const puedeAuditar=corteId!=null&&!Array.isArray(corteId);
   const btnAudit=(onclick)=>puedeAuditar?`<button class="corte-iconbtn" style="display:inline" title="Auditar" onclick='${onclick}'>🔍</button>`:'';
   const cuentas=d.cuentas||[];
-  const allCancelados=[],allCambios=[],allDescuentos=[],allFolios=[],allReaperturas=[];
+  const allCancelados=[],allCambios=[],allDescuentos=[],allFolios=[],allReaperturas=[],allReimpresiones=[];
   cuentas.forEach(c=>{
     const folio=c.folio||String(c.id||'');
     const mesa=c.mesa||c.nombre||'';
@@ -10073,19 +10073,20 @@ function buildIncidencias(d,corteId){
     (c.cambios_detalle||[]).forEach(cm=>allCambios.push({...cm,_folio:folio,_mesa:mesa,_cuenta_id:c.id}));
     (c.descuentos_detalle||[]).forEach(dt=>allDescuentos.push({...dt,_folio:folio,_mesa:mesa,_cuenta_id:c.id}));
     (c.reaperturas||[]).forEach(r=>allReaperturas.push({...r,_folio:folio,_mesa:mesa,_cuenta_id:c.id}));
+    (c.reimpresiones_detalle||[]).forEach(rp=>allReimpresiones.push({...rp,_folio:folio,_mesa:mesa,_cuenta_id:c.id}));
   });
   const bloqueos=d.bloqueos_productos||[];
   const traspasos=d.traspasos_detalle||[];
   const cfdiCancel=d.cancelaciones_cfdi||[];
 
   if(!allCancelados.length&&!allCambios.length&&!allDescuentos.length&&!allFolios.length
-     &&!allReaperturas.length&&!bloqueos.length&&!traspasos.length&&!cfdiCancel.length)return'';
+     &&!allReaperturas.length&&!bloqueos.length&&!traspasos.length&&!cfdiCancel.length&&!allReimpresiones.length)return'';
 
   let html=pdfSec('⛔ Incidencias de seguridad')+
     `<p style="font-size:11px;color:var(--text3);margin:-4px 0 12px">`+
     `${allFolios.length} cuenta(s) cancelada(s) · ${allCancelados.length} cancelación(es) de producto · `+
     `${allCambios.length} cambio(s) de platillo · ${allDescuentos.length} descuento(s) · `+
-    `${allReaperturas.length} reapertura(s) — cualquier incidencia debe ser justificada por el responsable de turno.</p>`;
+    `${allReaperturas.length} reapertura(s) · ${allReimpresiones.length} reimpresión(es) — cualquier incidencia debe ser justificada por el responsable de turno.</p>`;
 
   if(allFolios.length){
     let totalPot=0;
@@ -10104,11 +10105,11 @@ function buildIncidencias(d,corteId){
   }
 
   if(allCancelados.length){
-    const rows=allCancelados.map(it=>`<tr><td>${it._folio}</td><td>${it._mesa}</td><td>${it.descripcion||'—'}</td>`+
+    const rows=allCancelados.map(it=>`<tr><td>${it._folio}</td><td>${it._mesa}</td><td style="text-decoration:line-through;color:var(--red)">${it.descripcion||'—'}</td>`+
       `<td style="text-align:center">${it.cantidad||1}</td><td class="num">${fmxn(it.precio_unitario)}</td>`+
       `<td style="color:var(--red)">${it.razon_cancelacion||it.razon||'Sin motivo registrado'}</td>`+
       `<td>${it.usuario_nombre||'—'}</td><td style="text-align:center">${horaCorta(it.fecha_captura)}</td>`+
-      `<td style="text-align:center">${btnAudit(`auditarCuenta(${JSON.stringify(corteId)},${JSON.stringify(it._cuenta_id)})`)}</td></tr>`).join('');
+      `<td style="text-align:center">${btnAudit(`auditarCancelacion(${JSON.stringify(corteId)},${JSON.stringify(it._cuenta_id)},${JSON.stringify(it.descripcion)},${JSON.stringify(it.cantidad)},${JSON.stringify(it.precio_unitario)},${JSON.stringify(it.fecha_captura)},${JSON.stringify(it.usuario_nombre)},${JSON.stringify(it.razon_cancelacion||it.razon)})`)}</td></tr>`).join('');
     html+=pdfSubtitulo('⛔ Cancelaciones de producto','var(--red)')+
       pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Producto cancelado'},{label:'Cant'},{label:'Precio',num:true},{label:'Motivo'},{label:'Canceló'},{label:'Hora'},{label:''}],rows);
   }
@@ -10122,11 +10123,19 @@ function buildIncidencias(d,corteId){
       pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Motivo'},{label:'Reabrió'},{label:'Hora'},{label:''}],rows);
   }
 
+  if(allReimpresiones.length){
+    const rows=allReimpresiones.map(rp=>`<tr><td>${rp._folio}</td><td>${rp._mesa}</td><td>${renderReimpresionInline(rp.descripcion)}</td>`+
+      `<td>${rp.usuario_nombre||'—'}</td><td style="text-align:center">${horaCorta(rp.fecha)}</td>`+
+      `<td style="text-align:center">${btnAudit(`auditarReimpresion(${JSON.stringify(corteId)},${JSON.stringify(rp._cuenta_id)},${JSON.stringify(rp.descripcion)},${JSON.stringify(rp.fecha)},${JSON.stringify(rp.usuario_nombre)})`)}</td></tr>`).join('');
+    html+=pdfSubtitulo('🖨 Reimpresiones de producto','var(--teal)')+
+      pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Detalle'},{label:'Usuario'},{label:'Hora'},{label:''}],rows);
+  }
+
   if(allCambios.length){
-    const rows=allCambios.map(cm=>`<tr><td>${cm._folio}</td><td>${cm._mesa}</td><td>${cm.descripcion||'—'}</td>`+
+    const rows=allCambios.map(cm=>`<tr><td>${cm._folio}</td><td>${cm._mesa}</td><td>${renderCambioInline(cm.descripcion)}</td>`+
       `<td style="color:var(--copper)">${cm.razon||'Sin motivo registrado'}</td><td>${cm.usuario_nombre||'—'}</td>`+
       `<td style="text-align:center">${horaCorta(cm.fecha)}</td>`+
-      `<td style="text-align:center">${btnAudit(`auditarCuenta(${JSON.stringify(corteId)},${JSON.stringify(cm._cuenta_id)})`)}</td></tr>`).join('');
+      `<td style="text-align:center">${btnAudit(`auditarCambio(${JSON.stringify(corteId)},${JSON.stringify(cm._cuenta_id)},${JSON.stringify(cm.descripcion)},${JSON.stringify(cm.fecha)},${JSON.stringify(cm.usuario_nombre)},${JSON.stringify(cm.razon)})`)}</td></tr>`).join('');
     html+=pdfSubtitulo('⇄ Cambios de platillo','var(--copper)')+
       pdfTabla([{label:'Folio'},{label:'Lugar'},{label:'Descripción del cambio'},{label:'Motivo'},{label:'Usuario'},{label:'Hora'},{label:''}],rows);
   }
@@ -10155,7 +10164,7 @@ function buildIncidencias(d,corteId){
   }
 
   if(traspasos.length){
-    const rows=traspasos.map(t=>`<tr><td style="text-align:center">${horaCorta(t.fecha)}</td><td>${t.descripcion||''}</td><td>${t.usuario_nombre||'—'}</td>`+
+    const rows=traspasos.map(t=>`<tr><td style="text-align:center">${horaCorta(t.fecha)}</td><td>${renderTraspasoInline(t.descripcion)}</td><td>${t.usuario_nombre||'—'}</td>`+
       `<td style="text-align:center">${btnAudit(`auditarTraspaso(${JSON.stringify(corteId)},${JSON.stringify(t.fecha)},${JSON.stringify(t.cuenta_nombre)},${JSON.stringify(t.descripcion)})`)}</td></tr>`).join('');
     html+=pdfSubtitulo('⇆ Traspasos de producto entre cuentas/mesas','var(--teal)')+
       pdfTabla([{label:'Hora'},{label:'Detalle'},{label:'Autorizó'},{label:''}],rows);
@@ -10211,14 +10220,70 @@ function cuentaEnMomento(cuentas,nombre,fechaISO){
   return enVentana[0]||candidatos[0];
 }
 
-// El POS solo manda el texto libre "N producto(s) traspasados de la cuenta
-// ORIGEN a DESTINO" (ver traspasar_items en src/operaciones/cuentas.py del
-// POS) -- el origen ya llega aparte en `cuenta_nombre`, así que solo hace
-// falta despegar el destino de la frase completa.
+// El POS manda el texto libre "N producto(s) traspasados de la cuenta ORIGEN
+// a DESTINO: prod1 x2, prod2" (el ": prod1..." se agregó el 10-sept-2026, ver
+// _traspasar en dialogo_dividir.py y traspasar_endpoint en server.py del
+// POS -- traspasos de antes de esa fecha no traen esa parte) -- el origen ya
+// llega aparte en `cuenta_nombre`, así que solo hace falta despegar el
+// destino de la frase completa, cortando antes del ": " si lo trae.
 function parsearDestinoTraspaso(descripcion,origenNombre){
   const prefijo=`de la cuenta ${origenNombre} a `;
   const idx=(descripcion||'').indexOf(prefijo);
-  return idx>=0?descripcion.slice(idx+prefijo.length).trim():null;
+  if(idx<0)return null;
+  let resto=descripcion.slice(idx+prefijo.length).trim();
+  const idxColon=resto.indexOf(': ');
+  if(idxColon>=0)resto=resto.slice(0,idxColon).trim();
+  return resto;
+}
+
+// Extrae la lista de productos que se traspasaron, si el POS la mandó
+// (ver nota arriba) -- null en traspasos viejos que no la traen.
+function parsearProductosTraspaso(descripcion){
+  const idx=(descripcion||'').indexOf(': ');
+  return idx>=0?descripcion.slice(idx+2).trim():null;
+}
+
+function renderTraspasoInline(descripcion){
+  const productos=parsearProductosTraspaso(descripcion);
+  if(!productos)return descripcion||'';
+  const idx=descripcion.indexOf(': ');
+  return `${descripcion.slice(0,idx)}: <b style="color:var(--teal)">${productos}</b>`;
+}
+
+// El registro de reimpresión en el POS (ver dialogo_reimprimir.py y los
+// endpoints /reimprimir y /reimprimir-comanda en server.py) viene en 3
+// formas: "Producto 'X' reimpreso en cuenta 'Y'" (una sola pieza),
+// "N producto(s) reimpresos en cuenta 'Y': prod1, prod2" (varias, desde
+// escritorio), o "Comanda completa reimpresa en cuenta 'Y'" (todo el
+// pedido, desde comandera) -- esta última no trae producto puntual.
+function parsearProductosReimpresion(descripcion){
+  const m=/^Producto '(.+)' reimpreso/.exec(descripcion||'');
+  if(m)return m[1];
+  const idx=(descripcion||'').indexOf(': ');
+  return idx>=0?descripcion.slice(idx+2).trim():null;
+}
+
+function renderReimpresionInline(descripcion){
+  const productos=parsearProductosReimpresion(descripcion);
+  if(!productos)return descripcion||'';
+  return `<b style="color:var(--teal)">${productos}</b>`;
+}
+
+// El registro de "cambio de platillo" en el POS (ver _audit en
+// dialogo_cambiar_producto.py) siempre arma la descripción como
+// «ORIGINAL» cambiado por «NUEVO» -- se parsea aquí para poder mostrar el
+// antes/después visualmente (tachado vs resaltado) en vez de solo el texto
+// plano, que no dejaba claro a simple vista qué platillo se quitó y cuál
+// llegó en su lugar.
+function parsearCambioProducto(descripcion){
+  const m=/«(.+)»\s*cambiado por\s*«(.+)»/.exec(descripcion||'');
+  return m?{original:m[1],nuevo:m[2]}:null;
+}
+
+function renderCambioInline(descripcion){
+  const p=parsearCambioProducto(descripcion);
+  if(!p)return descripcion||'—';
+  return `<span style="text-decoration:line-through;color:var(--red)">${p.original}</span> → <b style="color:var(--green)">${p.nuevo}</b>`;
 }
 
 function abrirModalAuditoria(titulo,bodyHtml){
@@ -10234,13 +10299,93 @@ function auditarCuenta(corteId,cuentaId){
   abrirModalAuditoria('Detalle de la cuenta',`<div style="display:flex;gap:14px;flex-wrap:wrap">${renderCuentaAuditCard(cuenta,'Cuenta')}</div>`);
 }
 
+// A diferencia de auditarCuenta (que muestra la cuenta actual completa),
+// aquí el platillo que se quitó ya no aparece en la cuenta (quedó cancelado
+// y renderCuentaAuditCard filtra los cancelados) -- por eso el cambio no se
+// veía visualmente antes. Se arma el antes/después directo desde la
+// descripción del evento (ver parsearCambioProducto), y la cuenta actual
+// solo se deja como referencia de contexto (folio/mesero/dónde fue).
+function auditarCambio(corteId,cuentaId,descripcion,fecha,usuarioNombre,razon){
+  const c=cortesData.find(x=>x.id===corteId);
+  const cuenta=((c&&c.datos&&c.datos.cuentas)||[]).find(x=>String(x.id)===String(cuentaId));
+  const p=parsearCambioProducto(descripcion);
+  const visual=p?`
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <div style="flex:1;min-width:160px;background:var(--red-light);border:1px solid var(--red-mid);border-radius:8px;padding:10px 12px">
+        <div style="font-size:10px;color:var(--red);font-weight:700;margin-bottom:2px">SE QUITÓ</div>
+        <div style="text-decoration:line-through;color:var(--red);font-weight:600">${p.original}</div>
+      </div>
+      <div style="font-size:20px;color:var(--text3);flex:0 0 auto">→</div>
+      <div style="flex:1;min-width:160px;background:var(--green-light);border:1px solid var(--green-mid);border-radius:8px;padding:10px 12px">
+        <div style="font-size:10px;color:var(--green);font-weight:700;margin-bottom:2px">SE PUSO</div>
+        <div style="color:var(--green);font-weight:700">${p.nuevo}</div>
+      </div>
+    </div>`
+    :`<div style="margin-bottom:14px;color:var(--text3);font-style:italic;font-size:12px">${descripcion||'Sin descripción'}</div>`;
+  const meta=`<div style="font-size:11.5px;color:var(--text3);margin-bottom:14px">`+
+    `${razon?`Motivo: <b>${razon}</b> · `:''}${usuarioNombre?`Autorizó: <b>${usuarioNombre}</b> · `:''}${fecha?horaCorta(fecha):''}</div>`;
+  abrirModalAuditoria(`Cambio de platillo${fecha?' — '+fmtFechaHora(fecha):''}`,`
+    ${visual}${meta}
+    <div style="display:flex;gap:14px;flex-wrap:wrap">${renderCuentaAuditCard(cuenta,'Cuenta actual')}</div>
+  `);
+}
+
+// Mismo problema que auditarCambio: el producto cancelado ya no aparece en
+// la cuenta actual (renderCuentaAuditCard filtra los cancelados), así que
+// antes el 🔍 no mostraba nada del producto que se quitó. Aquí se arma la
+// tarjeta en rojo directo con los datos del propio evento de cancelación.
+function auditarCancelacion(corteId,cuentaId,descripcion,cantidad,precioUnitario,fecha,usuarioNombre,razon){
+  const c=cortesData.find(x=>x.id===corteId);
+  const cuenta=((c&&c.datos&&c.datos.cuentas)||[]).find(x=>String(x.id)===String(cuentaId));
+  const visual=`
+    <div style="background:var(--red-light);border:1px solid var(--red-mid);border-radius:8px;padding:10px 12px;margin-bottom:14px">
+      <div style="font-size:10px;color:var(--red);font-weight:700;margin-bottom:2px">PRODUCTO CANCELADO</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+        <span style="text-decoration:line-through;color:var(--red);font-weight:600">${descripcion||'—'}${cantidad>1?' ×'+cantidad:''}</span>
+        <b style="color:var(--red)">${fmxn((precioUnitario||0)*(cantidad||1))}</b>
+      </div>
+    </div>`;
+  const meta=`<div style="font-size:11.5px;color:var(--text3);margin-bottom:14px">`+
+    `${razon?`Motivo: <b>${razon}</b> · `:''}${usuarioNombre?`Canceló: <b>${usuarioNombre}</b> · `:''}${fecha?horaCorta(fecha):''}</div>`;
+  abrirModalAuditoria(`Cancelación de producto${fecha?' — '+fmtFechaHora(fecha):''}`,`
+    ${visual}${meta}
+    <div style="display:flex;gap:14px;flex-wrap:wrap">${renderCuentaAuditCard(cuenta,'Cuenta actual')}</div>
+  `);
+}
+
+function auditarReimpresion(corteId,cuentaId,descripcion,fecha,usuarioNombre){
+  const c=cortesData.find(x=>x.id===corteId);
+  const cuenta=((c&&c.datos&&c.datos.cuentas)||[]).find(x=>String(x.id)===String(cuentaId));
+  const productos=parsearProductosReimpresion(descripcion);
+  const visual=productos?
+    `<div style="background:var(--teal-light);border:1px solid var(--teal);border-radius:8px;padding:10px 12px;margin-bottom:14px">
+      <div style="font-size:10px;color:var(--teal);font-weight:700;margin-bottom:2px">SE REIMPRIMIÓ</div>
+      <div style="color:var(--teal);font-weight:700">${productos}</div>
+    </div>`
+    :`<div style="margin-bottom:14px;color:var(--text3);font-style:italic;font-size:12px">${descripcion||'Sin descripción'}</div>`;
+  const meta=`<div style="font-size:11.5px;color:var(--text3);margin-bottom:14px">`+
+    `${usuarioNombre?`Reimprimió: <b>${usuarioNombre}</b> · `:''}${fecha?horaCorta(fecha):''}</div>`;
+  abrirModalAuditoria(`Reimpresión de producto${fecha?' — '+fmtFechaHora(fecha):''}`,`
+    ${visual}${meta}
+    <div style="display:flex;gap:14px;flex-wrap:wrap">${renderCuentaAuditCard(cuenta,'Cuenta actual')}</div>
+  `);
+}
+
 function auditarTraspaso(corteId,fecha,origenNombre,descripcion){
   const c=cortesData.find(x=>x.id===corteId);
   const cuentas=(c&&c.datos&&c.datos.cuentas)||[];
   const destinoNombre=parsearDestinoTraspaso(descripcion,origenNombre);
   const origen=cuentaEnMomento(cuentas,origenNombre,fecha);
   const destino=cuentaEnMomento(cuentas,destinoNombre,fecha);
+  const productos=parsearProductosTraspaso(descripcion);
+  const visualProductos=productos?
+    `<div style="background:var(--teal-light);border:1px solid var(--teal);border-radius:8px;padding:10px 12px;margin-bottom:14px">
+      <div style="font-size:10px;color:var(--teal);font-weight:700;margin-bottom:2px">SE MOVIÓ</div>
+      <div style="color:var(--teal);font-weight:700">${productos}</div>
+    </div>`
+    :`<div style="margin-bottom:14px;color:var(--text3);font-style:italic;font-size:12px">Este traspaso es de antes del 10-sept-2026 -- el POS todavía no mandaba qué producto fue, solo el conteo.</div>`;
   abrirModalAuditoria(`Traspaso de producto — ${fmtFechaHora(fecha)}`,`
+    ${visualProductos}
     <div style="font-size:11.5px;color:var(--text3);margin-bottom:10px">Cuentas resueltas por nombre + hora del movimiento (el POS todavía no manda el id exacto de cada cuenta en el traspaso) -- si un nombre se repitió varias veces ese día, se elige la que estaba abierta en ese momento.</div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
       ${renderCuentaAuditCard(origen,'De')}
