@@ -7832,7 +7832,7 @@ function renderHistoricoNominaModal(){
     if(!last||last.e.id!==f.e.id){last={e:f.e,filas:[]};grupos.push(last);}
     last.filas.push(f);
   });
-  let gTotPerc=0,gTotIsr=0,gTotImss=0,gTotNeto=0;
+  let gTotPerc=0,gTotSueldo=0,gTotIsr=0,gTotImss=0,gTotNeto=0;
   let bodyHtml=`<div style="overflow-x:auto">`;
   grupos.forEach(g=>{
     const sPerc=g.filas.reduce((s,f)=>s+f.c.subtotal,0);
@@ -7840,14 +7840,17 @@ function renderHistoricoNominaModal(){
     const sImss=g.filas.reduce((s,f)=>s+(Number(f.l.retencion_imss)||0),0);
     const sNeto=g.filas.reduce((s,f)=>s+f.c.total,0);
     gTotPerc+=sPerc;gTotIsr+=sIsr;gTotImss+=sImss;gTotNeto+=sNeto;
+    const sSueldo=g.filas.reduce((s,f)=>s+f.c.nominaFiscal,0);
+    gTotSueldo+=sSueldo;
     bodyHtml+=`<table class="corte-tbl" style="margin-bottom:14px">
       <thead>
-        <tr style="background:var(--surface2)"><th colspan="7" style="text-align:left">${g.e.nombre} — ${puestoNombre(g.e.puesto_id)||''} — RFC ${g.e.rfc||'—'}</th></tr>
-        <tr><th style="text-align:left">Fecha de pago</th><th class="num">Percepciones</th><th class="num">ISR</th><th class="num">IMSS</th><th class="num">Neto</th><th>Estado CFDI</th><th>UUID</th></tr>
+        <tr style="background:var(--surface2)"><th colspan="8" style="text-align:left">${g.e.nombre} — ${puestoNombre(g.e.puesto_id)||''} — RFC ${g.e.rfc||'—'}</th></tr>
+        <tr><th style="text-align:left">Fecha de pago</th><th class="num">Percepciones</th><th class="num">Sueldo</th><th class="num">ISR</th><th class="num">IMSS</th><th class="num">Neto</th><th>Estado CFDI</th><th>UUID</th></tr>
       </thead>
       <tbody>${g.filas.map(f=>`<tr>
         <td>${fmtFechaCorta(f.p.semana_fin)}</td>
         <td class="num">${fmxn(f.c.subtotal)}</td>
+        <td class="num">${fmxn(f.c.nominaFiscal)}</td>
         <td class="num">${fmxn(f.l.retencion_isr)}</td>
         <td class="num">${fmxn(f.l.retencion_imss)}</td>
         <td class="num"><b>${fmxn(f.c.total)}</b></td>
@@ -7856,12 +7859,12 @@ function renderHistoricoNominaModal(){
       </tr>`).join('')}</tbody>
       <tfoot><tr style="font-weight:700;background:var(--surface2)">
         <td>Subtotal:</td>
-        <td class="num">${fmxn(sPerc)}</td><td class="num">${fmxn(sIsr)}</td><td class="num">${fmxn(sImss)}</td><td class="num">${fmxn(sNeto)}</td><td colspan="2"></td>
+        <td class="num">${fmxn(sPerc)}</td><td class="num">${fmxn(sSueldo)}</td><td class="num">${fmxn(sIsr)}</td><td class="num">${fmxn(sImss)}</td><td class="num">${fmxn(sNeto)}</td><td colspan="2"></td>
       </tr></tfoot>
     </table>`;
   });
   bodyHtml+=`<div style="display:flex;justify-content:flex-end;gap:24px;font-weight:700;padding:10px 14px;background:var(--surface2);border-radius:8px">
-    <span>Percepciones: ${fmxn(gTotPerc)}</span><span>ISR: ${fmxn(gTotIsr)}</span><span>IMSS: ${fmxn(gTotImss)}</span><span>Neto: ${fmxn(gTotNeto)}</span>
+    <span>Percepciones: ${fmxn(gTotPerc)}</span><span>Sueldo: ${fmxn(gTotSueldo)}</span><span>ISR: ${fmxn(gTotIsr)}</span><span>IMSS: ${fmxn(gTotImss)}</span><span>Neto: ${fmxn(gTotNeto)}</span>
   </div></div>`;
   document.getElementById('m-historico-nomina-body').innerHTML=bodyHtml;
   ftr.innerHTML=`
@@ -7873,17 +7876,17 @@ function exportarHistoricoNominaXLSX(){
   if(!nomHistFilas.length){toast('No hay datos para exportar.',true);return;}
   const tot=k=>Math.round(nomHistFilas.reduce((s,f)=>s+(k(f)||0),0)*100)/100;
   const aoa=[
-    ['Empleado','RFC','Puesto','Fecha de pago','Percepciones','ISR retenido','IMSS retenido','Deducciones','Neto','Estado CFDI','UUID','Entidad'],
+    ['Empleado','RFC','Puesto','Fecha de pago','Percepciones','Sueldo','ISR retenido','IMSS retenido','Deducciones','Neto','Estado CFDI','UUID','Entidad'],
     ...nomHistFilas.map(f=>{
       const ded=(Number(f.l.retencion_isr)||0)+(Number(f.l.retencion_imss)||0);
-      return[f.e.nombre,f.e.rfc||'',puestoNombre(f.e.puesto_id)||'',f.p.semana_fin,Number(f.c.subtotal)||0,Number(f.l.retencion_isr)||0,Number(f.l.retencion_imss)||0,Math.round(ded*100)/100,Number(f.c.total)||0,estadoCfdiHistLabel(f.l),f.l.facturacom_uuid||'',ENT_LABELS[nomActiveEnt]];
+      return[f.e.nombre,f.e.rfc||'',puestoNombre(f.e.puesto_id)||'',f.p.semana_fin,Number(f.c.subtotal)||0,Number(f.c.nominaFiscal)||0,Number(f.l.retencion_isr)||0,Number(f.l.retencion_imss)||0,Math.round(ded*100)/100,Number(f.c.total)||0,estadoCfdiHistLabel(f.l),f.l.facturacom_uuid||'',ENT_LABELS[nomActiveEnt]];
     }),
     [],
-    ['TOTALES','','','',tot(f=>f.c.subtotal),tot(f=>Number(f.l.retencion_isr)),tot(f=>Number(f.l.retencion_imss)),tot(f=>(Number(f.l.retencion_isr)||0)+(Number(f.l.retencion_imss)||0)),tot(f=>f.c.total)],
+    ['TOTALES','','','',tot(f=>f.c.subtotal),tot(f=>f.c.nominaFiscal),tot(f=>Number(f.l.retencion_isr)),tot(f=>Number(f.l.retencion_imss)),tot(f=>(Number(f.l.retencion_isr)||0)+(Number(f.l.retencion_imss)||0)),tot(f=>f.c.total)],
   ];
   const wb=XLSX.utils.book_new();
   const ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:30},{wch:14},{wch:16},{wch:12},{wch:12},{wch:11},{wch:11},{wch:11},{wch:12},{wch:14},{wch:38},{wch:9}];
+  ws['!cols']=[{wch:30},{wch:14},{wch:16},{wch:12},{wch:12},{wch:11},{wch:11},{wch:11},{wch:11},{wch:12},{wch:14},{wch:38},{wch:9}];
   XLSX.utils.book_append_sheet(wb,ws,'Histórico');
   XLSX.writeFile(wb,`Historico_Nomina_${ENT_LABELS[nomActiveEnt]}_${nomHistMeta.mes}.xlsx`);
   toast('Excel exportado.');
@@ -7895,20 +7898,22 @@ function imprimirHistoricoNominaPDF(){
   const[y,m]=nomHistMeta.mes.split('-').map(Number);
   const grupos=[];let last=null;
   nomHistFilas.forEach(f=>{if(!last||last.e.id!==f.e.id){last={e:f.e,filas:[]};grupos.push(last);}last.filas.push(f);});
-  let gTotPerc=0,gTotIsr=0,gTotImss=0,gTotNeto=0;
+  let gTotPerc=0,gTotSueldo=0,gTotIsr=0,gTotImss=0,gTotNeto=0;
   const gruposHtml=grupos.map(g=>{
     const sPerc=g.filas.reduce((s,f)=>s+f.c.subtotal,0);
+    const sSueldo=g.filas.reduce((s,f)=>s+f.c.nominaFiscal,0);
     const sIsr=g.filas.reduce((s,f)=>s+(Number(f.l.retencion_isr)||0),0);
     const sImss=g.filas.reduce((s,f)=>s+(Number(f.l.retencion_imss)||0),0);
     const sNeto=g.filas.reduce((s,f)=>s+f.c.total,0);
-    gTotPerc+=sPerc;gTotIsr+=sIsr;gTotImss+=sImss;gTotNeto+=sNeto;
+    gTotPerc+=sPerc;gTotSueldo+=sSueldo;gTotIsr+=sIsr;gTotImss+=sImss;gTotNeto+=sNeto;
     return`<table class="nom-wrap emp-block">
-      <colgroup><col style="width:16%"><col style="width:15%"><col style="width:15%"><col style="width:14%"><col style="width:12%"><col style="width:14%"><col style="width:14%"></colgroup>
-      <tr class="emp-hdr"><td colspan="7">${g.e.nombre.toUpperCase()} &nbsp;·&nbsp; ${(puestoNombre(g.e.puesto_id)||'').toUpperCase()} &nbsp;·&nbsp; RFC ${g.e.rfc||'—'}</td></tr>
-      <tr class="nom-cols"><th>FECHA DE PAGO</th><th>PERCEPCIONES</th><th>ISR</th><th>IMSS</th><th>NETO</th><th>ESTADO CFDI</th><th>UUID</th></tr>
+      <colgroup><col style="width:14%"><col style="width:13%"><col style="width:13%"><col style="width:13%"><col style="width:12%"><col style="width:11%"><col style="width:12%"><col style="width:12%"></colgroup>
+      <tr class="emp-hdr"><td colspan="8">${g.e.nombre.toUpperCase()} &nbsp;·&nbsp; ${(puestoNombre(g.e.puesto_id)||'').toUpperCase()} &nbsp;·&nbsp; RFC ${g.e.rfc||'—'}</td></tr>
+      <tr class="nom-cols"><th>FECHA DE PAGO</th><th>PERCEPCIONES</th><th>SUELDO</th><th>ISR</th><th>IMSS</th><th>NETO</th><th>ESTADO CFDI</th><th>UUID</th></tr>
       <tbody class="nom-data">${g.filas.map(f=>`<tr>
         <td class="nc">${fmtFechaCorta(f.p.semana_fin)}</td>
         <td class="nr">$ ${fmxnPlain(f.c.subtotal)}</td>
+        <td class="nr">$ ${fmxnPlain(f.c.nominaFiscal)}</td>
         <td class="nr">$ ${fmxnPlain(f.l.retencion_isr)}</td>
         <td class="nr">$ ${fmxnPlain(f.l.retencion_imss)}</td>
         <td class="nr nb">$ ${fmxnPlain(f.c.total)}</td>
@@ -7917,7 +7922,7 @@ function imprimirHistoricoNominaPDF(){
       </tr>`).join('')}</tbody>
       <tr class="emp-sub">
         <td style="text-align:right">SUBTOTAL</td>
-        <td class="nr">$ ${fmxnPlain(sPerc)}</td><td class="nr">$ ${fmxnPlain(sIsr)}</td><td class="nr">$ ${fmxnPlain(sImss)}</td><td class="nr">$ ${fmxnPlain(sNeto)}</td><td colspan="2"></td>
+        <td class="nr">$ ${fmxnPlain(sPerc)}</td><td class="nr">$ ${fmxnPlain(sSueldo)}</td><td class="nr">$ ${fmxnPlain(sIsr)}</td><td class="nr">$ ${fmxnPlain(sImss)}</td><td class="nr">$ ${fmxnPlain(sNeto)}</td><td colspan="2"></td>
       </tr>
     </table>`;
   }).join('');
@@ -7956,7 +7961,7 @@ table{border-collapse:collapse;width:100%;table-layout:fixed;margin-bottom:14px}
 </div>
 <div class="hist-body">
   ${gruposHtml}
-  <div class="grand-tot"><span>PERCEPCIONES: $ ${fmxnPlain(gTotPerc)}</span><span>ISR: $ ${fmxnPlain(gTotIsr)}</span><span>IMSS: $ ${fmxnPlain(gTotImss)}</span><span>NETO: $ ${fmxnPlain(gTotNeto)}</span></div>
+  <div class="grand-tot"><span>PERCEPCIONES: $ ${fmxnPlain(gTotPerc)}</span><span>SUELDO: $ ${fmxnPlain(gTotSueldo)}</span><span>ISR: $ ${fmxnPlain(gTotIsr)}</span><span>IMSS: $ ${fmxnPlain(gTotImss)}</span><span>NETO: $ ${fmxnPlain(gTotNeto)}</span></div>
 </div>
 </body></html>`;
   const w=window.open('','_blank');
