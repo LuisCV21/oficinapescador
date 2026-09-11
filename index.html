@@ -9902,7 +9902,13 @@ async function renderControlGastos(){
       if(esGastoHotel){
         const conceptoHotel=m.concepto||m.descripcion||'';
         categoria=cgClasificar(conceptoHotel,'gasto_mercancia','HOT').key?'gasto_mercancia':'gasto_diverso';
-      }else if(m.medio!=='caja'||m.tipo!=='retiro'){
+      }else if(m.tipo!=='retiro'){
+        // Antes también exigía medio==='caja', lo que dejaba fuera del
+        // Control de Gastos cualquier gasto_mercancia/gasto_diverso pagado
+        // con Baucher (ej. pagos a proveedores por transferencia como el de
+        // Jannet) -- un gasto es un gasto sin importar de qué bolsa salió.
+        // Hallazgo 11-sept-2026: Florida traía $260,219.45 (44 movs) y
+        // Puebla $41,240.49 (8 movs) de gastos por Baucher nunca contados.
         return;
       }
       if(categoria!=='gasto_mercancia'&&categoria!=='gasto_diverso')return;
