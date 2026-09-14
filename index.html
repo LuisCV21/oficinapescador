@@ -8546,7 +8546,22 @@ const ADO_ENTIDADES=['ado_jalapa','ado_platino','ado_gl','ado_norte','ado_veracr
 function formaPagoTexto(p){
   const fp=p.forma_pago||'';
   if(fp==='ado'&&p.referencia)return `${fp} (${p.referencia.replace(/^ADO\s+/i,'')})`;
+  if(fp==='vales')return 'efectivo (vale)';
   return fp;
+}
+// "Vales" es un cargo a la cuenta del empleado (se le descuenta en nómina)
+// -- no es efectivo el día que se cobra, pero tarde o temprano SÍ vuelve en
+// efectivo, así que para reportes/KPIs/factura global se cuenta como
+// efectivo (pedido explícito del dueño, 14-sept-2026). El cuadre de caja
+// del corte (Bodega/Vales/Baucher) se deja intacto -- ahí sí importa
+// rastrear la deuda real del empleado, eso no cambia.
+function plegarValesEnEfectivo(vpf){
+  vpf=vpf||{};
+  const valesMonto=Number(vpf.vales||0);
+  const out={...vpf};
+  delete out.vales;
+  if(valesMonto)out.efectivo=Math.round((Number(out.efectivo||0)+valesMonto)*100)/100;
+  return{vpf:out,valesMonto};
 }
 function preAnteriorDeCorte(c){
   const d=c.datos||{};
@@ -9872,7 +9887,7 @@ function cgCalcularDatos(){
   const celdasDifusas=new Set(); // "grupo|diaKey|catKey" con al menos un gasto clasificado por parecido
   cortes.forEach(c=>{
     const diaKey=(c.cierre||c.apertura||'').slice(0,10);
-    const vpf=(c.datos&&c.datos.ventas_por_forma)||{};
+    const{vpf}=plegarValesEnEfectivo((c.datos&&c.datos.ventas_por_forma)||{});
     const acc=dias.get(diaKey)||{venta:0,credito:0,debito:0,transferencia:0,efectivo:0,diferencia:0};
     acc.venta+=Number(c.datos&&c.datos.total_ventas||0);
     acc.credito+=Number(vpf.credito||0);
@@ -10979,10 +10994,16 @@ function buildCorteDetailBodyHtml(c){
     </div>
 
     ${pdfSec('Ventas por forma de pago')}
-    ${pdfCard('',
-      Object.entries(d.ventas_por_forma||{}).map(([k,v])=>pdfRow(k,fmxn(v))).join('')+
-      pdfRow('Total',`<b>${fmxn(c.total_ventas)}</b>`,{sep:true})
-    )}
+    ${(()=>{
+      const{vpf,valesMonto}=plegarValesEnEfectivo(d.ventas_por_forma);
+      return pdfCard('',
+        Object.entries(vpf).map(([k,v])=>pdfRow(
+          k==='efectivo'&&valesMonto?`efectivo <span style="color:var(--text3);font-weight:400">(incluye ${fmxn(valesMonto)} de vale)</span>`:k,
+          fmxn(v)
+        )).join('')+
+        pdfRow('Total',`<b>${fmxn(c.total_ventas)}</b>`,{sep:true})
+      );
+    })()}
 
     ${pdfSec('Cuadre del corte')}
     ${pdfCard('',
