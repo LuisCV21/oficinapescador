@@ -10982,6 +10982,12 @@ function buildCorteDetailBodyHtml(c){
       pdfRow('Monedas',fmxn(d.efectivo_monedas))+
       pdfRow('Billetes',fmxn(d.efectivo_billetes))+
       pdfRow('Vales',fmxn(d.saldo_vales))+
+      // Vales de ADO (Jalapa/Platino/GL/Norte/Veracruz/Puebla) -- el corte
+      // físico en papel los desglosa uno por uno debajo de "Vales" antes del
+      // TOTAL CAJA; aquí no se mostraban aunque sí iban sumados dentro de
+      // primer_total_caja, así que el total no se podía verificar a simple
+      // vista contra el papel. Solo Pescador POS manda saldo_ado (el hotel no).
+      (d.saldo_ado?ADO_ENTIDADES.map(e=>pdfRow(ADO_ETIQUETAS_MOV[e],fmxn(d.saldo_ado[e]||0))).join(''):'')+
       pdfRow('TOTAL CAJA',fmxn(cu.primer_total_caja),{color:'var(--copper)',bold:true,sep:true})+
       pdfRow('+ Gastos',fmxn(cu.gastos_totales),{color:'var(--red)'})+
       pdfRow('TOTAL CAJA',fmxn(cu.segundo_total_caja),{bold:true,sep:true})
