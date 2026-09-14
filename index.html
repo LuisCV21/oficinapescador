@@ -8539,6 +8539,15 @@ function switchCorteSuc(s){currentCorteSuc=s;renderCortes();}
 // Se separó a su propia función porque ahora también la usa el panel de
 // arriba, no solo el detalle de un corte puntual.
 const ADO_ENTIDADES=['ado_jalapa','ado_platino','ado_gl','ado_norte','ado_veracruz','ado_puebla'];
+// Un folio pagado con "ado" no dice a qué entidad (Jalapa/Platino/GL/Norte/
+// Veracruz/Puebla) -- Pescador POS ya manda esa entidad en p.referencia
+// (capturada al cobrar, ver dialogo_cobrar.py) desde el 14-sept-2026, pero
+// antes de eso los folios viejos no la traen, por eso el fallback silencioso.
+function formaPagoTexto(p){
+  const fp=p.forma_pago||'';
+  if(fp==='ado'&&p.referencia)return `${fp} (${p.referencia.replace(/^ADO\s+/i,'')})`;
+  return fp;
+}
 function preAnteriorDeCorte(c){
   const d=c.datos||{};
   const rr=d.resumen_recepcion||null;
@@ -8806,7 +8815,7 @@ function renderVentasMes(){
       <td>${p.folio??''}</td>
       <td>${cuentaCelda}</td>
       <td>${p.mesero||'—'}</td>
-      <td>${p.forma_pago||''}</td>
+      <td>${formaPagoTexto(p)}</td>
       <td class="num">${fmxn(p.monto)}</td>
       <td>${fact}</td>
       <td style="text-align:center;white-space:nowrap">${acciones}</td>
@@ -8893,7 +8902,7 @@ function cuentaTicketBodyHtml(p){
         <span>TOTAL</span><span style="font-family:var(--mono)">${fmxn(p.monto)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);margin-top:4px">
-        <span>Forma de pago</span><span>${p.forma_pago||'—'}</span>
+        <span>Forma de pago</span><span>${formaPagoTexto(p)||'—'}</span>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:4px">
         <span style="color:var(--text2)">Facturación</span><span style="color:${fact.color};font-weight:600">${fact.txt}</span>
@@ -9131,7 +9140,7 @@ function exportVentasMesCSV(){
   filas.forEach(p=>{
     lines.push([
       p.fecha||'', corteSucLabel(p.sucursal), p.folio??'', p.cuenta||'', p.mesero||'',
-      p.forma_pago||'', Number(p.monto||0).toFixed(2),
+      formaPagoTexto(p), Number(p.monto||0).toFixed(2),
       p.facturado===undefined?'Sin dato':(p.facturado?'Sí':'No'), p.folio_pac||'',
     ].map(escape).join(','));
   });
@@ -10960,7 +10969,7 @@ function buildCorteDetailBodyHtml(c){
         ?`<button class="corte-iconbtn" title="Cancelar corrección pendiente" onclick="cancelarCorreccionPago('${corr.id}')">✕</button>`
         :`<button class="corte-iconbtn" ${corr?'disabled':''} title="Corregir método de pago" onclick="openCorreccionModal('${c.sucursal}',${p.folio},${turnoIdReal})">✎</button>`;
     }
-    return `<tr><td>${p.folio}</td><td>${p.forma_pago}${estado}</td><td class="num">${fmxn(p.monto)}</td><td style="text-align:center">${btn}</td></tr>`;
+    return `<tr><td>${p.folio}</td><td>${formaPagoTexto(p)}${estado}</td><td class="num">${fmxn(p.monto)}</td><td style="text-align:center">${btn}</td></tr>`;
   }).join('');
 
   return `
