@@ -11255,6 +11255,66 @@ function recalcularCorteJson(d){
   return d;
 }
 
+// Al corregir un corte (retiros/depósitos/anteriores) sus saldos finales
+// cambian, pero el SIGUIENTE corte ya se había guardado con su "anterior"
+// congelado desde que cerró -- sin esto, corregir el turno 10 dejaba el 11
+// (y cualquiera más adelante) descuadrado hasta que alguien lo repitiera a
+// mano turno por turno (pedido explícito del dueño, 14-sept-2026). Encadena
+// hacia adelante TODOS los cortes ya cerrados de la sucursal (no solo el
+// siguiente), reusando recalcularCorteJson para que cada uno recalcule sus
+// propios saldos/vales/ADO a partir del nuevo anterior, y al final dejar una
+// corrección pendiente para el POS (misma tabla que usa "Corregir anterior"
+// a mano) para que su cadena AUTOMÁTICA en el próximo turno real que abra
+// también quede alineada, no solo lo que se ve aquí en Oficina.
+// Solo restaurante (Pescador POS) -- el Hotel tiene el caso especial de
+// "mismo día" (turno 8am-8pm + 8pm-8am = un solo corte físico, ver
+// sync_corte.py::mismo_dia allá) que recalcularCorteHotelJson no reproduce,
+// así que encadenarlo solo automáticamente podría dejarlo peor.
+async function propagarAnteriorForward(sucursal,turnoIdBase,dBase,motivoOrigen){
+  const {data:siguientes,error:errSel}=await sb.from('cortes_caja').select('*')
+    .eq('sucursal',sucursal).gt('turno_id',turnoIdBase).order('turno_id',{ascending:true});
+  if(errSel)throw new Error(errSel.message);
+  const nombre=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina';
+  let anteriorD=dBase, propagados=0;
+  for(const sig of (siguientes||[])){
+    const d2=JSON.parse(JSON.stringify(sig.datos||{}));
+    d2.cuadre=d2.cuadre||{};
+    d2.cuadre.anterior_caja   =anteriorD.cuadre.primer_total_caja;
+    d2.cuadre.anterior_bodega =anteriorD.saldo_bodega;
+    d2.cuadre.anterior_vales  =anteriorD.saldo_vales;
+    d2.cuadre.anterior_baucher=anteriorD.saldo_baucher;
+    for(const e of ADO_ENTIDADES)d2.cuadre['anterior_'+e]=(anteriorD.saldo_ado||{})[e]||0;
+    recalcularCorteJson(d2);
+    d2.ediciones=Array.isArray(d2.ediciones)?d2.ediciones:[];
+    d2.ediciones.push({
+      fecha:new Date().toISOString(),usuario:nombre,
+      motivo:`Recalculado en cadena: cambió el "anterior" al corregir el turno ${turnoIdBase}`+(motivoOrigen?` (${motivoOrigen})`:''),
+      diferencia_cuadre_antes:Number(sig.diferencia_cuadre||0),
+      diferencia_cuadre_despues:d2.cuadre.diferencia_cuadre,
+    });
+    const{error}=await sb.from('cortes_caja').update({datos:d2,diferencia_cuadre:d2.cuadre.diferencia_cuadre}).eq('id',sig.id);
+    if(error)throw new Error(`Turno ${sig.turno_id}: ${error.message}`);
+    propagados++;
+    anteriorD=d2;
+  }
+  // Deja lista la corrección para que el POS la jale sola en su próximo
+  // cierre real -- mismo mecanismo que "Corregir anterior" manual, para que
+  // la cadena automática del sistema de escritorio también quede alineada.
+  const pendiente={
+    sucursal,
+    anterior_caja:anteriorD.cuadre.primer_total_caja,
+    anterior_bodega:anteriorD.saldo_bodega,
+    anterior_vales:anteriorD.saldo_vales,
+    anterior_baucher:anteriorD.saldo_baucher,
+    motivo:`Auto-generado al corregir el turno ${turnoIdBase} y recalcular la cadena en Oficina`+(motivoOrigen?`: ${motivoOrigen}`:''),
+    creada_por:nombre+' (auto)',
+  };
+  for(const e of ADO_ENTIDADES)pendiente['anterior_'+e]=(anteriorD.saldo_ado||{})[e]||0;
+  const{error:errIns}=await sb.from('correcciones_anterior_pendientes').insert(pendiente);
+  if(errIns)throw new Error('Se recalculó la cadena pero no se pudo dejar la corrección pendiente para el POS: '+errIns.message);
+  return propagados;
+}
+
 let editCorte=null; // {id, esHotel, movRows:[...], cuentaRows:[...], gastoRows:[...]}
 
 function openEditarCorteModal(corteId){
@@ -11519,8 +11579,18 @@ async function guardarEdicionCorteComun(d,motivo){
     });
     const {error}=await sb.from('cortes_caja').update({datos:d,diferencia_cuadre:d.cuadre.diferencia_cuadre}).eq('id',editCorte.id);
     if(error)throw new Error(error.message);
+    let propagados=0;
+    if(!editCorte.esHotel){
+      propagados=await propagarAnteriorForward(c.sucursal,c.turno_id,d,motivo);
+    }
     closeModal('m-editar-corte');
-    toast('Corte corregido y recuadrado.');
+    if(editCorte.esHotel){
+      toast('Corte corregido y recuadrado. Nota: el Hotel no encadena solo por el caso de días combinados -- revisa a mano el siguiente turno si aplica.');
+    }else if(propagados){
+      toast(`Corte corregido y recuadrado. Se ajustó el "anterior" de ${propagados} corte(s) posteriores y quedó lista la corrección para que el POS la aplique sola.`);
+    }else{
+      toast('Corte corregido y recuadrado.');
+    }
     await loadCortes();
     renderCortes();
     if(document.getElementById('m-corte-detail').classList.contains('open'))openCorteDetail(editCorte.id);
