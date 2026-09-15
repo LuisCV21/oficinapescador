@@ -11277,7 +11277,15 @@ function buildCorteDetailBodyHtml(c){
   // liquidación -- mismo criterio de color que filasSaldo arriba.
   const bloqueCuentaHotel=(titulo,cuenta)=>{
     const movs=(rr.movimientos_cuentas||[]).filter(m=>m.cuenta===cuenta);
-    const filas=movs.map(m=>pdfRow((m.concepto||'—')+(m._turno_lbl?` <span style="color:var(--text3);font-weight:400">(turno ${m._turno_lbl})</span>`:''),fmxn(m.monto),{color:Number(m.monto)>=0?'var(--green)':'var(--red)'})).join('');
+    // "medio" (de dónde salió: Caja/Baucher) -- solo lo traen los turnos
+    // mandados desde el fix del 16-sept-2026 (antes hotel-sistema no lo
+    // enviaba); si no viene, no se muestra nada en vez de asumir "Caja".
+    const filas=movs.map(m=>pdfRow(
+      (m.concepto||'—')
+        +(m.medio?` <span style="color:var(--text3);font-weight:400">(${m.medio==='baucher'?'de Baucher':'de Caja'})</span>`:'')
+        +(m._turno_lbl?` <span style="color:var(--text3);font-weight:400">(turno ${m._turno_lbl})</span>`:''),
+      fmxn(m.monto),{color:Number(m.monto)>=0?'var(--green)':'var(--red)'}
+    )).join('');
     return pdfSec(titulo)+pdfCard('',
       pdfRow('Anterior',fmxn(rr[`anterior_${cuenta}`]))+
       (movs.length?filas:pdfRow('<span style="color:var(--text3);font-style:italic">Sin movimientos este turno</span>',''))+
@@ -12327,45 +12335,147 @@ function colTurnoHtml(m){
   const lbl=m._turno_id===editCorte.rows[0].turno_id?'día':(m._turno_id?'noche':'noche (nuevo)');
   return `<td style="font-size:11px;color:var(--text3);white-space:nowrap">${lbl}</td>`;
 }
+const CUENTA_LABEL_HOTEL=Object.fromEntries(CUENTAS_HOTEL);
+// "Sale de" (Caja/Baucher) -- exactamente la misma idea que el medio del
+// restaurante, solo que aquí (corte_recepcion.py::registrar_movimiento allá)
+// el "doble movimiento" no vive en 1 fila con un campo medio -- se guarda
+// como 2 FILAS separadas: la cuenta destino en positivo, y (si salió de
+// Baucher) otra fila en Baucher en negativo con el mismo concepto, unidas
+// por par_id en la base real del Hotel. Aquí se simula igual: elegir
+// "Baucher" arma sola la fila pareja (ligada por _par_key, solo en memoria
+// -- no se manda, ver leerCuentasHotelDeDOM); nunca se permite Baucher→Bodega
+// (regla de negocio real: lo que sale de Baucher jamás puede ir a Bodega).
+// Pedido explícito del dueño, 16-sept-2026: "en el hotel es lo mismo que en
+// el restaurante, sale de caja o de baucher y tiene que ir a algún lado".
+function filaEsParCuentaHotel(m){return !!m._par_key&&m.cuenta==='baucher';}
+function celdaMedioHtml(m,i){
+  if(m.cuenta==='baucher'){
+    return`<td style="font-size:11px;color:var(--text3)">${filaEsParCuentaHotel(m)?'(mitad Baucher)':'—'}</td>`;
+  }
+  const medio=m.medio||'caja';
+  return`<td><select id="emh-cta-medio-${i}" onchange="cambiarMedioCuentaHotel(${i})">
+    <option value="caja" ${medio==='caja'?'selected':''}>Caja</option>
+    <option value="baucher" ${medio==='baucher'?'selected':''}>Baucher</option>
+  </select></td>`;
+}
 function renderTablaCuentasHotelEditor(){
   const rows=editCorte.cuentaRows;
-  const fila=(m,i)=>`<tr>
-    <td><select id="emh-cta-${i}" onchange="renderEditarCortePreviewHotel()">
+  const fila=(m,i)=>{
+    const esPar=filaEsParCuentaHotel(m);
+    return`<tr>
+    <td><select id="emh-cta-${i}" ${esPar?'disabled':''} onchange="cambiarCuentaFilaHotel(${i})">
       ${CUENTAS_HOTEL.map(([v,l])=>`<option value="${v}" ${v===m.cuenta?'selected':''}>${l}</option>`).join('')}
     </select></td>
-    <td><input type="number" step="0.01" style="width:110px" id="emh-cta-monto-${i}" value="${m.monto||0}" onchange="renderEditarCortePreviewHotel()"/></td>
-    <td><input type="text" style="width:100%" id="emh-cta-concepto-${i}" value="${(m.concepto||'').replace(/"/g,'&quot;')}" onchange="renderEditarCortePreviewHotel()"/></td>
+    ${celdaMedioHtml(m,i)}
+    <td><input type="number" step="0.01" style="width:110px" id="emh-cta-monto-${i}" value="${m.monto||0}" ${esPar?'disabled':''} onchange="editarFilaCuentaHotel(${i})"/></td>
+    <td><input type="text" style="width:100%" id="emh-cta-concepto-${i}" value="${(m.concepto||'').replace(/"/g,'&quot;')}" ${esPar?'disabled':''} onchange="editarFilaCuentaHotel(${i})"/></td>
     ${colTurnoHtml(m)}
     <td style="text-align:center"><button class="corte-iconbtn" style="display:inline" title="Quitar" onclick="eliminarFilaCuentaHotel(${i})">✕</button></td>
   </tr>`;
+  };
   document.getElementById('emh-cuentas-tabla').innerHTML=`
-    <thead><tr><th>Cuenta</th><th class="num">Monto</th><th>Concepto</th>${editCorte.combinado?'<th>Turno</th>':''}<th></th></tr></thead>
-    <tbody>${rows.length?rows.map(fila).join(''):`<tr><td colspan="${editCorte.combinado?5:4}" class="corte-empty">Sin movimientos</td></tr>`}</tbody>
+    <thead><tr><th>Cuenta</th><th>Sale de</th><th class="num">Monto</th><th>Concepto</th>${editCorte.combinado?'<th>Turno</th>':''}<th></th></tr></thead>
+    <tbody>${rows.length?rows.map(fila).join(''):`<tr><td colspan="${editCorte.combinado?6:5}" class="corte-empty">Sin movimientos</td></tr>`}</tbody>
   `;
 }
+// Lee del DOM las filas que SÍ tienen inputs habilitados (una fila-pareja de
+// Baucher está deshabilitada -- su valor se sincroniza aparte, nunca se lee
+// de inputs que no existen de verdad como editables).
 function leerCuentasHotelDeDOM(){
   return editCorte.cuentaRows.map((orig,i)=>{
+    if(filaEsParCuentaHotel(orig))return orig;
     const el=document.getElementById(`emh-cta-${i}`);
     if(!el)return orig;
     return{
       cuenta:el.value,
+      medio:orig.cuenta==='baucher'?undefined:(document.getElementById(`emh-cta-medio-${i}`)?.value||'caja'),
       monto:parseFloat(document.getElementById(`emh-cta-monto-${i}`).value)||0,
       concepto:document.getElementById(`emh-cta-concepto-${i}`).value.trim(),
       fecha:orig.fecha||new Date().toISOString(),
       usuario:orig.usuario||(currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina'),
-      _turno_id:orig._turno_id,_turno_lbl:orig._turno_lbl,
+      _turno_id:orig._turno_id,_turno_lbl:orig._turno_lbl,_par_key:orig._par_key,
     };
   });
 }
+// Recalcula/crea/borra la fila-pareja en Baucher de la fila `idx` según su
+// `medio` y monto/concepto ACTUALES -- se llama después de cualquier cambio
+// (medio, monto, concepto) para que la pareja nunca se quede desincronizada.
+function sincronizarParCuentaHotel(idx){
+  const rows=editCorte.cuentaRows;
+  const m=rows[idx];
+  const parIdx=rows.findIndex(r=>r._par_key&&r._par_key===m._par_key&&r!==m);
+  if(m.medio==='baucher'&&m.cuenta!=='baucher'){
+    const etiqueta=CUENTA_LABEL_HOTEL[m.cuenta]||m.cuenta;
+    const parFila={cuenta:'baucher',monto:r2n(-m.monto),concepto:`${m.concepto} (a ${etiqueta})`,
+      fecha:m.fecha,usuario:m.usuario,_turno_id:m._turno_id,_par_key:m._par_key};
+    if(parIdx===-1)rows.splice(idx+1,0,parFila);
+    else rows[parIdx]=parFila;
+  }else if(parIdx!==-1){
+    rows.splice(parIdx,1);
+  }
+}
+function r2n(x){return Math.round((Number(x)||0)*100)/100;}
+function cambiarCuentaFilaHotel(idx){
+  editCorte.cuentaRows=leerCuentasHotelDeDOM();
+  const m=editCorte.cuentaRows[idx];
+  const parIdxActual=()=>editCorte.cuentaRows.findIndex(r=>r._par_key&&r._par_key===m._par_key&&r!==m);
+  if(m.cuenta==='baucher'){
+    // Si la cuenta se cambió A Baucher, ya no tiene sentido que tenga un
+    // "medio"/pareja propia (Baucher no se "financia a sí mismo").
+    const parIdx=parIdxActual();
+    if(parIdx!==-1)editCorte.cuentaRows.splice(parIdx,1);
+    m.medio=undefined;m._par_key=undefined;
+  }else if(m.medio==='baucher'&&m.cuenta==='bodega'){
+    // Bodega nunca sale de Baucher -- se corrige el "Sale de" en vez de
+    // dejar guardada una combinación que no existe en el corte físico.
+    toast('Bodega nunca sale de Baucher -- se cambió "Sale de" a Caja para esta fila.',true);
+    const parIdx=parIdxActual();
+    if(parIdx!==-1)editCorte.cuentaRows.splice(parIdx,1);
+    m.medio='caja';m._par_key=undefined;
+  }else if(m.medio==='baucher'){
+    // La cuenta destino cambió (ej. de Vales Sr. Antonio a Vales del
+    // Personal) -- la fila pareja de Baucher trae el nombre viejo en su
+    // concepto ("(a Vales Sr. Antonio)"), hay que refrescarla.
+    sincronizarParCuentaHotel(idx);
+  }
+  renderTablaCuentasHotelEditor();
+  renderEditarCortePreviewHotel();
+}
+function cambiarMedioCuentaHotel(idx){
+  editCorte.cuentaRows=leerCuentasHotelDeDOM();
+  const m=editCorte.cuentaRows[idx];
+  const nuevoMedio=document.getElementById(`emh-cta-medio-${idx}`).value;
+  if(nuevoMedio==='baucher'&&m.cuenta==='bodega'){
+    toast('Lo que sale de Baucher nunca puede ir a Bodega -- esa combinación no existe en el corte físico.',true);
+    renderTablaCuentasHotelEditor();
+    return;
+  }
+  m.medio=nuevoMedio;
+  if(nuevoMedio==='baucher'&&!m._par_key)m._par_key='par_'+Date.now()+'_'+idx;
+  sincronizarParCuentaHotel(idx);
+  renderTablaCuentasHotelEditor();
+  renderEditarCortePreviewHotel();
+}
+function editarFilaCuentaHotel(idx){
+  editCorte.cuentaRows=leerCuentasHotelDeDOM();
+  if(editCorte.cuentaRows[idx].medio==='baucher')sincronizarParCuentaHotel(idx);
+  renderTablaCuentasHotelEditor();
+  renderEditarCortePreviewHotel();
+}
 function agregarFilaCuentaHotel(){
   editCorte.cuentaRows=leerCuentasHotelDeDOM();
-  editCorte.cuentaRows.push({cuenta:'bodega',monto:0,concepto:'',fecha:new Date().toISOString(),usuario:currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina'});
+  editCorte.cuentaRows.push({cuenta:'bodega',medio:'caja',monto:0,concepto:'',fecha:new Date().toISOString(),usuario:currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina'});
   renderTablaCuentasHotelEditor();
   renderEditarCortePreviewHotel();
 }
 function eliminarFilaCuentaHotel(idx){
   editCorte.cuentaRows=leerCuentasHotelDeDOM();
-  editCorte.cuentaRows.splice(idx,1);
+  const m=editCorte.cuentaRows[idx];
+  if(m._par_key){
+    const parIdx=editCorte.cuentaRows.findIndex(r=>r._par_key===m._par_key&&r!==m);
+    if(parIdx!==-1)editCorte.cuentaRows.splice(parIdx,1);
+  }
+  editCorte.cuentaRows.splice(editCorte.cuentaRows.indexOf(m),1);
   renderTablaCuentasHotelEditor();
   renderEditarCortePreviewHotel();
 }
@@ -12429,7 +12539,7 @@ function leerFormEditarCorteHotel(){
   rr.anterior_baucher=parseFloat(document.getElementById('emh-ant-baucher').value)||0;
   rr.anterior_vales_antonio=parseFloat(document.getElementById('emh-ant-vales_antonio').value)||0;
   rr.anterior_vales_personal=parseFloat(document.getElementById('emh-ant-vales_personal').value)||0;
-  rr.movimientos_cuentas=leerCuentasHotelDeDOM();
+  rr.movimientos_cuentas=leerCuentasHotelDeDOM().map(({_par_key,...rest})=>rest);
   d.movimientos_desglose=leerGastosHotelDeDOM();
   recalcularCorteHotelJson(d);
   return d;
