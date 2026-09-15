@@ -12286,12 +12286,14 @@ function renderEditarCorteModalHotel(){
         <div class="f-row"><label>Anterior de Vales del Personal</label><input type="number" step="0.01" id="emh-ant-vales_personal" value="${rr.anterior_vales_personal||0}" onchange="renderEditarCortePreviewHotel()"/></div>
 
         <div class="corte-sec" style="border:none;margin:14px 0 6px">Checksum del día (Anterior / Ventas / Gastos)</div>
-        ${combinado?'':'<div style="font-size:11px;color:var(--text3);margin-bottom:6px">Ojo: si este turno es la 2a mitad de un día combinado (día+noche del Hotel), estos 3 ya vienen acumulados con la 1a mitad -- no le den "usar solo de este turno" a menos que sepan que este turno NO está combinado.</div>'}
+        ${combinado
+          ?'<div style="font-size:11px;color:var(--text3);margin-bottom:6px">Ventas y Gastos se calculan solos de "Movimientos del turno" de abajo (ya trae día+noche) -- edita ahí, no aquí. Solo "Anterior" se escribe a mano (con qué abrió el día).</div>'
+          :'<div style="font-size:11px;color:var(--text3);margin-bottom:6px">Ojo: si este turno es la 2a mitad de un día combinado (día+noche del Hotel), estos 3 ya vienen acumulados con la 1a mitad -- no le den "usar solo de este turno" a menos que sepan que este turno NO está combinado.</div>'}
         <div class="f-row"><label>Anterior (checksum)</label><input type="number" step="0.01" id="emh-ant-check" value="${rr.anterior||0}" onchange="renderEditarCortePreviewHotel()"/></div>
-        <div class="f-row"><label>Ventas (checksum)</label><input type="number" step="0.01" id="emh-ventas-check" value="${rr.ventas||0}" onchange="renderEditarCortePreviewHotel()"/>
+        <div class="f-row"><label>Ventas (checksum)</label><input type="number" step="0.01" id="emh-ventas-check" value="${rr.ventas||0}" ${combinado?'readonly style="background:var(--bg2,#f5f5f5)"':''} onchange="renderEditarCortePreviewHotel()"/>
           ${combinado?'':'<span class="btn-text" style="font-size:11px;cursor:pointer" onclick="usarVentasSoloDeEsteTurno()">usar solo las de este turno</span>'}
         </div>
-        <div class="f-row"><label>Gastos (checksum)</label><input type="number" step="0.01" id="emh-gastos-check" value="${rr.gastos||0}" onchange="renderEditarCortePreviewHotel()"/>
+        <div class="f-row"><label>Gastos (checksum)</label><input type="number" step="0.01" id="emh-gastos-check" value="${rr.gastos||0}" ${combinado?'readonly style="background:var(--bg2,#f5f5f5)"':''} onchange="renderEditarCortePreviewHotel()"/>
           ${combinado?'':'<span class="btn-text" style="font-size:11px;cursor:pointer" onclick="usarGastosSoloDeEsteTurno()">usar solo los de este turno</span>'}
         </div>
       </div>
@@ -12613,8 +12615,6 @@ function leerFormEditarCorteHotel(){
   rr.monedas=parseFloat(document.getElementById('emh-monedas').value)||0;
   rr.billetes=parseFloat(document.getElementById('emh-billetes').value)||0;
   rr.anterior=parseFloat(document.getElementById('emh-ant-check').value)||0;
-  rr.ventas=parseFloat(document.getElementById('emh-ventas-check').value)||0;
-  rr.gastos=parseFloat(document.getElementById('emh-gastos-check').value)||0;
   rr.anterior_bodega=parseFloat(document.getElementById('emh-ant-bodega').value)||0;
   rr.anterior_baucher=parseFloat(document.getElementById('emh-ant-baucher').value)||0;
   rr.anterior_vales_antonio=parseFloat(document.getElementById('emh-ant-vales_antonio').value)||0;
@@ -12627,12 +12627,38 @@ function leerFormEditarCorteHotel(){
   }
   rr.movimientos_cuentas=cuentaRowsGuardar;
   d.movimientos_desglose=gastoRowsGuardar;
-  recalcularCorteHotelJson(d);
+  // Combinado (día+noche): Ventas/Gastos del checksum se calculan SOLOS de
+  // "Movimientos del turno" (que aquí ya trae ambos turnos completos, ver
+  // combinarCortesHotelDia) -- ya no hay campo manual que se pueda
+  // desincronizar de la tabla, que era justo la confusión reportada por el
+  // dueño, 15-sept-2026 ("¿cuál es el que decide el recálculo?"). Estándar
+  // (turno suelto): se deja el campo manual tal cual, porque aquí "Movimientos
+  // del turno" solo trae ESTE turno, y si es la 2a mitad de un día
+  // combinado el checksum real necesita la 1a mitad que no está a la vista.
+  recalcularCorteHotelJson(d); // primera pasada: deja d.total_ventas listo (de pagos_detalle)
+  if(editCorte.combinado){
+    rr.ventas=d.total_ventas;
+    rr.gastos=gastosSoloDeEsteTurnoHotel(filas);
+  }else{
+    rr.ventas=parseFloat(document.getElementById('emh-ventas-check').value)||0;
+    rr.gastos=parseFloat(document.getElementById('emh-gastos-check').value)||0;
+  }
+  recalcularCorteHotelJson(d); // segunda pasada: total_check/diferencia con los rr.ventas/gastos ya buenos
   return d;
+}
+// Refresca lo que se ve en los campos (de solo lectura) de Ventas/Gastos
+// checksum cuando el corte es combinado -- se llama después de cualquier
+// cambio a "Movimientos del turno", para que el número en pantalla nunca se
+// quede atrás de la tabla que en realidad lo calcula.
+function actualizarChecksumCombinadoSiAplica(d){
+  if(!editCorte.combinado)return;
+  document.getElementById('emh-ventas-check').value=d.resumen_recepcion.ventas;
+  document.getElementById('emh-gastos-check').value=d.resumen_recepcion.gastos;
 }
 
 function renderEditarCortePreviewHotel(){
   const d=leerFormEditarCorteHotel();
+  actualizarChecksumCombinadoSiAplica(d);
   const rr=d.resumen_recepcion;
   const{texto:difTxtHotel,color:difColorHotel}=cuadreLabel(rr.diferencia,'Cuadra exacto');
   const vpfHtml=Object.entries(d.ventas_por_forma||{}).map(([k,v])=>
