@@ -95,15 +95,20 @@ Deno.serve(async (req) => {
     const errores: string[] = [];
 
     for (const corte of cortes ?? []) {
-      const cuentas = corte?.datos?.cuentas ?? [];
+      // Restaurantes (Florida/Puebla): la autofactura viaja en cuentas[].
+      // Hotel: no tiene "cuentas", viaja en pagos_detalle[] -- ver
+      // src/oficina/sync_corte.py en cada repo.
+      const portadores = [...(corte?.datos?.cuentas ?? []), ...(corte?.datos?.pagos_detalle ?? [])];
       let cambio = false;
 
-      for (const cuenta of cuentas) {
-        const af = cuenta?.autofactura;
+      for (const portador of portadores) {
+        const af = portador?.autofactura;
         if (!af) continue;
         // Igual criterio que actualizar_estado_autofacturas en pescador-pos:
         // revisa tanto lo pendiente como lo ya marcado facturado sin folio_pac
-        // guardado (para completarlo también).
+        // guardado (para completarlo también) -- el hotel nunca guarda
+        // folio_pac localmente, así que esas quedan a completar aquí siempre
+        // que Oficina todavía no lo tenga en su propio snapshot.
         if (af.facturado && af.folio_pac) continue;
         revisadas++;
 

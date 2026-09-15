@@ -9402,11 +9402,21 @@ function afEntidadActual(){
 // (sucursal/turno_id) necesario para que el Edge Function la ubique y la
 // reescriba tras verificar.
 function afCuentasDe(corte){
+  // Restaurantes (Florida/Puebla): la autofactura viaja en cuentas[].
+  // Hotel: no tiene "cuentas", viaja en pagos_detalle[] (por venta/folio) --
+  // ver src/oficina/sync_corte.py en hotel-sistema.
   const cuentas=(corte.datos&&corte.datos.cuentas)||[];
-  return cuentas.filter(c=>c.autofactura).map(c=>({
-    sucursal:corte.sucursal, turno_id:corte.turno_id,
-    folio_venta:c.folio||('#'+c.id), ...c.autofactura,
-  }));
+  const dePagos=(corte.datos&&corte.datos.pagos_detalle)||[];
+  return [
+    ...cuentas.filter(c=>c.autofactura).map(c=>({
+      sucursal:corte.sucursal, turno_id:corte.turno_id,
+      folio_venta:c.folio||('#'+c.id), ...c.autofactura,
+    })),
+    ...dePagos.filter(p=>p.autofactura).map(p=>({
+      sucursal:corte.sucursal, turno_id:corte.turno_id,
+      folio_venta:p.folio, ...p.autofactura,
+    })),
+  ];
 }
 function afFilasSucursalActual(){
   return cortesData.filter(c=>c.sucursal===currentAFSuc).flatMap(afCuentasDe)
