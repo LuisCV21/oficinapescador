@@ -265,7 +265,7 @@ Deno.serve(async (req) => {
     // poder probar con un empleado antes de mandar el resto).
     let lineasQuery = db
       .from("nomina_lineas")
-      .select("*, empleados(id,nombre,curp,rfc,nss,salario_diario,puesto_id,fecha_ingreso,tipo_contrato,facturacom_uid,domicilio)")
+      .select("*, empleados(id,nombre,curp,rfc,nss,salario_diario,puesto_id,fecha_ingreso,fecha_alta_imss,tipo_contrato,facturacom_uid,domicilio)")
       .eq("periodo_id", periodo_id);
     if (Array.isArray(linea_ids) && linea_ids.length) lineasQuery = lineasQuery.in("id", linea_ids);
     const { data: lineas, error: lineasErr } = await lineasQuery;
@@ -327,7 +327,11 @@ Deno.serve(async (req) => {
       const e = l.empleados as any;
       if (e.facturacom_uid) continue;
       const { nombre: nombrePila, paterno, materno } = separarNombreCompleto(e.nombre);
-      const salarioIntegrado = calcularSalarioIntegrado(e.salario_diario, e.fecha_ingreso);
+      // El SBC/salario integrado usa antigüedad ante el IMSS, no la de
+      // ingreso real (casi nunca coinciden) -- "inicio" más abajo sí debe
+      // seguir siendo fecha_ingreso, es la fecha de inicio de la relación
+      // laboral (FechaInicioRelLaboral) para el CFDI, no del IMSS.
+      const salarioIntegrado = calcularSalarioIntegrado(e.salario_diario, e.fecha_alta_imss || e.fecha_ingreso);
       const empleadoRes = await fetch(`${HOST}/payroll/employee/create`, {
         method: "POST", headers, body: JSON.stringify({
           grupo: grupoUid,

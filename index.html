@@ -1100,6 +1100,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <div class="tabs-bar" id="nya-sub-tabs">
           <div class="tab active" data-sub="asistencia" onclick="switchModuloTab('asistencia')">📅 Asistencia</div>
           <div class="tab" data-sub="horasextra" onclick="switchModuloTab('horasextra')">⏱️ Horas extra</div>
+          <div class="tab" data-sub="diasfestivos" onclick="switchModuloTab('diasfestivos')">🎉 Días festivos</div>
           <div class="tab" data-sub="nomina" onclick="switchModuloTab('nomina')">💵 Nómina</div>
         </div>
 
@@ -1117,6 +1118,19 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             <button class="btn btn-sm" onclick="abrirPreviewRecibosHorasExtra()">🖨️ Recibos</button>
           </div>
           <div style="overflow-x:auto;margin:14px 0" id="horasextra-grid-wrap"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+        </div>
+
+        <div class="modulo-sub" id="sub-diasfestivos" style="display:none">
+          <div class="df-add-form" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:12px 0">
+            <div class="f-row" style="min-width:220px"><label>Empleado</label><select id="df-empleado"></select></div>
+            <div class="f-row"><label>Fecha del festivo</label><input type="date" id="df-fecha"/></div>
+            <div class="f-row" style="min-width:180px"><label>Motivo (opcional)</label><input type="text" id="df-concepto" placeholder="Ej. 16 de septiembre"/></div>
+            <button class="btn btn-filled" onclick="agregarDiaFestivo()">+ Agregar</button>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;margin:12px 0 10px">
+            <button class="btn btn-sm" onclick="imprimirRecibosDiasFestivos()">🖨️ Imprimir recibos seleccionados</button>
+          </div>
+          <div style="overflow-x:auto;margin:14px 0" id="diasfestivos-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
 
         <div class="modulo-sub" id="sub-nomina" style="display:none">
@@ -1810,7 +1824,12 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       <div class="f-row"><label>CURP</label><input type="text" id="ef-curp" placeholder="18 caracteres" style="font-family:var(--mono);font-size:12px"/></div>
       <div class="f-row"><label>RFC</label><input type="text" id="ef-rfc" placeholder="13 caracteres" style="font-family:var(--mono);font-size:12px"/></div>
     </div>
-    <div class="f-row"><label>NSS (Número de Seguro Social)</label><input type="text" id="ef-nss" placeholder="11 dígitos" style="font-family:var(--mono);font-size:12px"/></div>
+    <div class="f-grid">
+      <div class="f-row"><label>NSS (Número de Seguro Social)</label><input type="text" id="ef-nss" placeholder="11 dígitos" style="font-family:var(--mono);font-size:12px"/></div>
+      <div class="f-row"><label>Fecha de alta IMSS</label><input type="date" id="ef-alta-imss"/>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Si es distinta a la fecha de ingreso real. Solo se usa para el cálculo de la cuota IMSS en Nómina — vacaciones y finiquito siempre usan la fecha de ingreso.</div>
+      </div>
+    </div>
     <div class="modal-sec">Documentos <span style="font-size:10px;font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0">— opcionales, pueden subirse después</span></div>
     <div class="fzones-grid">
       <div class="f-row"><label>INE</label>
@@ -3864,6 +3883,7 @@ async function openEmpDetail(id){
     ${e.folio?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">Folio</div><div style="font-size:13px;font-family:var(--mono)">${e.folio}</div></div>`:''}
     ${e.puesto_id?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">Puesto</div><div style="font-size:13px">${puestoNombre(e.puesto_id)}</div></div>`:''}
     <div><div style="font-size:10px;color:var(--text3);font-weight:500">Ingreso</div><div style="font-size:13px">${fmt(e.fecha_ingreso)}</div></div>
+    <div><div style="font-size:10px;color:var(--text3);font-weight:500">Alta IMSS</div><div style="font-size:13px${e.fecha_alta_imss?'':';color:var(--text3)'}">${e.fecha_alta_imss?fmt(e.fecha_alta_imss):'Igual que ingreso (Editar)'}</div></div>
     <div><div style="font-size:10px;color:var(--text3);font-weight:500">NSS</div><div style="font-size:13px;font-family:var(--mono)${e.nss?'':';color:var(--red)'}">${e.nss||'Falta capturar (Editar)'}</div></div>
     <div><div style="font-size:10px;color:var(--text3);font-weight:500">CURP</div><div style="font-size:12px;font-family:var(--mono)${e.curp?'':';color:var(--red)'}">${e.curp||'Falta capturar (Editar)'}</div></div>
     <div><div style="font-size:10px;color:var(--text3);font-weight:500">RFC</div><div style="font-size:13px;font-family:var(--mono)${e.rfc?'':';color:var(--red)'}">${e.rfc||'Falta capturar (Editar)'}</div></div>
@@ -3955,6 +3975,7 @@ function openEmpModal(id){
   document.getElementById('ef-curp').value=e?e.curp||'':'';
   document.getElementById('ef-rfc').value=e?e.rfc||'':'';
   document.getElementById('ef-nss').value=e?e.nss||'':'';
+  document.getElementById('ef-alta-imss').value=e?e.fecha_alta_imss||'':'';
   document.getElementById('ef-salario').value=e&&e.salario_diario!=null?e.salario_diario:'';
   document.getElementById('ef-domicilio').value=e?e.domicilio||'':'';
   document.getElementById('ef-nomina-fiscal').checked=e?e.nomina_fiscal!==false:true;
@@ -3988,7 +4009,7 @@ async function saveEmp(){
   const tipo_contrato=document.getElementById('ef-contrato').value;
   const fin_prueba=tipo_contrato==='prueba'?(()=>{const d=new Date(fecha_ingreso+'T12:00:00');d.setDate(d.getDate()+30);return d.toISOString().slice(0,10);})():null;
   const salarioVal=document.getElementById('ef-salario').value;
-  const obj={folio:document.getElementById('ef-folio').value.trim()||null,nombre,entidad:document.getElementById('ef-ent').value,puesto_id:document.getElementById('ef-puesto').value||null,fecha_ingreso,tipo_contrato,fecha_fin_prueba:fin_prueba,curp:document.getElementById('ef-curp').value||null,rfc:document.getElementById('ef-rfc').value||null,nss:document.getElementById('ef-nss').value||null,domicilio:document.getElementById('ef-domicilio').value||null,salario_diario:salarioVal?Number(salarioVal):null,activo:true,nomina_fiscal:document.getElementById('ef-nomina-fiscal').checked};
+  const obj={folio:document.getElementById('ef-folio').value.trim()||null,nombre,entidad:document.getElementById('ef-ent').value,puesto_id:document.getElementById('ef-puesto').value||null,fecha_ingreso,fecha_alta_imss:document.getElementById('ef-alta-imss').value||null,tipo_contrato,fecha_fin_prueba:fin_prueba,curp:document.getElementById('ef-curp').value||null,rfc:document.getElementById('ef-rfc').value||null,nss:document.getElementById('ef-nss').value||null,domicilio:document.getElementById('ef-domicilio').value||null,salario_diario:salarioVal?Number(salarioVal):null,activo:true,nomina_fiscal:document.getElementById('ef-nomina-fiscal').checked};
   setLoading('emp-save-btn',true);
   let empId=editEmpId;
   if(editEmpId){
@@ -4561,6 +4582,7 @@ function reloadModuloActivo(){
   };
   if(moduloActivoTab==='asistencia')loadAsistencia().then(()=>{renderAsistGrid();aplicarSlide();});
   else if(moduloActivoTab==='horasextra')loadHorasExtra().then(()=>{renderHorasExtraGrid();aplicarSlide();});
+  else if(moduloActivoTab==='diasfestivos')loadDiasFestivos().then(()=>{renderDiasFestivos();aplicarSlide();});
   else if(moduloActivoTab==='nomina')loadNomina().then(()=>{renderNomina();aplicarSlide();});
 }
 
@@ -4800,7 +4822,7 @@ async function syncNominaSemana(ent,week){
           const salario=Number(e.salario_diario)||0;
           retencionIsr=calcularIsrNetoSemanal(salario*sugerido+(trabajoDomingo?salario*0.25:0),salario);
         }
-        retencionImss=calcularImssSemanal(e.salario_diario,sugerido,e.fecha_ingreso);
+        retencionImss=calcularImssSemanal(e.salario_diario,sugerido,antiguedadImssDe(e));
       }
       nuevas.push({periodo_id:periodo.id,empleado_id:e.id,dias_trabajados:trabajados,dias_pagados:sugerido,trabajo_domingo:trabajoDomingo,salario_diario:e.salario_diario||0,dia_descanso:null,retencion_isr:retencionIsr,retencion_imss:retencionImss,dias_pagados_manual:false});
     }else{
@@ -4939,6 +4961,11 @@ function calcularFactorIntegracion(fechaIngresoIso){
   const dias=diasVacacionesLFT(aniosTabla);
   return(365+15+dias*0.25)/365;
 }
+// La antigüedad para el SBC/cuota IMSS debe basarse en la fecha de alta ante
+// el IMSS, no en la fecha de ingreso real -- casi nunca coinciden. Vacaciones
+// y finiquito siguen usando fecha_ingreso directo (no esta función). Cae a
+// fecha_ingreso si el empleado todavía no tiene fecha_alta_imss capturada.
+function antiguedadImssDe(e){return e&&(e.fecha_alta_imss||e.fecha_ingreso);}
 function calcularImssSemanal(salarioDiario,diasPagados,fechaIngreso){
   const salario=Number(salarioDiario)||0,dias=Number(diasPagados)||0;
   if(salario<=0||dias<=0)return 0;
@@ -5043,8 +5070,8 @@ function renderNominaRow(l,e){
     </div></td>
     <td><div style="display:flex;align-items:center;gap:4px">
       <input type="number" step="0.01" value="${l.retencion_imss}" style="width:64px" onchange="updateLineaField('${l.id}','retencion_imss',this.value)">
-      <button class="he-rate-reset" title="La cuota obrera IMSS 2026 (con salario integrado según antigüedad) calcula ${fmxn(calcularImssSemanal(l.salario_diario,l.dias_pagados,e.fecha_ingreso))} para ${l.dias_pagados} días pagados a ${fmxn(l.salario_diario)}/día. Clic para usar ese valor." onclick="recalcularImssLinea('${l.id}')">↺ auto</button>
-      ${Math.abs((Number(l.retencion_imss)||0)-calcularImssSemanal(l.salario_diario,l.dias_pagados,e.fecha_ingreso))>0.5?`<span title="Capturado: ${fmxn(l.retencion_imss)} — la cuota obrera IMSS calcula: ${fmxn(calcularImssSemanal(l.salario_diario,l.dias_pagados,e.fecha_ingreso))}. No coinciden, revísalo." style="color:var(--amber);cursor:help">⚠️</span>`:''}
+      <button class="he-rate-reset" title="La cuota obrera IMSS 2026 (con salario integrado según antigüedad) calcula ${fmxn(calcularImssSemanal(l.salario_diario,l.dias_pagados,antiguedadImssDe(e)))} para ${l.dias_pagados} días pagados a ${fmxn(l.salario_diario)}/día. Clic para usar ese valor." onclick="recalcularImssLinea('${l.id}')">↺ auto</button>
+      ${Math.abs((Number(l.retencion_imss)||0)-calcularImssSemanal(l.salario_diario,l.dias_pagados,antiguedadImssDe(e)))>0.5?`<span title="Capturado: ${fmxn(l.retencion_imss)} — la cuota obrera IMSS calcula: ${fmxn(calcularImssSemanal(l.salario_diario,l.dias_pagados,antiguedadImssDe(e)))}. No coinciden, revísalo." style="color:var(--amber);cursor:help">⚠️</span>`:''}
     </div></td>
     <td class="nom-total">${fmxn(c.total)}</td>
     <td>${timbreCell}</td>
@@ -5301,7 +5328,7 @@ async function recalcularImssLinea(lineaId){
   const l=nominaLineas.find(x=>x.id===lineaId);
   if(!l)return;
   const e=empData.find(x=>x.id===l.empleado_id);
-  const imss=calcularImssSemanal(l.salario_diario,l.dias_pagados,e&&e.fecha_ingreso);
+  const imss=calcularImssSemanal(l.salario_diario,l.dias_pagados,antiguedadImssDe(e));
   await updateLineaField(lineaId,'retencion_imss',imss);
 }
 // Vuelve a calcular ISR e IMSS de TODAS las líneas de la semana con la
@@ -5318,7 +5345,7 @@ async function recalcularTodaLaNomina(btn){
       const e=empData.find(x=>x.id===l.empleado_id);
       const c=nominaCalc(l);
       const isrAuto=calcularIsrNetoSemanal(c.subtotal,l.salario_diario);
-      const imssAuto=calcularImssSemanal(l.salario_diario,l.dias_pagados,e&&e.fecha_ingreso);
+      const imssAuto=calcularImssSemanal(l.salario_diario,l.dias_pagados,antiguedadImssDe(e));
       const cambia=Math.abs((Number(l.retencion_isr)||0)-isrAuto)>0.5||Math.abs((Number(l.retencion_imss)||0)-imssAuto)>0.5;
       if(!cambia)continue;
       await updateLineaField(l.id,'retencion_isr',isrAuto);
@@ -5442,14 +5469,14 @@ function renderRecibosHePreview(empsArg){
 // larguito que el usuario pidio en vez de la tarjeta compacta original --
 // filas es un arreglo de {concepto, dias, horas, importe} en el orden en que
 // se deben imprimir (importe ya viene formateado, con signo si aplica).
-function reciboCardHTML({titulo,semanaLabel,fechaPago,nombre,puesto,filas,totalLabel,totalMonto,entidad}){
+function reciboCardHTML({titulo,semanaLabel,fechaPago,nombre,puesto,filas,totalLabel,totalMonto,entidad,metaLabel1,metaLabel2}){
   const filasHtml=filas.map(f=>`<tr><td class="rc-concepto">${f.concepto}</td><td>${f.dias??''}</td><td>${f.horas??''}</td><td class="rc-importe">${f.importe}</td></tr>`).join('');
   const logo=entidad==='HOT'?HOT_LOGO:PA_LOGO;
   return`<div class="recibo-card">
     <div class="recibo-card-title"><img src="${logo}" alt="Logo">${titulo}</div>
     <div class="recibo-card-meta">
-      <div><strong>Semana:</strong> ${semanaLabel}</div>
-      <div><strong>Fecha de pago:</strong> ${fechaPago}</div>
+      <div><strong>${metaLabel1||'Semana'}:</strong> ${semanaLabel}</div>
+      <div><strong>${metaLabel2||'Fecha de pago'}:</strong> ${fechaPago}</div>
     </div>
     <div class="recibo-card-nombre">${nombre}${puesto?`<span>— ${puesto}</span>`:''}</div>
     <table class="rc-table">
@@ -5491,6 +5518,106 @@ function imprimirRecibosHorasExtra(){
   }).join('');
   document.getElementById('print-horasextra').innerHTML=`<div class="recibo-grid">${cards||'<div class="empty">Nadie tiene horas extra, retardos, bonificación ni descuento que liquidar esta semana</div>'}</div>`;
   window.print();
+}
+
+// ─── DÍAS FESTIVOS ──────────────────────────────────────────────────
+// Por ley, un día festivo trabajado se paga DOBLE además del salario
+// normal de ese día -- el empleado ya cobra su día normal dentro de su
+// nómina semanal de siempre, así que aquí solo se registra/recibe el doble
+// EXTRA (decisión del dueño, 14-sept-2026). Cada fecha genera su propio
+// recibo con firma (a diferencia de horas_extra, que consolida toda la
+// semana en un solo recibo) -- un empleado con 2 festivos pendientes de
+// pagar necesita 2 recibos firmados, uno por cada fecha.
+let diasFestivosData=[],diasFestivosSel=new Set();
+async function loadDiasFestivos(){
+  const{data}=await sb.from('dias_festivos_pagados').select('*').eq('entidad',moduloActivoEnt).order('fecha',{ascending:false});
+  diasFestivosData=data||[];
+  diasFestivosSel=new Set([...diasFestivosSel].filter(id=>diasFestivosData.some(d=>d.id===id)));
+}
+function populateDiasFestivosEmpleadoSelect(){
+  const sel=document.getElementById('df-empleado');
+  if(!sel)return;
+  const prev=sel.value;
+  const activos=empData.filter(e=>e.entidad===moduloActivoEnt&&e.activo!==false).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  sel.innerHTML=activos.map(e=>`<option value="${e.id}">${e.nombre}</option>`).join('');
+  if([...sel.options].some(o=>o.value===prev))sel.value=prev;
+  if(!document.getElementById('df-fecha').value)document.getElementById('df-fecha').value=new Date().toISOString().slice(0,10);
+}
+function renderDiasFestivos(){
+  populateDiasFestivosEmpleadoSelect();
+  const el=document.getElementById('diasfestivos-list');
+  if(!el)return;
+  if(!diasFestivosData.length){
+    el.innerHTML='<div class="empty" style="padding:16px">Ningún día festivo registrado todavía para '+(ENTS[moduloActivoEnt]?.label||moduloActivoEnt)+'.</div>';
+    return;
+  }
+  const empById={};empData.forEach(e=>{empById[e.id]=e;});
+  const filas=diasFestivosData.map(d=>{
+    const e=empById[d.empleado_id];
+    const doble=Number(d.salario_diario)*2;
+    return `<tr>
+      <td><input type="checkbox" ${diasFestivosSel.has(d.id)?'checked':''} onchange="toggleDiaFestivoSel('${d.id}',this.checked)"/></td>
+      <td>${e?e.nombre:'(empleado eliminado)'}</td>
+      <td>${fmt(d.fecha)}</td>
+      <td>${d.concepto||''}</td>
+      <td class="num">${fmxn(doble)}</td>
+      <td>${d.impreso?'<span class="corte-badge ok">✓ Impreso</span>':'<span class="corte-badge pend">Pendiente</span>'}</td>
+      <td><button class="btn-text" style="color:var(--red)" onclick="eliminarDiaFestivo('${d.id}')">Eliminar</button></td>
+    </tr>`;
+  }).join('');
+  el.innerHTML=`<table class="corte-tbl">
+    <thead><tr><th></th><th>Empleado</th><th>Fecha</th><th>Motivo</th><th class="num">Pago doble</th><th>Recibo</th><th></th></tr></thead>
+    <tbody>${filas}</tbody>
+  </table>`;
+}
+function toggleDiaFestivoSel(id,checked){
+  if(checked)diasFestivosSel.add(id);else diasFestivosSel.delete(id);
+}
+async function agregarDiaFestivo(){
+  const empleado_id=document.getElementById('df-empleado').value;
+  const fecha=document.getElementById('df-fecha').value;
+  const concepto=document.getElementById('df-concepto').value.trim()||null;
+  if(!empleado_id){toast('Selecciona un empleado',true);return;}
+  if(!fecha){toast('Indica la fecha del festivo',true);return;}
+  const e=empData.find(x=>x.id===empleado_id);
+  if(!e||!e.salario_diario){toast('Este empleado no tiene salario diario capturado (Editar en Recursos Humanos)',true);return;}
+  const{error}=await sb.from('dias_festivos_pagados').insert({
+    empleado_id,entidad:moduloActivoEnt,fecha,concepto,salario_diario:e.salario_diario,creado_por:currentUser?.id||null,
+  });
+  if(error){toast('Error: '+(error.code==='23505'?'Ya hay un festivo registrado para este empleado en esa fecha':error.message),true);return;}
+  document.getElementById('df-concepto').value='';
+  await loadDiasFestivos();renderDiasFestivos();
+  toast('Día festivo agregado');
+}
+async function eliminarDiaFestivo(id){
+  if(!confirm('¿Eliminar este registro de día festivo?'))return;
+  const{error}=await sb.from('dias_festivos_pagados').delete().eq('id',id);
+  if(error){toast('Error: '+error.message,true);return;}
+  diasFestivosSel.delete(id);
+  await loadDiasFestivos();renderDiasFestivos();
+}
+async function imprimirRecibosDiasFestivos(){
+  if(!diasFestivosSel.size){toast('Selecciona al menos un día festivo para imprimir',true);return;}
+  const empById={};empData.forEach(e=>{empById[e.id]=e;});
+  const seleccionados=diasFestivosData.filter(d=>diasFestivosSel.has(d.id));
+  const cards=seleccionados.map(d=>{
+    const e=empById[d.empleado_id];
+    if(!e)return'';
+    const doble=Number(d.salario_diario)*2;
+    return reciboCardHTML({
+      titulo:'Recibo de Día Festivo',
+      metaLabel1:'Fecha del festivo',semanaLabel:fmt(d.fecha),
+      metaLabel2:'Motivo',fechaPago:d.concepto||'—',
+      entidad:d.entidad,nombre:e.nombre,puesto:puestoNombre(e.puesto_id)||'',
+      filas:[{concepto:'Día festivo trabajado (pago doble adicional, aparte del salario normal de ese día)',dias:'1',horas:'',importe:fmxn(doble)}],
+      totalLabel:'TOTAL A PAGAR',totalMonto:fmxn(doble),
+    });
+  }).join('');
+  document.getElementById('print-horasextra').innerHTML=`<div class="recibo-grid">${cards}</div>`;
+  window.print();
+  const ids=[...diasFestivosSel];
+  await sb.from('dias_festivos_pagados').update({impreso:true}).in('id',ids);
+  await loadDiasFestivos();renderDiasFestivos();
 }
 
 const NOMINA_EMPRESA={
@@ -9464,7 +9591,7 @@ function renderAutofacturas(){
   }
   const filasTbl=filas.map(f=>{
     const badge=f.facturado
-      ?`<span class="corte-badge ok">✓ ${f.folio_pac?('F-'+String(f.folio_pac).replace(/^F/i,'').trim():'Facturada')}</span>`
+      ?`<span class="corte-badge ok">✓ ${f.folio_pac?('F-'+String(f.folio_pac).replace(/^F/i,'').trim()):'Facturada'}</span>`
       :`<span class="corte-badge pend">Pendiente</span>`;
     const estadoTxt=f.estado==='error'?`<span style="color:var(--red);font-size:11px" title="${(f.error_msg||'').replace(/"/g,'&quot;')}">Error al subir</span>`:'';
     return `<tr>
@@ -13225,6 +13352,7 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'nomina_periodos'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='nomina')await loadNomina().then(renderNomina);})
     .on('postgres_changes',{event:'*',schema:'public',table:'nomina_lineas'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='nomina')await loadNomina().then(renderNomina);})
     .on('postgres_changes',{event:'*',schema:'public',table:'horas_extra'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='horasextra')await loadHorasExtra().then(renderHorasExtraGrid);})
+    .on('postgres_changes',{event:'*',schema:'public',table:'dias_festivos_pagados'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='diasfestivos')await loadDiasFestivos().then(renderDiasFestivos);})
     .on('postgres_changes',{event:'*',schema:'public',table:'horas_extra_semana'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='horasextra')await loadHorasExtra().then(renderHorasExtraGrid);})
     .subscribe((status)=>{
       if(status==='SUBSCRIBED'){console.log('Realtime conectado ✓');showRealtimeIndicator(true);}
