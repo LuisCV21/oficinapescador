@@ -11761,7 +11761,7 @@ async function propagarAnteriorForwardHotel(sucursal,turnoIdBase,aperturaBase,dB
   return propagados;
 }
 
-let editCorte=null; // {id, esHotel, combinado, rows, movRows:[...], cuentaRows:[...], gastoRows:[...]}
+let editCorte=null; // {id, esHotel, combinado, rows, movRows:[...] (restaurante), filaRows:[...] (hotel, unificado)}
 
 function openEditarCorteModal(idOrIds){
   const c=resolverCorte(idOrIds);
@@ -11770,8 +11770,10 @@ function openEditarCorteModal(idOrIds){
   const esHotel=!!(d.resumen_recepcion);
   editCorte=esHotel?{
     id:idOrIds,esHotel:true,combinado:!!c._combinado,rows:c._rows||null,
-    cuentaRows:JSON.parse(JSON.stringify((d.resumen_recepcion&&d.resumen_recepcion.movimientos_cuentas)||[])),
-    gastoRows:JSON.parse(JSON.stringify(d.movimientos_desglose||[])),
+    filaRows:[
+      ...((d.resumen_recepcion&&d.resumen_recepcion.movimientos_cuentas)||[]).map(convertirMovCuentaAUnificadoHotel),
+      ...(d.movimientos_desglose||[]).map(convertirGastoAUnificadoHotel),
+    ],
   }:{
     id:idOrIds,esHotel:false,combinado:false,
     movRows:JSON.parse(JSON.stringify(d.movimientos_desglose||[])),
@@ -12247,16 +12249,13 @@ function recalcularCorteHotelJson(d){
 function ventasSoloDeEsteTurnoHotel(d){
   return Math.round(Object.values(d.ventas_por_forma||{}).reduce((a,b)=>a+Number(b||0),0)*100)/100;
 }
-function gastosSoloDeEsteTurnoHotel(gastoRows){
-  return Math.round(gastoRows.filter(g=>(g.tipo||'').toUpperCase()==='RETIRO').reduce((s,g)=>s+Number(g.monto||0),0)*100)/100;
-}
 function usarVentasSoloDeEsteTurno(){
   const d=leerFormEditarCorteHotel();
   document.getElementById('emh-ventas-check').value=ventasSoloDeEsteTurnoHotel(d);
   renderEditarCortePreviewHotel();
 }
 function usarGastosSoloDeEsteTurno(){
-  document.getElementById('emh-gastos-check').value=gastosSoloDeEsteTurnoHotel(leerGastosHotelDeDOM());
+  document.getElementById('emh-gastos-check').value=gastosSoloDeEsteTurnoHotel(leerFilasHotelDeDOM());
   renderEditarCortePreviewHotel();
 }
 
@@ -12304,24 +12303,19 @@ function renderEditarCorteModalHotel(){
     </div>
 
     <div class="corte-sec" style="border:none;margin:16px 0 6px">
-      Movimientos de cuentas (Bodega / Baucher / Vales)
-      <button class="btn btn-sm" style="margin-left:10px" onclick="agregarFilaCuentaHotel()">+ Agregar movimiento</button>
+      Movimientos del turno (Bodega / Baucher / Vales / Gastos)
+      <button class="btn btn-sm" style="margin-left:10px" onclick="agregarFilaHotel()">+ Agregar movimiento</button>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Retiro = entra dinero a la cuenta (sale de Caja/Baucher). Depósito = la cuenta se liquida/regresa dinero (vuelve a Caja/Baucher) -- ej. un retiro de Bodega que va a Caja se captura como Bodega, Depósito, Sale de: Caja. En Baucher se llama Ingreso/Egreso (no tiene "Sale de" -- son ventas/transferencias directas, no vienen de otra cuenta).</div>
-    <div style="overflow-x:auto"><table class="corte-tbl" style="margin-bottom:4px" id="emh-cuentas-tabla"></table></div>
-
-    <div class="corte-sec" style="border:none;margin:16px 0 6px">
-      Gastos del turno
-      <button class="btn btn-sm" style="margin-left:10px" onclick="agregarFilaGastoHotel()">+ Agregar gasto</button>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:6px">
+      <b>Bolsa</b>: Caja o Baucher, de ahí sale o ahí entra el dinero. <b>Tipo</b>: Egreso = la Bolsa pierde dinero (va hacia la Categoría); Ingreso = la Bolsa gana dinero (viene de la Categoría, o es una venta/transferencia directa de Baucher). <b>Categoría</b> depende de Bolsa+Tipo: Bodega nunca sale de Baucher; "Venta con terminal/Transferencia/Ingreso (otro)" son de Baucher ganando directo -- casi nunca se capturan a mano, el sistema las manda solas, pero están por si hay que corregir.
     </div>
-    <div style="overflow-x:auto"><table class="corte-tbl" style="margin-bottom:4px" id="emh-gastos-tabla"></table></div>
+    <div style="overflow-x:auto"><table class="corte-tbl" style="margin-bottom:4px" id="emh-mov-tabla-hotel"></table></div>
 
     <div class="f-row" style="margin-top:12px"><label>¿Qué corregiste y por qué? <span class="req">*</span></label>
       <input type="text" id="em-motivo" placeholder="ej. faltaba el depósito de bodega de $5,000 del 8-sept"/>
     </div>
   `;
-  renderTablaCuentasHotelEditor();
-  renderTablaGastosHotelEditor();
+  renderTablaMovimientosHotelEditor();
   renderEditarCortePreviewHotel();
 }
 
@@ -12335,238 +12329,269 @@ function colTurnoHtml(m){
   const lbl=m._turno_id===editCorte.rows[0].turno_id?'día':(m._turno_id?'noche':'noche (nuevo)');
   return `<td style="font-size:11px;color:var(--text3);white-space:nowrap">${lbl}</td>`;
 }
-const CUENTA_LABEL_HOTEL=Object.fromEntries(CUENTAS_HOTEL);
-// "Sale de" (Caja/Baucher) -- exactamente la misma idea que el medio del
-// restaurante, solo que aquí (corte_recepcion.py::registrar_movimiento allá)
-// el "doble movimiento" no vive en 1 fila con un campo medio -- se guarda
-// como 2 FILAS separadas: la cuenta destino en positivo, y (si salió de
-// Baucher) otra fila en Baucher en negativo con el mismo concepto, unidas
-// por par_id en la base real del Hotel. Aquí se simula igual: elegir
-// "Baucher" arma sola la fila pareja (ligada por _par_key, solo en memoria
-// -- no se manda, ver leerCuentasHotelDeDOM); nunca se permite Baucher→Bodega
-// (regla de negocio real: lo que sale de Baucher jamás puede ir a Bodega).
-// Pedido explícito del dueño, 15-sept-2026: "en el hotel es lo mismo que en
-// el restaurante, sale de caja o de baucher y tiene que ir a algún lado".
-function filaEsParCuentaHotel(m){return !!m._par_key&&m.cuenta==='baucher';}
-// Tipo (Retiro/Depósito) -- exactamente el mismo concepto que ya usa el
-// editor de restaurante (RETIRO = entra a la cuenta, DEPÓSITO = sale/
-// liquida, ver corte_recepcion.py::registrar_movimiento allá), solo que
-// antes aquí no había ese selector: había que escribir el monto en negativo
-// a mano para representar un depósito/liquidación -- fácil de trabarse con
-// eso, y ni de cerca tan claro como elegir "Depósito" en el desplegable
-// (pedido explícito del dueño, 15-sept-2026, con el turno físico del 10 de
-// sept como ejemplo: 2 retiros de Bodega que regresan a Caja).
-// El tipo elegido se guarda como campo propio en la fila (m.tipo) en vez de
-// derivarlo del signo del monto en cada render -- si se derivara siempre,
-// un monto en 0 (nueva fila antes de escribir el importe) no distingue
-// Retiro de Depósito (0 y -0 dan lo mismo con `<0`), así que elegir
-// "Depósito" con el monto todavía en 0 se revertía solo a "Retiro" en
-// cuanto se refrescaba la tabla. Solo se cae al signo cuando la fila viene
-// del servidor y todavía no tiene `tipo` (corte recién abierto).
-function tipoDeMonto(m){return m&&m.tipo?m.tipo:(Number(m&&m.monto)<0?'deposito':'retiro');}
-function absMonto(monto){return Math.abs(Number(monto)||0);}
-function celdaMedioHtml(m,i){
-  if(m.cuenta==='baucher'){
-    return`<td style="font-size:11px;color:var(--text3)">${filaEsParCuentaHotel(m)?'(mitad Baucher)':'—'}</td>`;
-  }
-  const medio=m.medio||'caja';
-  return`<td><select id="emh-cta-medio-${i}" onchange="cambiarMedioCuentaHotel(${i})">
-    <option value="caja" ${medio==='caja'?'selected':''}>Caja</option>
-    <option value="baucher" ${medio==='baucher'?'selected':''}>Baucher</option>
+// ─── MOVIMIENTOS DEL TURNO (Hotel) — modelo unificado ──────────────────────
+// Armado a mano junto con el dueño, 15-sept-2026, paso a paso hasta que
+// cuadró con cómo él ya lo piensa (y con corte_recepcion.py::registrar_
+// movimiento/dialogo_movimientos.py allá, que hacen exactamente esto mismo):
+//
+//   1. Caja y Baucher son las 2 "bolsas" -- CUALQUIER movimiento sale o
+//      entra de una de las dos, nunca hay un movimiento sin bolsa.
+//   2. Vales Sr. Antonio / Vales del Personal / Bodega / Gasto son
+//      "categorías" -- nunca se mandan dinero entre ellas directo, siempre
+//      pasa por una bolsa en medio.
+//   3. Baucher es especial: además de ser una bolsa, tiene su propio saldo
+//      (como Bodega/Vales) -- sus ventas con terminal y transferencias son
+//      la bolsa Baucher ganando dinero directo, sin pasar por ninguna
+//      categoría (por eso salen como Bolsa=Baucher, Categoría=Baucher).
+//   4. El concepto de fondo es uno solo (¿entra o sale?), pero la palabra es
+//      siempre "Ingreso"/"Egreso" -- ya no "Retiro/Depósito" (eso confundía
+//      sin necesidad: son las mismas 2 direcciones con nombre único).
+//   5. Ingreso/Egreso describe a la BOLSA (columna 1): Egreso = la bolsa
+//      pierde dinero (va hacia la categoría). Ingreso = la bolsa gana
+//      dinero (viene de la categoría, o es una venta/transferencia directa
+//      de Baucher).
+//   6. Qué categorías se pueden elegir depende de Bolsa+Tipo -- confirmado
+//      punto por punto con el dueño:
+//        Caja    + Egreso  → Vales Sr. Antonio, Vales del Personal, Bodega, Gasto
+//        Caja    + Ingreso → Vales Sr. Antonio, Vales del Personal, Bodega
+//        Baucher + Egreso  → Vales Sr. Antonio, Vales del Personal, Gasto (NUNCA Bodega)
+//        Baucher + Ingreso → Venta con terminal, Transferencia, Ingreso (otro)
+//                             -- estas 3 casi nunca las captura la
+//                             recepcionista a mano (el sistema las genera
+//                             solas al cerrar turno), pero deben existir
+//                             para cuando Oficina corrige/agrega una a mano.
+//
+// Antes esto vivía en 2 tablas separadas (Movimientos de cuentas / Gastos
+// del turno) con su propio Tipo cada una, y "Sale de" solo aplicaba a
+// medias filas -- de ahí salían inconsistencias como "Retiro" en una fila
+// que en realidad ENTRABA dinero a Baucher. Ahora es 1 sola tabla con las
+// mismas 3 preguntas siempre en el mismo orden: Bolsa, Tipo, Categoría.
+const CATEGORIAS_MOV_HOTEL={
+  caja:{
+    egreso:[['vales_antonio','Vales Sr. Antonio'],['vales_personal','Vales del Personal'],['bodega','Bodega'],['gasto','Gasto']],
+    ingreso:[['vales_antonio','Vales Sr. Antonio'],['vales_personal','Vales del Personal'],['bodega','Bodega']],
+  },
+  baucher:{
+    egreso:[['vales_antonio','Vales Sr. Antonio'],['vales_personal','Vales del Personal'],['gasto','Gasto']],
+    ingreso:[['venta_terminal','Venta con terminal'],['transferencia','Transferencia'],['ingreso_generico','Ingreso (otro)']],
+  },
+};
+const CATEGORIA_LABEL_HOTEL=Object.fromEntries([
+  ...CATEGORIAS_MOV_HOTEL.caja.egreso,...CATEGORIAS_MOV_HOTEL.caja.ingreso,
+  ...CATEGORIAS_MOV_HOTEL.baucher.egreso,...CATEGORIAS_MOV_HOTEL.baucher.ingreso,
+]);
+// Concepto que se autorrellena si la recepcionista/Oficina no escribe uno
+// propio -- mismo texto que ya usa generar_depositos_baucher() allá.
+const CONCEPTO_AUTO_CATEGORIA_BAUCHER={venta_terminal:'Venta con terminal del turno',transferencia:'Transferencias del turno'};
+// Categorías donde la fila habla de Baucher hablando de sí misma (no hay
+// "otra cuenta" del otro lado) -- ahí Bolsa siempre es Baucher y el signo
+// de la fila es directo (Ingreso=+, Egreso=-), sin invertir nada. '_par' es
+// la fila-espejo que se arma sola cuando Bolsa=Baucher financia una
+// categoría distinta (ver sincronizarParFilaHotel).
+function esFilaBaucherPropia(categoria){
+  return categoria==='venta_terminal'||categoria==='transferencia'||categoria==='ingreso_generico'||categoria==='_par';
+}
+// El signo real que se guarda: si la fila es Baucher hablando de sí misma,
+// el signo sigue directo a su Tipo. Si no, Egreso (la bolsa pierde) hace que
+// la CATEGORÍA reciba dinero (+); Ingreso (la bolsa gana) hace que la
+// categoría lo devuelva (-).
+function signoMontoHotel(fila){
+  if(esFilaBaucherPropia(fila.categoria))return fila.tipo==='ingreso'?1:-1;
+  return fila.tipo==='egreso'?1:-1;
+}
+function r2n(x){return Math.round((Number(x)||0)*100)/100;}
+
+function celdaBolsaHtml(m,i,esPar){
+  if(esPar)return`<td style="font-size:11px;color:var(--text3)">Baucher</td>`;
+  return`<td><select id="emh-fila-medio-${i}" onchange="cambiarFilaHotel(${i})">
+    <option value="caja" ${m.medio==='caja'?'selected':''}>Caja</option>
+    <option value="baucher" ${m.medio==='baucher'?'selected':''}>Baucher</option>
   </select></td>`;
 }
-// Baucher no tiene "Sale de" (sus movimientos no vienen de Caja/Baucher,
-// son ventas/transferencias directas o el regreso automático de un
-// medio=baucher) -- "Retiro/Depósito" ahí no se entiende ("Transferencias
-// del turno" con Retiro sonaba a que salía dinero, cuando en realidad
-// ENTRA). El valor guardado sigue siendo 'retiro'/'deposito' (mismo signo
-// de siempre), solo cambia la palabra que se muestra para Baucher: Ingreso/
-// Egreso. Pedido explícito del dueño, 15-sept-2026.
-function etiquetasTipo(cuenta){
-  return cuenta==='baucher'?['Ingreso','Egreso']:['Retiro','Depósito'];
-}
-function celdaTipoHtml(m,i,esPar){
-  const[lblRetiro,lblDeposito]=etiquetasTipo(m.cuenta);
-  if(esPar){
-    return`<td style="font-size:11px;color:var(--text3)">${tipoDeMonto(m)==='retiro'?lblRetiro:lblDeposito}</td>`;
-  }
-  const tipo=tipoDeMonto(m);
-  return`<td><select id="emh-cta-tipo-${i}" onchange="editarFilaCuentaHotel(${i})">
-    <option value="retiro" ${tipo==='retiro'?'selected':''}>${lblRetiro}</option>
-    <option value="deposito" ${tipo==='deposito'?'selected':''}>${lblDeposito}</option>
+function celdaTipoFilaHtml(m,i,esPar){
+  if(esPar)return`<td style="font-size:11px;color:var(--text3)">${m.tipo==='ingreso'?'Ingreso':'Egreso'}</td>`;
+  return`<td><select id="emh-fila-tipo-${i}" onchange="cambiarFilaHotel(${i})">
+    <option value="egreso" ${m.tipo==='egreso'?'selected':''}>Egreso</option>
+    <option value="ingreso" ${m.tipo==='ingreso'?'selected':''}>Ingreso</option>
   </select></td>`;
 }
-function renderTablaCuentasHotelEditor(){
-  const rows=editCorte.cuentaRows;
+function celdaCategoriaFilaHtml(m,i,esPar){
+  if(esPar)return`<td style="font-size:11px;color:var(--text3)">Baucher (mitad)</td>`;
+  const opciones=(CATEGORIAS_MOV_HOTEL[m.medio]||{})[m.tipo]||[];
+  return`<td><select id="emh-fila-cat-${i}" onchange="cambiarFilaHotel(${i})">
+    ${opciones.map(([v,l])=>`<option value="${v}" ${v===m.categoria?'selected':''}>${l}</option>`).join('')}
+  </select></td>`;
+}
+function renderTablaMovimientosHotelEditor(){
+  const rows=editCorte.filaRows;
   const fila=(m,i)=>{
-    const esPar=filaEsParCuentaHotel(m);
+    const esPar=m.categoria==='_par';
     return`<tr>
-    ${celdaMedioHtml(m,i)}
-    ${celdaTipoHtml(m,i,esPar)}
-    <td><select id="emh-cta-${i}" ${esPar?'disabled':''} onchange="cambiarCuentaFilaHotel(${i})">
-      ${CUENTAS_HOTEL.map(([v,l])=>`<option value="${v}" ${v===m.cuenta?'selected':''}>${l}</option>`).join('')}
-    </select></td>
-    <td><input type="number" step="0.01" min="0" style="width:100px" id="emh-cta-monto-${i}" value="${absMonto(m.monto)}" ${esPar?'disabled':''} onchange="editarFilaCuentaHotel(${i})"/></td>
-    <td><input type="text" style="width:100%" id="emh-cta-concepto-${i}" value="${(m.concepto||'').replace(/"/g,'&quot;')}" ${esPar?'disabled':''} onchange="editarFilaCuentaHotel(${i})"/></td>
+    ${celdaBolsaHtml(m,i,esPar)}
+    ${celdaTipoFilaHtml(m,i,esPar)}
+    ${celdaCategoriaFilaHtml(m,i,esPar)}
+    <td><input type="number" step="0.01" min="0" style="width:100px" id="emh-fila-monto-${i}" value="${m.monto||0}" ${esPar?'disabled':''} onchange="cambiarFilaHotel(${i})"/></td>
+    <td><input type="text" style="width:100%" id="emh-fila-concepto-${i}" value="${(m.concepto||'').replace(/"/g,'&quot;')}" ${esPar?'disabled':''} onchange="cambiarFilaHotel(${i})"/></td>
     ${colTurnoHtml(m)}
-    <td style="text-align:center"><button class="corte-iconbtn" style="display:inline" title="Quitar" onclick="eliminarFilaCuentaHotel(${i})">✕</button></td>
+    <td style="text-align:center"><button class="corte-iconbtn" style="display:inline" title="Quitar" onclick="eliminarFilaHotel(${i})">✕</button></td>
   </tr>`;
   };
-  document.getElementById('emh-cuentas-tabla').innerHTML=`
-    <thead><tr><th>Sale de</th><th>Tipo</th><th>Cuenta</th><th class="num">Monto</th><th>Concepto</th>${editCorte.combinado?'<th>Turno</th>':''}<th></th></tr></thead>
+  document.getElementById('emh-mov-tabla-hotel').innerHTML=`
+    <thead><tr><th>Bolsa</th><th>Tipo</th><th>Categoría</th><th class="num">Monto</th><th>Concepto</th>${editCorte.combinado?'<th>Turno</th>':''}<th></th></tr></thead>
     <tbody>${rows.length?rows.map(fila).join(''):`<tr><td colspan="${editCorte.combinado?7:6}" class="corte-empty">Sin movimientos</td></tr>`}</tbody>
   `;
 }
-// Lee del DOM las filas que SÍ tienen inputs habilitados (una fila-pareja de
-// Baucher está deshabilitada -- su valor se sincroniza aparte, nunca se lee
-// de inputs que no existen de verdad como editables). El monto que se
-// escribe siempre es positivo (absoluto) -- el signo real que se guarda
-// sale del Tipo elegido (Retiro=+, Depósito=-), igual que en el restaurante.
-function leerCuentasHotelDeDOM(){
-  return editCorte.cuentaRows.map((orig,i)=>{
-    if(filaEsParCuentaHotel(orig))return orig;
-    const el=document.getElementById(`emh-cta-${i}`);
-    if(!el)return orig;
-    const tipo=document.getElementById(`emh-cta-tipo-${i}`)?.value||'retiro';
-    const abs=parseFloat(document.getElementById(`emh-cta-monto-${i}`).value)||0;
+// Lee del DOM las filas editables (la fila-espejo de Baucher está
+// deshabilitada, se recalcula aparte -- ver sincronizarParFilaHotel). Bolsa
+// y Tipo pueden no tener <select> propio si la fila es una fila-espejo; en
+// ese caso se conserva lo que ya traía la fila.
+function leerFilasHotelDeDOM(){
+  return editCorte.filaRows.map((orig,i)=>{
+    if(orig.categoria==='_par')return orig;
+    const catEl=document.getElementById(`emh-fila-cat-${i}`);
+    if(!catEl)return orig;
     return{
-      cuenta:el.value,
-      tipo,
-      medio:orig.cuenta==='baucher'?undefined:(document.getElementById(`emh-cta-medio-${i}`)?.value||'caja'),
-      monto:tipo==='deposito'?-abs:abs,
-      concepto:document.getElementById(`emh-cta-concepto-${i}`).value.trim(),
+      medio:document.getElementById(`emh-fila-medio-${i}`).value,
+      tipo:document.getElementById(`emh-fila-tipo-${i}`).value,
+      categoria:catEl.value,
+      monto:parseFloat(document.getElementById(`emh-fila-monto-${i}`).value)||0,
+      concepto:document.getElementById(`emh-fila-concepto-${i}`).value.trim(),
       fecha:orig.fecha||new Date().toISOString(),
       usuario:orig.usuario||(currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina'),
       _turno_id:orig._turno_id,_turno_lbl:orig._turno_lbl,_par_key:orig._par_key,
     };
   });
 }
-// Recalcula/crea/borra la fila-pareja en Baucher de la fila `idx` según su
-// `medio` y monto/concepto ACTUALES -- se llama después de cualquier cambio
-// (medio, monto, concepto) para que la pareja nunca se quede desincronizada.
-function sincronizarParCuentaHotel(idx){
-  const rows=editCorte.cuentaRows;
+// Arma/actualiza/borra la fila-espejo de Baucher de la fila `idx` -- se
+// necesita siempre que Bolsa=Baucher financia una categoría que NO es la
+// propia Baucher (Vales/Gasto), igual que hace corte_recepcion.py allá
+// (2 filas ligadas por par_id en la base real; aquí por _par_key, solo en
+// memoria -- nunca se manda, ver dividirFilaHotelParaGuardar).
+function sincronizarParFilaHotel(idx){
+  const rows=editCorte.filaRows;
   const m=rows[idx];
+  if(m.categoria==='_par')return;
   const parIdx=rows.findIndex(r=>r._par_key&&r._par_key===m._par_key&&r!==m);
-  if(m.medio==='baucher'&&m.cuenta!=='baucher'){
-    const etiqueta=CUENTA_LABEL_HOTEL[m.cuenta]||m.cuenta;
-    const parFila={cuenta:'baucher',monto:r2n(-m.monto),concepto:`${m.concepto} (a ${etiqueta})`,
-      fecha:m.fecha,usuario:m.usuario,_turno_id:m._turno_id,_par_key:m._par_key};
+  const necesitaPar=m.medio==='baucher'&&!esFilaBaucherPropia(m.categoria);
+  if(necesitaPar){
+    if(!m._par_key)m._par_key='par_'+Date.now()+'_'+idx;
+    const montoBaucher=r2n(-signoMontoHotel(m)*m.monto);
+    const etiqueta=CATEGORIA_LABEL_HOTEL[m.categoria]||m.categoria;
+    const parFila={
+      medio:'baucher',categoria:'_par',
+      tipo:montoBaucher>=0?'ingreso':'egreso',
+      monto:Math.abs(montoBaucher),
+      concepto:`${m.concepto} (a ${etiqueta})`,
+      fecha:m.fecha,usuario:m.usuario,_turno_id:m._turno_id,_par_key:m._par_key,
+    };
     if(parIdx===-1)rows.splice(idx+1,0,parFila);
     else rows[parIdx]=parFila;
-  }else if(parIdx!==-1){
-    rows.splice(parIdx,1);
+  }else{
+    m._par_key=undefined;
+    if(parIdx!==-1)rows.splice(parIdx,1);
   }
 }
-function r2n(x){return Math.round((Number(x)||0)*100)/100;}
-function cambiarCuentaFilaHotel(idx){
-  editCorte.cuentaRows=leerCuentasHotelDeDOM();
-  const m=editCorte.cuentaRows[idx];
-  const parIdxActual=()=>editCorte.cuentaRows.findIndex(r=>r._par_key&&r._par_key===m._par_key&&r!==m);
-  if(m.cuenta==='baucher'){
-    // Si la cuenta se cambió A Baucher, ya no tiene sentido que tenga un
-    // "medio"/pareja propia (Baucher no se "financia a sí mismo").
-    const parIdx=parIdxActual();
-    if(parIdx!==-1)editCorte.cuentaRows.splice(parIdx,1);
-    m.medio=undefined;m._par_key=undefined;
-  }else if(m.medio==='baucher'&&m.cuenta==='bodega'){
-    // Bodega nunca sale de Baucher -- se corrige el "Sale de" en vez de
-    // dejar guardada una combinación que no existe en el corte físico.
-    toast('Bodega nunca sale de Baucher -- se cambió "Sale de" a Caja para esta fila.',true);
-    const parIdx=parIdxActual();
-    if(parIdx!==-1)editCorte.cuentaRows.splice(parIdx,1);
-    m.medio='caja';m._par_key=undefined;
-  }else if(m.medio==='baucher'){
-    // La cuenta destino cambió (ej. de Vales Sr. Antonio a Vales del
-    // Personal) -- la fila pareja de Baucher trae el nombre viejo en su
-    // concepto ("(a Vales Sr. Antonio)"), hay que refrescarla.
-    sincronizarParCuentaHotel(idx);
-  }
-  renderTablaCuentasHotelEditor();
+function cambiarFilaHotel(idx){
+  editCorte.filaRows=leerFilasHotelDeDOM();
+  sincronizarParFilaHotel(idx);
+  renderTablaMovimientosHotelEditor();
   renderEditarCortePreviewHotel();
 }
-function cambiarMedioCuentaHotel(idx){
-  editCorte.cuentaRows=leerCuentasHotelDeDOM();
-  const m=editCorte.cuentaRows[idx];
-  const nuevoMedio=document.getElementById(`emh-cta-medio-${idx}`).value;
-  if(nuevoMedio==='baucher'&&m.cuenta==='bodega'){
-    toast('Lo que sale de Baucher nunca puede ir a Bodega -- esa combinación no existe en el corte físico.',true);
-    renderTablaCuentasHotelEditor();
-    return;
-  }
-  m.medio=nuevoMedio;
-  if(nuevoMedio==='baucher'&&!m._par_key)m._par_key='par_'+Date.now()+'_'+idx;
-  sincronizarParCuentaHotel(idx);
-  renderTablaCuentasHotelEditor();
+function agregarFilaHotel(){
+  editCorte.filaRows=leerFilasHotelDeDOM();
+  editCorte.filaRows.push({medio:'caja',tipo:'egreso',categoria:'bodega',monto:0,concepto:'',fecha:new Date().toISOString(),usuario:currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina'});
+  renderTablaMovimientosHotelEditor();
   renderEditarCortePreviewHotel();
 }
-function editarFilaCuentaHotel(idx){
-  editCorte.cuentaRows=leerCuentasHotelDeDOM();
-  if(editCorte.cuentaRows[idx].medio==='baucher')sincronizarParCuentaHotel(idx);
-  renderTablaCuentasHotelEditor();
-  renderEditarCortePreviewHotel();
-}
-function agregarFilaCuentaHotel(){
-  editCorte.cuentaRows=leerCuentasHotelDeDOM();
-  editCorte.cuentaRows.push({cuenta:'bodega',medio:'caja',monto:0,concepto:'',fecha:new Date().toISOString(),usuario:currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina'});
-  renderTablaCuentasHotelEditor();
-  renderEditarCortePreviewHotel();
-}
-function eliminarFilaCuentaHotel(idx){
-  editCorte.cuentaRows=leerCuentasHotelDeDOM();
-  const m=editCorte.cuentaRows[idx];
+function eliminarFilaHotel(idx){
+  editCorte.filaRows=leerFilasHotelDeDOM();
+  const m=editCorte.filaRows[idx];
   if(m._par_key){
-    const parIdx=editCorte.cuentaRows.findIndex(r=>r._par_key===m._par_key&&r!==m);
-    if(parIdx!==-1)editCorte.cuentaRows.splice(parIdx,1);
+    const parIdx=editCorte.filaRows.findIndex(r=>r._par_key===m._par_key&&r!==m);
+    if(parIdx!==-1)editCorte.filaRows.splice(parIdx,1);
   }
-  editCorte.cuentaRows.splice(editCorte.cuentaRows.indexOf(m),1);
-  renderTablaCuentasHotelEditor();
+  editCorte.filaRows.splice(editCorte.filaRows.indexOf(m),1);
+  renderTablaMovimientosHotelEditor();
   renderEditarCortePreviewHotel();
 }
-
-function renderTablaGastosHotelEditor(){
-  const rows=editCorte.gastoRows;
-  const fila=(g,i)=>`<tr>
-    <td><select id="emh-gto-tipo-${i}" onchange="renderEditarCortePreviewHotel()">
-      <option value="RETIRO" ${g.tipo==='RETIRO'?'selected':''}>Retiro</option>
-      <option value="INGRESO" ${g.tipo==='INGRESO'?'selected':''}>Ingreso</option>
-    </select></td>
-    <td><input type="number" step="0.01" style="width:110px" id="emh-gto-monto-${i}" value="${g.monto||0}" onchange="renderEditarCortePreviewHotel()"/></td>
-    <td><input type="text" style="width:100%" id="emh-gto-desc-${i}" value="${(g.descripcion||'').replace(/"/g,'&quot;')}" onchange="renderEditarCortePreviewHotel()"/></td>
-    ${colTurnoHtml(g)}
-    <td style="text-align:center"><button class="corte-iconbtn" style="display:inline" title="Quitar" onclick="eliminarFilaGastoHotel(${i})">✕</button></td>
-  </tr>`;
-  document.getElementById('emh-gastos-tabla').innerHTML=`
-    <thead><tr><th>Tipo</th><th class="num">Monto</th><th>Descripción</th>${editCorte.combinado?'<th>Turno</th>':''}<th></th></tr></thead>
-    <tbody>${rows.length?rows.map(fila).join(''):`<tr><td colspan="${editCorte.combinado?5:4}" class="corte-empty">Sin gastos</td></tr>`}</tbody>
-  `;
-}
-function leerGastosHotelDeDOM(){
-  return editCorte.gastoRows.map((orig,i)=>{
-    const el=document.getElementById(`emh-gto-tipo-${i}`);
-    if(!el)return orig;
-    return{
-      tipo:el.value,
-      monto:parseFloat(document.getElementById(`emh-gto-monto-${i}`).value)||0,
-      descripcion:document.getElementById(`emh-gto-desc-${i}`).value.trim(),
+// Reparte una fila unificada de vuelta a la forma real que guarda cada
+// tabla (turno_movimientos_cuenta / gastos, ver corte_recepcion.py allá) --
+// Gasto sale por su lado (tipo RETIRO/INGRESO + medio), todo lo demás es
+// una fila de cuenta con su cuenta+monto con signo.
+function dividirFilaHotelParaGuardar(fila){
+  const signo=signoMontoHotel(fila);
+  if(fila.categoria==='gasto'){
+    return{esGasto:true,row:{
+      tipo:signo>0?'RETIRO':'INGRESO',
+      monto:r2n(Math.abs(fila.monto)),
+      descripcion:fila.concepto,
       categoria:'General',
-      fecha:orig.fecha||new Date().toISOString(),
-      usuario:orig.usuario||(currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina'),
-      _turno_id:orig._turno_id,
+      medio:fila.medio,
+      fecha:fila.fecha,usuario:fila.usuario,_turno_id:fila._turno_id,
+    }};
+  }
+  const esBaucherPropia=esFilaBaucherPropia(fila.categoria);
+  const cuenta=esBaucherPropia?'baucher':fila.categoria;
+  let concepto=fila.concepto;
+  if(!concepto&&CONCEPTO_AUTO_CATEGORIA_BAUCHER[fila.categoria])concepto=CONCEPTO_AUTO_CATEGORIA_BAUCHER[fila.categoria];
+  const row={
+    cuenta,concepto,
+    monto:r2n(signo*Math.abs(fila.monto)),
+    fecha:fila.fecha,usuario:fila.usuario,
+    _turno_id:fila._turno_id,_turno_lbl:fila._turno_lbl,
+  };
+  if(!esBaucherPropia)row.medio=fila.medio;
+  return{esGasto:false,row};
+}
+// ─── Conversión de lo que ya está guardado (schema real) al modelo
+// unificado, al abrir el editor ────────────────────────────────────────────
+function convertirMovCuentaAUnificadoHotel(mc){
+  const monto=Number(mc.monto)||0;
+  if(mc.cuenta==='baucher'){
+    // Heurística para datos ya guardados: una fila-espejo real siempre
+    // termina en "(a algo)" (mismo patrón que arma dividirFilaHotelParaGuardar
+    // y el registrar_movimiento real allá). Cada una se trata como su propia
+    // fila-espejo suelta (no se re-liga a su origen -- no hay forma
+    // confiable de saber cuál era sin un par_id real) -- se puede seguir
+    // editando/borrando individualmente sin problema.
+    const esPar=/\(a .+\)$/.test(mc.concepto||'');
+    let categoria='ingreso_generico';
+    if(esPar)categoria='_par';
+    else if(/venta con terminal/i.test(mc.concepto||''))categoria='venta_terminal';
+    else if(/transferencia/i.test(mc.concepto||''))categoria='transferencia';
+    return{
+      medio:'baucher',categoria,
+      tipo:monto>=0?'ingreso':'egreso',
+      monto:Math.abs(monto),
+      concepto:mc.concepto,fecha:mc.fecha,usuario:mc.usuario,
+      _turno_id:mc._turno_id,_turno_lbl:mc._turno_lbl,
+      _par_key:esPar?('legacy_'+Math.random().toString(36).slice(2)):undefined,
     };
-  });
+  }
+  return{
+    medio:mc.medio||'caja',categoria:mc.cuenta,
+    tipo:monto>=0?'egreso':'ingreso',
+    monto:Math.abs(monto),
+    concepto:mc.concepto,fecha:mc.fecha,usuario:mc.usuario,
+    _turno_id:mc._turno_id,_turno_lbl:mc._turno_lbl,
+  };
 }
-function agregarFilaGastoHotel(){
-  editCorte.gastoRows=leerGastosHotelDeDOM();
-  editCorte.gastoRows.push({tipo:'RETIRO',monto:0,descripcion:'',categoria:'General',fecha:new Date().toISOString(),usuario:currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina'});
-  renderTablaGastosHotelEditor();
-  renderEditarCortePreviewHotel();
+function convertirGastoAUnificadoHotel(g){
+  const esRetiro=(g.tipo||'RETIRO').toUpperCase()==='RETIRO';
+  return{
+    medio:g.medio||'caja',categoria:'gasto',
+    tipo:esRetiro?'egreso':'ingreso',
+    monto:Math.abs(Number(g.monto)||0),
+    concepto:g.descripcion,fecha:g.fecha,usuario:g.usuario,
+    _turno_id:g._turno_id,
+  };
 }
-function eliminarFilaGastoHotel(idx){
-  editCorte.gastoRows=leerGastosHotelDeDOM();
-  editCorte.gastoRows.splice(idx,1);
-  renderTablaGastosHotelEditor();
-  renderEditarCortePreviewHotel();
+// "Usar solo de este turno" (día combinado) -- ahora se suma sobre las
+// filas unificadas que sean Gasto con Tipo=Egreso (mismo criterio que antes:
+// un gasto tipo Ingreso/reembolso no se resta aquí, se ignora igual que ya
+// hacía gastosSoloDeEsteTurnoHotel con RETIRO).
+function gastosSoloDeEsteTurnoHotel(filaRows){
+  return r2n(filaRows.filter(f=>f.categoria==='gasto'&&f.tipo==='egreso').reduce((s,f)=>s+Math.abs(f.monto),0));
 }
 
 function leerFormEditarCorteHotel(){
@@ -12583,8 +12608,14 @@ function leerFormEditarCorteHotel(){
   rr.anterior_baucher=parseFloat(document.getElementById('emh-ant-baucher').value)||0;
   rr.anterior_vales_antonio=parseFloat(document.getElementById('emh-ant-vales_antonio').value)||0;
   rr.anterior_vales_personal=parseFloat(document.getElementById('emh-ant-vales_personal').value)||0;
-  rr.movimientos_cuentas=leerCuentasHotelDeDOM().map(({_par_key,tipo,...rest})=>rest);
-  d.movimientos_desglose=leerGastosHotelDeDOM();
+  const filas=leerFilasHotelDeDOM();
+  const cuentaRowsGuardar=[],gastoRowsGuardar=[];
+  for(const fila of filas){
+    const{esGasto,row}=dividirFilaHotelParaGuardar(fila);
+    (esGasto?gastoRowsGuardar:cuentaRowsGuardar).push(row);
+  }
+  rr.movimientos_cuentas=cuentaRowsGuardar;
+  d.movimientos_desglose=gastoRowsGuardar;
   recalcularCorteHotelJson(d);
   return d;
 }
