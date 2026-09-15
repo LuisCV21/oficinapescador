@@ -12493,6 +12493,17 @@ function sincronizarParFilaHotel(idx){
 }
 function cambiarFilaHotel(idx){
   editCorte.filaRows=leerFilasHotelDeDOM();
+  const m=editCorte.filaRows[idx];
+  // Si cambiar Bolsa dejó a la Categoría actual fuera de las válidas para
+  // el nuevo Bolsa+Tipo (ej. Bodega al pasar a Baucher), se corrige AQUÍ en
+  // la fila antes de armar la fila-espejo -- si no, sincronizarParFilaHotel
+  // usa la categoría vieja para su etiqueta ("(a Bodega)") un instante
+  // antes de que el <select> ya renderizado la corrija solo, dejando la
+  // fila-espejo con el nombre equivocado hasta el siguiente cambio.
+  if(m&&m.categoria!=='_par'){
+    const opciones=(CATEGORIAS_MOV_HOTEL[m.medio]||{})[m.tipo]||[];
+    if(!opciones.some(([v])=>v===m.categoria))m.categoria=opciones.length?opciones[0][0]:m.categoria;
+  }
   sincronizarParFilaHotel(idx);
   renderTablaMovimientosHotelEditor();
   renderEditarCortePreviewHotel();
