@@ -12307,7 +12307,7 @@ function renderEditarCorteModalHotel(){
       Movimientos de cuentas (Bodega / Baucher / Vales)
       <button class="btn btn-sm" style="margin-left:10px" onclick="agregarFilaCuentaHotel()">+ Agregar movimiento</button>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Retiro = entra dinero a la cuenta (sale de Caja/Baucher). Depósito = la cuenta se liquida/regresa dinero (vuelve a Caja/Baucher) -- ej. un retiro de Bodega que va a Caja se captura como Bodega, Depósito, Sale de: Caja.</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Retiro = entra dinero a la cuenta (sale de Caja/Baucher). Depósito = la cuenta se liquida/regresa dinero (vuelve a Caja/Baucher) -- ej. un retiro de Bodega que va a Caja se captura como Bodega, Depósito, Sale de: Caja. En Baucher se llama Ingreso/Egreso (no tiene "Sale de" -- son ventas/transferencias directas, no vienen de otra cuenta).</div>
     <div style="overflow-x:auto"><table class="corte-tbl" style="margin-bottom:4px" id="emh-cuentas-tabla"></table></div>
 
     <div class="corte-sec" style="border:none;margin:16px 0 6px">
@@ -12375,14 +12375,25 @@ function celdaMedioHtml(m,i){
     <option value="baucher" ${medio==='baucher'?'selected':''}>Baucher</option>
   </select></td>`;
 }
+// Baucher no tiene "Sale de" (sus movimientos no vienen de Caja/Baucher,
+// son ventas/transferencias directas o el regreso automático de un
+// medio=baucher) -- "Retiro/Depósito" ahí no se entiende ("Transferencias
+// del turno" con Retiro sonaba a que salía dinero, cuando en realidad
+// ENTRA). El valor guardado sigue siendo 'retiro'/'deposito' (mismo signo
+// de siempre), solo cambia la palabra que se muestra para Baucher: Ingreso/
+// Egreso. Pedido explícito del dueño, 15-sept-2026.
+function etiquetasTipo(cuenta){
+  return cuenta==='baucher'?['Ingreso','Egreso']:['Retiro','Depósito'];
+}
 function celdaTipoHtml(m,i,esPar){
+  const[lblRetiro,lblDeposito]=etiquetasTipo(m.cuenta);
   if(esPar){
-    return`<td style="font-size:11px;color:var(--text3)">${tipoDeMonto(m)==='retiro'?'Retiro':'Depósito'}</td>`;
+    return`<td style="font-size:11px;color:var(--text3)">${tipoDeMonto(m)==='retiro'?lblRetiro:lblDeposito}</td>`;
   }
   const tipo=tipoDeMonto(m);
   return`<td><select id="emh-cta-tipo-${i}" onchange="editarFilaCuentaHotel(${i})">
-    <option value="retiro" ${tipo==='retiro'?'selected':''}>Retiro</option>
-    <option value="deposito" ${tipo==='deposito'?'selected':''}>Depósito</option>
+    <option value="retiro" ${tipo==='retiro'?'selected':''}>${lblRetiro}</option>
+    <option value="deposito" ${tipo==='deposito'?'selected':''}>${lblDeposito}</option>
   </select></td>`;
 }
 function renderTablaCuentasHotelEditor(){
