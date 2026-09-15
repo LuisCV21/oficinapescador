@@ -12029,8 +12029,8 @@ function splitCorteHotelCombinado(dCombinado){
   const[primero,ultimo]=editCorte.rows;
   const rrC=dCombinado.resumen_recepcion;
   const esDia=id=>id===primero.turno_id;
-  const movCuentasDia  =(rrC.movimientos_cuentas||[]).filter(m=>esDia(m._turno_id)).map(({_turno_id,_turno_lbl,...rest})=>rest);
-  const movCuentasNoche=(rrC.movimientos_cuentas||[]).filter(m=>!esDia(m._turno_id)).map(({_turno_id,_turno_lbl,...rest})=>rest);
+  const movCuentasDia  =(rrC.movimientos_cuentas||[]).filter(m=>esDia(m._turno_id)).map(({_turno_id,_turno_lbl,tipo,...rest})=>rest);
+  const movCuentasNoche=(rrC.movimientos_cuentas||[]).filter(m=>!esDia(m._turno_id)).map(({_turno_id,_turno_lbl,tipo,...rest})=>rest);
   const gastosDia  =(dCombinado.movimientos_desglose||[]).filter(m=>esDia(m._turno_id)).map(({_turno_id,...rest})=>rest);
   const gastosNoche=(dCombinado.movimientos_desglose||[]).filter(m=>!esDia(m._turno_id)).map(({_turno_id,...rest})=>rest);
 
@@ -12356,7 +12356,14 @@ function filaEsParCuentaHotel(m){return !!m._par_key&&m.cuenta==='baucher';}
 // eso, y ni de cerca tan claro como elegir "Depósito" en el desplegable
 // (pedido explícito del dueño, 15-sept-2026, con el turno físico del 10 de
 // sept como ejemplo: 2 retiros de Bodega que regresan a Caja).
-function tipoDeMonto(monto){return Number(monto)<0?'deposito':'retiro';}
+// El tipo elegido se guarda como campo propio en la fila (m.tipo) en vez de
+// derivarlo del signo del monto en cada render -- si se derivara siempre,
+// un monto en 0 (nueva fila antes de escribir el importe) no distingue
+// Retiro de Depósito (0 y -0 dan lo mismo con `<0`), así que elegir
+// "Depósito" con el monto todavía en 0 se revertía solo a "Retiro" en
+// cuanto se refrescaba la tabla. Solo se cae al signo cuando la fila viene
+// del servidor y todavía no tiene `tipo` (corte recién abierto).
+function tipoDeMonto(m){return m&&m.tipo?m.tipo:(Number(m&&m.monto)<0?'deposito':'retiro');}
 function absMonto(monto){return Math.abs(Number(monto)||0);}
 function celdaMedioHtml(m,i){
   if(m.cuenta==='baucher'){
@@ -12370,9 +12377,9 @@ function celdaMedioHtml(m,i){
 }
 function celdaTipoHtml(m,i,esPar){
   if(esPar){
-    return`<td style="font-size:11px;color:var(--text3)">${tipoDeMonto(m.monto)==='retiro'?'Retiro':'Depósito'}</td>`;
+    return`<td style="font-size:11px;color:var(--text3)">${tipoDeMonto(m)==='retiro'?'Retiro':'Depósito'}</td>`;
   }
-  const tipo=tipoDeMonto(m.monto);
+  const tipo=tipoDeMonto(m);
   return`<td><select id="emh-cta-tipo-${i}" onchange="editarFilaCuentaHotel(${i})">
     <option value="retiro" ${tipo==='retiro'?'selected':''}>Retiro</option>
     <option value="deposito" ${tipo==='deposito'?'selected':''}>Depósito</option>
@@ -12413,6 +12420,7 @@ function leerCuentasHotelDeDOM(){
     const abs=parseFloat(document.getElementById(`emh-cta-monto-${i}`).value)||0;
     return{
       cuenta:el.value,
+      tipo,
       medio:orig.cuenta==='baucher'?undefined:(document.getElementById(`emh-cta-medio-${i}`)?.value||'caja'),
       monto:tipo==='deposito'?-abs:abs,
       concepto:document.getElementById(`emh-cta-concepto-${i}`).value.trim(),
@@ -12564,7 +12572,7 @@ function leerFormEditarCorteHotel(){
   rr.anterior_baucher=parseFloat(document.getElementById('emh-ant-baucher').value)||0;
   rr.anterior_vales_antonio=parseFloat(document.getElementById('emh-ant-vales_antonio').value)||0;
   rr.anterior_vales_personal=parseFloat(document.getElementById('emh-ant-vales_personal').value)||0;
-  rr.movimientos_cuentas=leerCuentasHotelDeDOM().map(({_par_key,...rest})=>rest);
+  rr.movimientos_cuentas=leerCuentasHotelDeDOM().map(({_par_key,tipo,...rest})=>rest);
   d.movimientos_desglose=leerGastosHotelDeDOM();
   recalcularCorteHotelJson(d);
   return d;
