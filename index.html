@@ -914,6 +914,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <span class="sb-item-icon">📦</span>
         <span class="sb-item-label">Facturación Global</span>
       </div>
+      <div class="sb-item" onclick="showPage('autofacturas')" id="si-autofacturas">
+        <span class="sb-item-icon">🔎</span>
+        <span class="sb-item-label">Autofacturas</span>
+      </div>
       <div class="sb-item" onclick="showPage('controlgastos')" id="si-controlgastos">
         <span class="sb-item-icon">🧮</span>
         <span class="sb-item-label">Control de Gastos</span>
@@ -1260,6 +1264,30 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             </div>
           </div>
           <div style="padding:16px" id="gp-content"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+        </div>
+      </div>
+
+      <!-- AUTOFACTURAS -->
+      <div class="page" id="page-autofacturas">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">Autofacturas</div>
+            <div class="page-sub">Folios a los que se les dio autofactura en el POS -- verifica aquí mismo contra Factura.com si el cliente ya se autofacturó, sin depender de que la sucursal lo revise y reenvíe el corte</div>
+          </div>
+        </div>
+        <div class="tabs-wrap">
+          <div class="tabs-bar" id="af-tabs-bar"></div>
+          <div class="toolbar">
+            <div class="toolbar-l" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+                <input type="checkbox" id="af-solo-pendientes" checked onchange="renderAutofacturas()"/> Solo pendientes
+              </label>
+            </div>
+            <div class="toolbar-r" style="display:flex;gap:8px">
+              <button class="btn btn-filled" id="af-verificar-btn" onclick="verificarAutofacturas()">🔄 Verificar autofacturas</button>
+            </div>
+          </div>
+          <div style="padding:16px" id="af-content"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
       </div>
 
@@ -2950,6 +2978,7 @@ function showPage(id){
   else if(id==='cortes')renderCortes();
   else if(id==='ventasmes')renderVentasMes();
   else if(id==='globalespreview')renderVistaPreviaGlobales();
+  else if(id==='autofacturas')renderAutofacturas();
   else if(id==='controlgastos')renderControlGastos();
   else if(id==='polizabanco')renderPolizaBanco();
   else if(id==='nominayasist')reloadModuloActivo();
@@ -9339,6 +9368,109 @@ function gpRenderResultado(){
     ${gpAdoHtml()}
     ${gpVistaDiariaHtml()}
   `;
+}
+
+// ─── AUTOFACTURAS ────────────────────────────────────────────────────
+// Folios a los que Pescador POS les dio autofactura (link de autoservicio
+// de Factura.com) -- cada cuenta que subió una trae su registro en
+// cortes_caja.datos.cuentas[].autofactura desde el 14-sept-2026 (antes,
+// Oficina solo veía el booleano final `facturado` en pagos_detalle, sin
+// forma de saber si a un folio se le había dado autofactura o nunca se
+// pidió factura -- Kenya reportó que las autofacturas "no se reflejaban").
+// "Verificar autofacturas" llama al Edge Function del mismo nombre, que
+// consulta Factura.com directo (mismo mecanismo que ya usa Pescador POS en
+// tab_autofacturas.py) y reescribe el corte correspondiente si cambió --
+// no depende de que la sucursal corra su propio botón y reenvíe el corte.
+let currentAFSuc='';
+
+function renderAFTabs(){
+  const bar=document.getElementById('af-tabs-bar');
+  if(!bar)return;
+  const sucs=[...new Set(cortesData.filter(c=>afCuentasDe(c).length).map(c=>c.sucursal).filter(Boolean))].sort();
+  if(!sucs.includes(currentAFSuc))currentAFSuc=sucs[0]||'';
+  bar.innerHTML=sucs.map(s=>
+    `<div class="tab ${currentAFSuc===s?'active':''}" onclick="switchAFSuc('${s.replace(/'/g,"\\'")}')"><span class="ent-dot" style="background:${corteSucColor(s)}"></span>${s}</div>`
+  ).join('');
+}
+function switchAFSuc(s){currentAFSuc=s;renderAutofacturas();}
+function afEntidadActual(){
+  const ent=corteSucEnt(currentAFSuc);
+  if(!ent)return null;
+  return Object.keys(ENTS).find(k=>ENTS[k]===ent)||null;
+}
+// Cada cuenta del corte que trae autofactura, con el contexto del corte
+// (sucursal/turno_id) necesario para que el Edge Function la ubique y la
+// reescriba tras verificar.
+function afCuentasDe(corte){
+  const cuentas=(corte.datos&&corte.datos.cuentas)||[];
+  return cuentas.filter(c=>c.autofactura).map(c=>({
+    sucursal:corte.sucursal, turno_id:corte.turno_id,
+    folio_venta:c.folio||('#'+c.id), ...c.autofactura,
+  }));
+}
+function afFilasSucursalActual(){
+  return cortesData.filter(c=>c.sucursal===currentAFSuc).flatMap(afCuentasDe)
+    .sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+}
+
+async function verificarAutofacturas(){
+  const entidad=afEntidadActual();
+  if(!entidad){toast('No se reconoce la sucursal seleccionada',true);return;}
+  const btn=document.getElementById('af-verificar-btn');
+  btn.disabled=true;btn.textContent='Verificando...';
+  try{
+    const{data:{session}}=await sb.auth.getSession();
+    const resp=await fetch(SUPA_URL+'/functions/v1/verificar-autofacturas',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+      body:JSON.stringify({entidad}),
+    });
+    const out=await resp.json().catch(()=>({error:'Respuesta inválida del servidor'}));
+    if(!resp.ok)throw new Error(out.error||resp.statusText);
+    await loadCortes();
+    renderAutofacturas();
+    toast(`Revisadas ${out.revisadas}. ${out.nuevas_facturadas} ya se autofacturaron.`+(out.errores&&out.errores.length?` (${out.errores.length} con error)`:''), !!(out.errores&&out.errores.length));
+  }catch(e){
+    toast('Error al verificar: '+e.message,true);
+  }finally{
+    btn.disabled=false;btn.textContent='🔄 Verificar autofacturas';
+  }
+}
+
+function renderAutofacturas(){
+  const el=document.getElementById('af-content');
+  if(!el)return;
+  renderAFTabs();
+  if(!currentAFSuc){
+    el.innerHTML=`<div class="empty"><div class="empty-ico">🔎</div>Ninguna sucursal ha mandado autofacturas todavía.</div>`;
+    return;
+  }
+  const soloPendientes=document.getElementById('af-solo-pendientes')?.checked;
+  let filas=afFilasSucursalActual();
+  if(soloPendientes)filas=filas.filter(f=>!f.facturado);
+  if(!filas.length){
+    el.innerHTML=`<div class="empty"><div class="empty-ico">✅</div>${soloPendientes?'No hay autofacturas pendientes':'No hay autofacturas'} en ${corteSucLabel(currentAFSuc)}.</div>`;
+    return;
+  }
+  const filasTbl=filas.map(f=>{
+    const badge=f.facturado
+      ?`<span class="corte-badge ok">✓ ${f.folio_pac?('F-'+String(f.folio_pac).replace(/^F/i,'').trim():'Facturada')}</span>`
+      :`<span class="corte-badge pend">Pendiente</span>`;
+    const estadoTxt=f.estado==='error'?`<span style="color:var(--red);font-size:11px" title="${(f.error_msg||'').replace(/"/g,'&quot;')}">Error al subir</span>`:'';
+    return `<tr>
+      <td>${f.folio_venta}</td>
+      <td>${f.folio||''}</td>
+      <td class="num">${fmxn(f.importe)}</td>
+      <td>${fmt(f.fecha)}</td>
+      <td>${fmt(f.vencimiento)}</td>
+      <td>${badge}</td>
+      <td>${estadoTxt}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML=`<div style="overflow-x:auto"><table class="corte-tbl">
+    <thead><tr><th>Folio venta</th><th>Folio AF</th><th class="num">Importe</th><th>Fecha</th><th>Vencimiento</th><th>Facturado</th><th></th></tr></thead>
+    <tbody>${filasTbl}</tbody>
+  </table></div>`;
 }
 
 // ─── ADO por facturar (informativo) ─────────────────────────────────
