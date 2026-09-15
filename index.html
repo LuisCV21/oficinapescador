@@ -12307,7 +12307,7 @@ function renderEditarCorteModalHotel(){
       Movimientos de cuentas (Bodega / Baucher / Vales)
       <button class="btn btn-sm" style="margin-left:10px" onclick="agregarFilaCuentaHotel()">+ Agregar movimiento</button>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Un monto positivo entra a la cuenta (sale de caja/baucher); uno negativo la liquida/regresa (vuelve a caja/baucher).</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Retiro = entra dinero a la cuenta (sale de Caja/Baucher). Depósito = la cuenta se liquida/regresa dinero (vuelve a Caja/Baucher) -- ej. un retiro de Bodega que va a Caja se captura como Bodega, Depósito, Sale de: Caja.</div>
     <div style="overflow-x:auto"><table class="corte-tbl" style="margin-bottom:4px" id="emh-cuentas-tabla"></table></div>
 
     <div class="corte-sec" style="border:none;margin:16px 0 6px">
@@ -12348,6 +12348,16 @@ const CUENTA_LABEL_HOTEL=Object.fromEntries(CUENTAS_HOTEL);
 // Pedido explícito del dueño, 15-sept-2026: "en el hotel es lo mismo que en
 // el restaurante, sale de caja o de baucher y tiene que ir a algún lado".
 function filaEsParCuentaHotel(m){return !!m._par_key&&m.cuenta==='baucher';}
+// Tipo (Retiro/Depósito) -- exactamente el mismo concepto que ya usa el
+// editor de restaurante (RETIRO = entra a la cuenta, DEPÓSITO = sale/
+// liquida, ver corte_recepcion.py::registrar_movimiento allá), solo que
+// antes aquí no había ese selector: había que escribir el monto en negativo
+// a mano para representar un depósito/liquidación -- fácil de trabarse con
+// eso, y ni de cerca tan claro como elegir "Depósito" en el desplegable
+// (pedido explícito del dueño, 15-sept-2026, con el turno físico del 10 de
+// sept como ejemplo: 2 retiros de Bodega que regresan a Caja).
+function tipoDeMonto(monto){return Number(monto)<0?'deposito':'retiro';}
+function absMonto(monto){return Math.abs(Number(monto)||0);}
 function celdaMedioHtml(m,i){
   if(m.cuenta==='baucher'){
     return`<td style="font-size:11px;color:var(--text3)">${filaEsParCuentaHotel(m)?'(mitad Baucher)':'—'}</td>`;
@@ -12358,6 +12368,16 @@ function celdaMedioHtml(m,i){
     <option value="baucher" ${medio==='baucher'?'selected':''}>Baucher</option>
   </select></td>`;
 }
+function celdaTipoHtml(m,i,esPar){
+  if(esPar){
+    return`<td style="font-size:11px;color:var(--text3)">${tipoDeMonto(m.monto)==='retiro'?'Retiro':'Depósito'}</td>`;
+  }
+  const tipo=tipoDeMonto(m.monto);
+  return`<td><select id="emh-cta-tipo-${i}" onchange="editarFilaCuentaHotel(${i})">
+    <option value="retiro" ${tipo==='retiro'?'selected':''}>Retiro</option>
+    <option value="deposito" ${tipo==='deposito'?'selected':''}>Depósito</option>
+  </select></td>`;
+}
 function renderTablaCuentasHotelEditor(){
   const rows=editCorte.cuentaRows;
   const fila=(m,i)=>{
@@ -12366,30 +12386,35 @@ function renderTablaCuentasHotelEditor(){
     <td><select id="emh-cta-${i}" ${esPar?'disabled':''} onchange="cambiarCuentaFilaHotel(${i})">
       ${CUENTAS_HOTEL.map(([v,l])=>`<option value="${v}" ${v===m.cuenta?'selected':''}>${l}</option>`).join('')}
     </select></td>
+    ${celdaTipoHtml(m,i,esPar)}
     ${celdaMedioHtml(m,i)}
-    <td><input type="number" step="0.01" style="width:110px" id="emh-cta-monto-${i}" value="${m.monto||0}" ${esPar?'disabled':''} onchange="editarFilaCuentaHotel(${i})"/></td>
+    <td><input type="number" step="0.01" min="0" style="width:100px" id="emh-cta-monto-${i}" value="${absMonto(m.monto)}" ${esPar?'disabled':''} onchange="editarFilaCuentaHotel(${i})"/></td>
     <td><input type="text" style="width:100%" id="emh-cta-concepto-${i}" value="${(m.concepto||'').replace(/"/g,'&quot;')}" ${esPar?'disabled':''} onchange="editarFilaCuentaHotel(${i})"/></td>
     ${colTurnoHtml(m)}
     <td style="text-align:center"><button class="corte-iconbtn" style="display:inline" title="Quitar" onclick="eliminarFilaCuentaHotel(${i})">✕</button></td>
   </tr>`;
   };
   document.getElementById('emh-cuentas-tabla').innerHTML=`
-    <thead><tr><th>Cuenta</th><th>Sale de</th><th class="num">Monto</th><th>Concepto</th>${editCorte.combinado?'<th>Turno</th>':''}<th></th></tr></thead>
-    <tbody>${rows.length?rows.map(fila).join(''):`<tr><td colspan="${editCorte.combinado?6:5}" class="corte-empty">Sin movimientos</td></tr>`}</tbody>
+    <thead><tr><th>Cuenta</th><th>Tipo</th><th>Sale de</th><th class="num">Monto</th><th>Concepto</th>${editCorte.combinado?'<th>Turno</th>':''}<th></th></tr></thead>
+    <tbody>${rows.length?rows.map(fila).join(''):`<tr><td colspan="${editCorte.combinado?7:6}" class="corte-empty">Sin movimientos</td></tr>`}</tbody>
   `;
 }
 // Lee del DOM las filas que SÍ tienen inputs habilitados (una fila-pareja de
 // Baucher está deshabilitada -- su valor se sincroniza aparte, nunca se lee
-// de inputs que no existen de verdad como editables).
+// de inputs que no existen de verdad como editables). El monto que se
+// escribe siempre es positivo (absoluto) -- el signo real que se guarda
+// sale del Tipo elegido (Retiro=+, Depósito=-), igual que en el restaurante.
 function leerCuentasHotelDeDOM(){
   return editCorte.cuentaRows.map((orig,i)=>{
     if(filaEsParCuentaHotel(orig))return orig;
     const el=document.getElementById(`emh-cta-${i}`);
     if(!el)return orig;
+    const tipo=document.getElementById(`emh-cta-tipo-${i}`)?.value||'retiro';
+    const abs=parseFloat(document.getElementById(`emh-cta-monto-${i}`).value)||0;
     return{
       cuenta:el.value,
       medio:orig.cuenta==='baucher'?undefined:(document.getElementById(`emh-cta-medio-${i}`)?.value||'caja'),
-      monto:parseFloat(document.getElementById(`emh-cta-monto-${i}`).value)||0,
+      monto:tipo==='deposito'?-abs:abs,
       concepto:document.getElementById(`emh-cta-concepto-${i}`).value.trim(),
       fecha:orig.fecha||new Date().toISOString(),
       usuario:orig.usuario||(currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina'),
