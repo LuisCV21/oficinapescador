@@ -11139,6 +11139,35 @@ function combinarCortesHotelDia(rows){
   });
   const movDesglose=ordenados.flatMap(r=>((r.datos&&r.datos.movimientos_desglose)||[]).map(m=>({...m,_turno_id:r.turno_id})));
   const pagosDetalle=ordenados.flatMap(r=>((r.datos&&r.datos.pagos_detalle)||[]).map(p=>({...p,_turno_id:r.turno_id})));
+
+  // Recalcula el cuadre combinado EN VIVO a partir de los anteriores y
+  // movimientos ACTUALES de cada cuenta, en vez de confiar en total_caja_1/
+  // total_check ya guardados en el turno de noche (rrUltimo) -- esos quedan
+  // viejos en cuanto se corrige un "anterior" del turno de día DESPUÉS de que
+  // la noche ya se había mandado a Oficina (caso real turno #7, 15-sept-2026:
+  // "Anterior de caja" + "Tira" ya no daba el "Total esperado" que se
+  // mostraba, porque ese total venía congelado de antes de la corrección).
+  // Recalculando aquí, cualquier corrección de "anterior" (openCorreccionAnteriorModal)
+  // se refleja sola sin tener que tocar el turno de noche.
+  const r2=x=>Math.round((Number(x)||0)*100)/100;
+  const anterioresDia={
+    bodega:Number(rrPrimero.anterior_bodega||0),
+    baucher:Number(rrPrimero.anterior_baucher||0),
+    vales_antonio:Number(rrPrimero.anterior_vales_antonio||0),
+    vales_personal:Number(rrPrimero.anterior_vales_personal||0),
+  };
+  const totalesCuentas={};
+  for(const cuenta of Object.keys(anterioresDia)){
+    totalesCuentas[cuenta]=r2(anterioresDia[cuenta]+movCuentas.filter(m=>m.cuenta===cuenta).reduce((s,m)=>s+Number(m.monto||0),0));
+  }
+  const totalCaja1=r2(totalesCuentas.bodega+totalesCuentas.baucher+totalesCuentas.vales_antonio+totalesCuentas.vales_personal+Number(rrUltimo.monedas||0)+Number(rrUltimo.billetes||0));
+  const gastosCombinado=Number(rrUltimo.gastos||0);
+  const totalCaja2=r2(totalCaja1+gastosCombinado);
+  const anteriorCheck=Number(rrPrimero.anterior||0);
+  const ventasCombinado=Number(rrUltimo.ventas||0);
+  const totalCheck=r2(anteriorCheck+ventasCombinado);
+  const diferencia=r2(totalCaja2-totalCheck);
+
   return{
     id:ordenados.map(r=>r.id),
     _combinado:true,
@@ -11148,21 +11177,28 @@ function combinarCortesHotelDia(rows){
     apertura:primero.apertura,
     cierre:ultimo.cierre,
     total_ventas:Math.round(ordenados.reduce((s,r)=>s+Number(r.total_ventas||0),0)*100)/100,
-    diferencia_cuadre:rrUltimo.diferencia,
+    diferencia_cuadre:diferencia,
     pdf_path:null,
     datos:{
       ventas_por_forma:vpf,
       movimientos_desglose:movDesglose,
       pagos_detalle:pagosDetalle,
+      cuadre:{diferencia_cuadre:diferencia},
       resumen_recepcion:{
         ...rrUltimo,
         movimientos_cuentas:movCuentas,
-        anterior_bodega:rrPrimero.anterior_bodega,
-        anterior_baucher:rrPrimero.anterior_baucher,
-        anterior_vales_antonio:rrPrimero.anterior_vales_antonio,
-        anterior_vales_personal:rrPrimero.anterior_vales_personal,
-        anterior:rrPrimero.anterior,
-        ventas:rrUltimo.ventas,
+        anterior_bodega:anterioresDia.bodega,
+        anterior_baucher:anterioresDia.baucher,
+        anterior_vales_antonio:anterioresDia.vales_antonio,
+        anterior_vales_personal:anterioresDia.vales_personal,
+        anterior:anteriorCheck,
+        ventas:ventasCombinado,
+        gastos:gastosCombinado,
+        totales_cuentas:totalesCuentas,
+        total_caja_1:totalCaja1,
+        total_caja_2:totalCaja2,
+        total_check:totalCheck,
+        diferencia:diferencia,
       },
     },
   };
@@ -11293,7 +11329,18 @@ function buildCorteDetailBodyHtml(c){
       pdfRow('Baucher',fmxn(d.saldo_baucher))+
       pdfRow('Monedas',fmxn(d.efectivo_monedas))+
       pdfRow('Billetes',fmxn(d.efectivo_billetes))+
-      pdfRow('Vales',fmxn(d.saldo_vales))+
+      // El hotel lleva Vales Sr. Antonio y Vales del Personal como 2 cuentas
+      // independientes (ver corte_recepcion.py allá) -- antes esta tabla las
+      // sumaba en una sola línea "Vales" (d.saldo_vales), lo cual no deja
+      // comparar cada una contra su cuenta del papel por separado (pedido
+      // del dueño, 15-sept-2026, revisando el turno #7). Pescador POS solo
+      // tiene una cuenta de vales, esa sí se deja como antes.
+      (rr?
+        pdfRow('Vales Sr. Antonio',fmxn(rr.totales_cuentas.vales_antonio))+
+        pdfRow('Vales del Personal',fmxn(rr.totales_cuentas.vales_personal))
+      :
+        pdfRow('Vales',fmxn(d.saldo_vales))
+      )+
       // Vales de ADO (Jalapa/Platino/GL/Norte/Veracruz/Puebla) -- el corte
       // físico en papel los desglosa uno por uno debajo de "Vales" antes del
       // TOTAL CAJA; aquí no se mostraban aunque sí iban sumados dentro de
@@ -11380,11 +11427,16 @@ function openCorteDetail(idOrIds){
   // corrigieron en el JSON pero el PDF original se quedó desactualizado).
   const btnPdfGenerado=`<button class="btn btn-filled" onclick='imprimirCorteGenerado(${JSON.stringify(idOrIds).replace(/'/g,"&#39;")})'>🖨 Generar PDF (con correcciones)</button>`;
   // El editor soporta restaurante (Florida/Puebla) y Hotel, cada uno con su
-  // propio formulario (ver renderEditarCorteModal) -- lo único que no se
-  // puede editar es un "combinado" (2 turnos día+noche del Hotel fusionados
-  // solo para mostrarlos juntos, no es un registro real que se guarde de vuelta).
-  const puedeEditar=!c._combinado;
-  const btnEditar=puedeEditar?`<button class="btn" onclick="openEditarCorteModal('${c.id}')">✎ Corregir corte</button>`:'';
+  // propio formulario (ver renderEditarCorteModal). Un "combinado" (2 turnos
+  // día+noche del Hotel fusionados solo para mostrarlos juntos) SÍ se puede
+  // editar -- guardarEdicionCorteHotelCombinadoComun() reparte lo editado de
+  // vuelta a las 2 filas reales (turno día / turno noche) -- pero solo si son
+  // EXACTAMENTE 2 (el patrón normal 8am-8pm/8pm-8am); si algún día hubiera
+  // 3+ turnos combinados (no debería, ver sync_corte.py::mismo_dia allá) no
+  // hay forma segura de repartir los movimientos entre más de 2 filas sin
+  // perder alguno, así que ahí se deja bloqueado como antes.
+  const puedeEditar=!c._combinado||c._rows.length===2;
+  const btnEditar=puedeEditar?`<button class="btn" onclick='openEditarCorteModal(${JSON.stringify(idOrIds).replace(/'/g,"&#39;")})'>✎ Corregir corte</button>`:'';
   document.getElementById('m-corte-detail-ftr').innerHTML=
     btnEditar+btnPdfGenerado+btnPdfOriginal+'<button class="btn" onclick="closeModal(\'m-corte-detail\')">Cerrar</button>';
   openModal('m-corte-detail');
@@ -11627,19 +11679,19 @@ async function propagarAnteriorForward(sucursal,turnoIdBase,dBase,motivoOrigen){
   return propagados;
 }
 
-let editCorte=null; // {id, esHotel, movRows:[...], cuentaRows:[...], gastoRows:[...]}
+let editCorte=null; // {id, esHotel, combinado, rows, movRows:[...], cuentaRows:[...], gastoRows:[...]}
 
-function openEditarCorteModal(corteId){
-  const c=cortesData.find(x=>x.id===corteId);
+function openEditarCorteModal(idOrIds){
+  const c=resolverCorte(idOrIds);
   if(!c){toast('No se encontró ese corte.',true);return;}
   const d=c.datos||{};
   const esHotel=!!(d.resumen_recepcion);
   editCorte=esHotel?{
-    id:corteId,esHotel:true,
+    id:idOrIds,esHotel:true,combinado:!!c._combinado,rows:c._rows||null,
     cuentaRows:JSON.parse(JSON.stringify((d.resumen_recepcion&&d.resumen_recepcion.movimientos_cuentas)||[])),
     gastoRows:JSON.parse(JSON.stringify(d.movimientos_desglose||[])),
   }:{
-    id:corteId,esHotel:false,
+    id:idOrIds,esHotel:false,combinado:false,
     movRows:JSON.parse(JSON.stringify(d.movimientos_desglose||[])),
   };
   document.getElementById('m-editar-corte-title').textContent=`Corregir corte — ${c.sucursal||''} · Turno #${c.turno_id}`;
@@ -11871,8 +11923,128 @@ function renderEditarCortePreview(){
 async function guardarEdicionCorte(){
   const motivo=document.getElementById('em-motivo').value.trim();
   if(!motivo){toast('Escribe qué corregiste y por qué -- queda anotado en el historial del corte.',true);return;}
+  if(editCorte.esHotel&&editCorte.combinado){
+    await guardarEdicionCorteHotelCombinadoComun(leerFormEditarCorteHotel(),motivo);
+    return;
+  }
   const d=editCorte.esHotel?leerFormEditarCorteHotel():leerFormEditarCorte();
   await guardarEdicionCorteComun(d,motivo);
+}
+
+// Reparte lo editado en el formulario combinado (día+noche) de vuelta a las
+// 2 filas REALES de `cortes_caja` -- cada una es un turno de verdad, la
+// vista combinada solo existe en pantalla (ver combinarCortesHotelDia). El
+// turno de NOCHE se queda con el cuadre combinado tal cual (es el que
+// representa el checksum del día completo, mismo criterio que ya usa
+// sync_corte.py allá). El turno de DÍA conserva sus propios anteriores de
+// las 4 cuentas / anterior(checksum) -- que sí se editan aquí pensando en
+// "con qué abrió el día" -- pero su propia Ventas/Gastos/Monedas/Billetes NO
+// se tocan (este formulario combinado no las expone), así que su propio
+// cuadre standalone se recalcula solo con lo que sí cambió.
+function splitCorteHotelCombinado(dCombinado){
+  const r2=x=>Math.round((Number(x)||0)*100)/100;
+  const CUENTAS4=['bodega','baucher','vales_antonio','vales_personal'];
+  const[primero,ultimo]=editCorte.rows;
+  const rrC=dCombinado.resumen_recepcion;
+  const esDia=id=>id===primero.turno_id;
+  const movCuentasDia  =(rrC.movimientos_cuentas||[]).filter(m=>esDia(m._turno_id)).map(({_turno_id,_turno_lbl,...rest})=>rest);
+  const movCuentasNoche=(rrC.movimientos_cuentas||[]).filter(m=>!esDia(m._turno_id)).map(({_turno_id,_turno_lbl,...rest})=>rest);
+  const gastosDia  =(dCombinado.movimientos_desglose||[]).filter(m=>esDia(m._turno_id)).map(({_turno_id,...rest})=>rest);
+  const gastosNoche=(dCombinado.movimientos_desglose||[]).filter(m=>!esDia(m._turno_id)).map(({_turno_id,...rest})=>rest);
+
+  // --- Turno de DÍA: conserva sus propios anteriores de las 4 cuentas /
+  // anterior(checksum) -- se editan aquí pensando en "con qué abrió el día"
+  // -- y sus propios movimientos/gastos. Su Ventas/Monedas/Billetes NO se
+  // tocan (este formulario combinado no las expone), así que su cuadre
+  // standalone se recalcula solo con lo que sí cambió.
+  const dPrimero=JSON.parse(JSON.stringify(primero.datos||{}));
+  const rrP=dPrimero.resumen_recepcion=dPrimero.resumen_recepcion||{};
+  rrP.anterior_bodega=rrC.anterior_bodega;
+  rrP.anterior_baucher=rrC.anterior_baucher;
+  rrP.anterior_vales_antonio=rrC.anterior_vales_antonio;
+  rrP.anterior_vales_personal=rrC.anterior_vales_personal;
+  rrP.anterior=rrC.anterior;
+  rrP.movimientos_cuentas=movCuentasDia;
+  dPrimero.movimientos_desglose=gastosDia;
+  const cierreDia={};
+  for(const cuenta of CUENTAS4){
+    cierreDia[cuenta]=r2(Number(rrP['anterior_'+cuenta]||0)+movCuentasDia.filter(m=>m.cuenta===cuenta).reduce((s,m)=>s+Number(m.monto||0),0));
+  }
+  rrP.totales_cuentas=cierreDia;
+  rrP.total_caja_1=r2(cierreDia.bodega+cierreDia.baucher+cierreDia.vales_antonio+cierreDia.vales_personal+Number(rrP.monedas||0)+Number(rrP.billetes||0));
+  rrP.gastos=r2(gastosDia.filter(g=>(g.tipo||'').toUpperCase()==='RETIRO').reduce((s,g)=>s+Number(g.monto||0),0));
+  rrP.total_caja_2=r2(rrP.total_caja_1+rrP.gastos);
+  rrP.total_check=r2(Number(rrP.anterior||0)+Number(rrP.ventas||0));
+  rrP.diferencia=r2(rrP.total_caja_2-rrP.total_check);
+  dPrimero.cuadre={diferencia_cuadre:rrP.diferencia};
+
+  // --- Turno de NOCHE: "anterior" de cada cuenta es el CIERRE recién
+  // recalculado del día (no el anterior de apertura del día) -- así, si
+  // alguien vuelve a recalcular esta fila sola más adelante (anterior +
+  // movimientos propios), le sigue dando lo mismo que aquí, sin quedar
+  // dependiente para siempre del turno de día. El resto (monedas/billetes/
+  // ventas/gastos/anterior del checksum) sí es el combinado tal cual, ya que
+  // representa el checksum del día completo -- mismo criterio que ya usa
+  // sync_corte.py allá.
+  const dUltimo=JSON.parse(JSON.stringify(ultimo.datos||{}));
+  const rrU=dUltimo.resumen_recepcion=dUltimo.resumen_recepcion||{};
+  rrU.monedas=rrC.monedas;
+  rrU.billetes=rrC.billetes;
+  rrU.anterior=rrC.anterior;
+  rrU.ventas=rrC.ventas;
+  rrU.gastos=rrC.gastos;
+  rrU.anterior_bodega=cierreDia.bodega;
+  rrU.anterior_baucher=cierreDia.baucher;
+  rrU.anterior_vales_antonio=cierreDia.vales_antonio;
+  rrU.anterior_vales_personal=cierreDia.vales_personal;
+  rrU.movimientos_cuentas=movCuentasNoche;
+  dUltimo.movimientos_desglose=gastosNoche;
+  const totalesNoche={};
+  for(const cuenta of CUENTAS4){
+    totalesNoche[cuenta]=r2(cierreDia[cuenta]+movCuentasNoche.filter(m=>m.cuenta===cuenta).reduce((s,m)=>s+Number(m.monto||0),0));
+  }
+  rrU.totales_cuentas=totalesNoche;
+  rrU.total_caja_1=r2(totalesNoche.bodega+totalesNoche.baucher+totalesNoche.vales_antonio+totalesNoche.vales_personal+Number(rrU.monedas||0)+Number(rrU.billetes||0));
+  rrU.total_caja_2=r2(rrU.total_caja_1+Number(rrU.gastos||0));
+  rrU.total_check=r2(Number(rrU.anterior||0)+Number(rrU.ventas||0));
+  rrU.diferencia=r2(rrU.total_caja_2-rrU.total_check);
+  dUltimo.cuadre={diferencia_cuadre:rrU.diferencia};
+
+  return{dPrimero,dUltimo};
+}
+
+async function guardarEdicionCorteHotelCombinadoComun(dCombinado,motivo){
+  const btn=document.getElementById('em-save-btn');
+  btn.disabled=true;
+  try{
+    const[primero,ultimo]=editCorte.rows;
+    const{dPrimero,dUltimo}=splitCorteHotelCombinado(dCombinado);
+    const nombre=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina';
+    const nota={
+      fecha:new Date().toISOString(),usuario:nombre,motivo,
+      diferencia_cuadre_antes:Number(ultimo.diferencia_cuadre||0),
+      diferencia_cuadre_despues:dUltimo.resumen_recepcion.diferencia,
+    };
+    dPrimero.ediciones=Array.isArray(dPrimero.ediciones)?dPrimero.ediciones:[];
+    dPrimero.ediciones.push(nota);
+    dUltimo.ediciones=Array.isArray(dUltimo.ediciones)?dUltimo.ediciones:[];
+    dUltimo.ediciones.push(nota);
+    const[rP,rU]=await Promise.all([
+      sb.from('cortes_caja').update({datos:dPrimero,diferencia_cuadre:dPrimero.cuadre.diferencia_cuadre}).eq('id',primero.id),
+      sb.from('cortes_caja').update({datos:dUltimo,diferencia_cuadre:dUltimo.resumen_recepcion.diferencia}).eq('id',ultimo.id),
+    ]);
+    if(rP.error)throw new Error(`Turno día #${primero.turno_id}: ${rP.error.message}`);
+    if(rU.error)throw new Error(`Turno noche #${ultimo.turno_id}: ${rU.error.message}`);
+    closeModal('m-editar-corte');
+    toast('Corte corregido y recuadrado (día + noche).');
+    await loadCortes();
+    renderCortes();
+    if(document.getElementById('m-corte-detail').classList.contains('open'))openCorteDetail(editCorte.id);
+  }catch(e){
+    toast('No se pudo guardar: '+e.message,true);
+  }finally{
+    btn.disabled=false;
+  }
 }
 
 // Guardado compartido por restaurante y Hotel -- ambos ya llegan aquí con un
@@ -11994,39 +12166,43 @@ function usarGastosSoloDeEsteTurno(){
 }
 
 function renderEditarCorteModalHotel(){
-  const c=cortesData.find(x=>x.id===editCorte.id);
+  const c=resolverCorte(editCorte.id);
   const d=c.datos||{};
   const rr=d.resumen_recepcion||{};
+  const combinado=editCorte.combinado;
   document.getElementById('m-editar-corte-body').innerHTML=`
     <div style="background:var(--amber-light,#fff3cd);color:var(--amber,#856404);border-radius:8px;padding:8px 10px;font-size:11.5px;margin-bottom:12px">
       Esto corrige el registro que Oficina ya tiene de este corte (y lo recuadra), no lo que quedó en el sistema del Hotel.
-      Si el error viene del arrastre (Bodega/Baucher/Vales que trajo mal el turno siguiente), después de guardar aquí usa además
-      <b>"Corregir anterior"</b> para que el próximo turno de ${c.sucursal} también nazca bien.
+      ${combinado
+        ?`Es un corte combinado (turno día #${editCorte.rows[0].turno_id} + turno noche #${editCorte.rows[1].turno_id}): "Anteriores" y "Anterior (checksum)" son los del turno de <b>día</b> (con qué abrió el día);
+           Monedas/Billetes y Ventas/Gastos (checksum) son los del turno de <b>noche</b> (el cierre real del día completo). Cada movimiento de abajo trae su etiqueta (día/noche) para que sepas a cuál turno le pertenece; uno nuevo se guarda como de la noche.`
+        :`Si el error viene del arrastre (Bodega/Baucher/Vales que trajo mal el turno siguiente), después de guardar aquí usa además
+           <b>"Corregir anterior"</b> para que el próximo turno de ${c.sucursal} también nazca bien.`}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div>
-        <div class="corte-sec" style="border:none;margin:0 0 6px">Efectivo contado</div>
+        <div class="corte-sec" style="border:none;margin:0 0 6px">Efectivo contado${combinado?' (turno noche)':''}</div>
         <div class="f-row"><label>Monedas</label><input type="number" step="0.01" id="emh-monedas" value="${rr.monedas||0}" onchange="renderEditarCortePreviewHotel()"/></div>
         <div class="f-row"><label>Billetes</label><input type="number" step="0.01" id="emh-billetes" value="${rr.billetes||0}" onchange="renderEditarCortePreviewHotel()"/></div>
 
-        <div class="corte-sec" style="border:none;margin:14px 0 6px">Anteriores (con qué abrió este turno)</div>
+        <div class="corte-sec" style="border:none;margin:14px 0 6px">Anteriores${combinado?' (con qué abrió el turno de día)':' (con qué abrió este turno)'}</div>
         <div class="f-row"><label>Anterior de bodega</label><input type="number" step="0.01" id="emh-ant-bodega" value="${rr.anterior_bodega||0}" onchange="renderEditarCortePreviewHotel()"/></div>
         <div class="f-row"><label>Anterior de baucher</label><input type="number" step="0.01" id="emh-ant-baucher" value="${rr.anterior_baucher||0}" onchange="renderEditarCortePreviewHotel()"/></div>
         <div class="f-row"><label>Anterior de Vales Sr. Antonio</label><input type="number" step="0.01" id="emh-ant-vales_antonio" value="${rr.anterior_vales_antonio||0}" onchange="renderEditarCortePreviewHotel()"/></div>
         <div class="f-row"><label>Anterior de Vales del Personal</label><input type="number" step="0.01" id="emh-ant-vales_personal" value="${rr.anterior_vales_personal||0}" onchange="renderEditarCortePreviewHotel()"/></div>
 
         <div class="corte-sec" style="border:none;margin:14px 0 6px">Checksum del día (Anterior / Ventas / Gastos)</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Ojo: si este turno es la 2a mitad de un día combinado (día+noche del Hotel), estos 3 ya vienen acumulados con la 1a mitad -- no le den "usar solo de este turno" a menos que sepan que este turno NO está combinado.</div>
+        ${combinado?'':'<div style="font-size:11px;color:var(--text3);margin-bottom:6px">Ojo: si este turno es la 2a mitad de un día combinado (día+noche del Hotel), estos 3 ya vienen acumulados con la 1a mitad -- no le den "usar solo de este turno" a menos que sepan que este turno NO está combinado.</div>'}
         <div class="f-row"><label>Anterior (checksum)</label><input type="number" step="0.01" id="emh-ant-check" value="${rr.anterior||0}" onchange="renderEditarCortePreviewHotel()"/></div>
         <div class="f-row"><label>Ventas (checksum)</label><input type="number" step="0.01" id="emh-ventas-check" value="${rr.ventas||0}" onchange="renderEditarCortePreviewHotel()"/>
-          <span class="btn-text" style="font-size:11px;cursor:pointer" onclick="usarVentasSoloDeEsteTurno()">usar solo las de este turno</span>
+          ${combinado?'':'<span class="btn-text" style="font-size:11px;cursor:pointer" onclick="usarVentasSoloDeEsteTurno()">usar solo las de este turno</span>'}
         </div>
         <div class="f-row"><label>Gastos (checksum)</label><input type="number" step="0.01" id="emh-gastos-check" value="${rr.gastos||0}" onchange="renderEditarCortePreviewHotel()"/>
-          <span class="btn-text" style="font-size:11px;cursor:pointer" onclick="usarGastosSoloDeEsteTurno()">usar solo los de este turno</span>
+          ${combinado?'':'<span class="btn-text" style="font-size:11px;cursor:pointer" onclick="usarGastosSoloDeEsteTurno()">usar solo los de este turno</span>'}
         </div>
       </div>
       <div>
-        <div class="corte-sec" style="border:none;margin:0 0 6px">Ventas por forma de pago (folios de este turno)</div>
+        <div class="corte-sec" style="border:none;margin:0 0 6px">Ventas por forma de pago (folios de ${combinado?'ambos turnos':'este turno'})</div>
         <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px">Se calcula sola de los folios de pago -- no se captura a mano.</div>
         <div id="emh-preview" style="margin-top:6px"></div>
       </div>
@@ -12054,6 +12230,16 @@ function renderEditarCorteModalHotel(){
   renderEditarCortePreviewHotel();
 }
 
+// Columna "Turno" -- solo aparece en un corte combinado (día+noche) para que
+// se vea a cuál de las 2 filas reales pertenece cada movimiento; se rellena
+// sola con la etiqueta que ya trae cada fila (_turno_lbl, ver
+// combinarCortesHotelDia) y una nueva fila se asume del turno de noche
+// (guardarEdicionCorteHotelCombinadoComun manda ahí todo lo sin etiquetar).
+function colTurnoHtml(m){
+  if(!editCorte.combinado)return'';
+  const lbl=m._turno_id===editCorte.rows[0].turno_id?'día':(m._turno_id?'noche':'noche (nuevo)');
+  return `<td style="font-size:11px;color:var(--text3);white-space:nowrap">${lbl}</td>`;
+}
 function renderTablaCuentasHotelEditor(){
   const rows=editCorte.cuentaRows;
   const fila=(m,i)=>`<tr>
@@ -12062,11 +12248,12 @@ function renderTablaCuentasHotelEditor(){
     </select></td>
     <td><input type="number" step="0.01" style="width:110px" id="emh-cta-monto-${i}" value="${m.monto||0}" onchange="renderEditarCortePreviewHotel()"/></td>
     <td><input type="text" style="width:100%" id="emh-cta-concepto-${i}" value="${(m.concepto||'').replace(/"/g,'&quot;')}" onchange="renderEditarCortePreviewHotel()"/></td>
+    ${colTurnoHtml(m)}
     <td style="text-align:center"><button class="corte-iconbtn" style="display:inline" title="Quitar" onclick="eliminarFilaCuentaHotel(${i})">✕</button></td>
   </tr>`;
   document.getElementById('emh-cuentas-tabla').innerHTML=`
-    <thead><tr><th>Cuenta</th><th class="num">Monto</th><th>Concepto</th><th></th></tr></thead>
-    <tbody>${rows.length?rows.map(fila).join(''):`<tr><td colspan="4" class="corte-empty">Sin movimientos</td></tr>`}</tbody>
+    <thead><tr><th>Cuenta</th><th class="num">Monto</th><th>Concepto</th>${editCorte.combinado?'<th>Turno</th>':''}<th></th></tr></thead>
+    <tbody>${rows.length?rows.map(fila).join(''):`<tr><td colspan="${editCorte.combinado?5:4}" class="corte-empty">Sin movimientos</td></tr>`}</tbody>
   `;
 }
 function leerCuentasHotelDeDOM(){
@@ -12079,6 +12266,7 @@ function leerCuentasHotelDeDOM(){
       concepto:document.getElementById(`emh-cta-concepto-${i}`).value.trim(),
       fecha:orig.fecha||new Date().toISOString(),
       usuario:orig.usuario||(currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina'),
+      _turno_id:orig._turno_id,_turno_lbl:orig._turno_lbl,
     };
   });
 }
@@ -12104,11 +12292,12 @@ function renderTablaGastosHotelEditor(){
     </select></td>
     <td><input type="number" step="0.01" style="width:110px" id="emh-gto-monto-${i}" value="${g.monto||0}" onchange="renderEditarCortePreviewHotel()"/></td>
     <td><input type="text" style="width:100%" id="emh-gto-desc-${i}" value="${(g.descripcion||'').replace(/"/g,'&quot;')}" onchange="renderEditarCortePreviewHotel()"/></td>
+    ${colTurnoHtml(g)}
     <td style="text-align:center"><button class="corte-iconbtn" style="display:inline" title="Quitar" onclick="eliminarFilaGastoHotel(${i})">✕</button></td>
   </tr>`;
   document.getElementById('emh-gastos-tabla').innerHTML=`
-    <thead><tr><th>Tipo</th><th class="num">Monto</th><th>Descripción</th><th></th></tr></thead>
-    <tbody>${rows.length?rows.map(fila).join(''):`<tr><td colspan="4" class="corte-empty">Sin gastos</td></tr>`}</tbody>
+    <thead><tr><th>Tipo</th><th class="num">Monto</th><th>Descripción</th>${editCorte.combinado?'<th>Turno</th>':''}<th></th></tr></thead>
+    <tbody>${rows.length?rows.map(fila).join(''):`<tr><td colspan="${editCorte.combinado?5:4}" class="corte-empty">Sin gastos</td></tr>`}</tbody>
   `;
 }
 function leerGastosHotelDeDOM(){
@@ -12122,6 +12311,7 @@ function leerGastosHotelDeDOM(){
       categoria:'General',
       fecha:orig.fecha||new Date().toISOString(),
       usuario:orig.usuario||(currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina'),
+      _turno_id:orig._turno_id,
     };
   });
 }
@@ -12139,7 +12329,7 @@ function eliminarFilaGastoHotel(idx){
 }
 
 function leerFormEditarCorteHotel(){
-  const c=cortesData.find(x=>x.id===editCorte.id);
+  const c=resolverCorte(editCorte.id);
   const d=JSON.parse(JSON.stringify(c.datos||{}));
   d.resumen_recepcion=d.resumen_recepcion||{};
   const rr=d.resumen_recepcion;
