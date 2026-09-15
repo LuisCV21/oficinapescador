@@ -11278,7 +11278,7 @@ function buildCorteDetailBodyHtml(c){
   const bloqueCuentaHotel=(titulo,cuenta)=>{
     const movs=(rr.movimientos_cuentas||[]).filter(m=>m.cuenta===cuenta);
     // "medio" (de dónde salió: Caja/Baucher) -- solo lo traen los turnos
-    // mandados desde el fix del 16-sept-2026 (antes hotel-sistema no lo
+    // mandados desde el fix del 15-sept-2026 (antes hotel-sistema no lo
     // enviaba); si no viene, no se muestra nada en vez de asumir "Caja".
     const filas=movs.map(m=>pdfRow(
       (m.concepto||'—')
@@ -11695,7 +11695,7 @@ async function propagarAnteriorForward(sucursal,turnoIdBase,dBase,motivoOrigen){
 // MISMO día (la mitad noche de un corte combinado) lo hereda TAL CUAL, sin
 // recalcularlo -- exactamente la regla de sync_corte.py::mismo_dia allá.
 // Ventas/Gastos de cada turno no se tocan aquí (no dependen del arrastre de
-// las cuentas). Pedido explícito del dueño, 16-sept-2026 (turno #7):
+// las cuentas). Pedido explícito del dueño, 15-sept-2026 (turno #7):
 // corregir el corte de un día no movía el anterior del día siguiente, que se
 // quedaba descuadrado hasta que alguien lo repitiera a mano.
 async function propagarAnteriorForwardHotel(sucursal,turnoIdBase,aperturaBase,dBase,motivoOrigen){
@@ -12345,7 +12345,7 @@ const CUENTA_LABEL_HOTEL=Object.fromEntries(CUENTAS_HOTEL);
 // "Baucher" arma sola la fila pareja (ligada por _par_key, solo en memoria
 // -- no se manda, ver leerCuentasHotelDeDOM); nunca se permite Baucher→Bodega
 // (regla de negocio real: lo que sale de Baucher jamás puede ir a Bodega).
-// Pedido explícito del dueño, 16-sept-2026: "en el hotel es lo mismo que en
+// Pedido explícito del dueño, 15-sept-2026: "en el hotel es lo mismo que en
 // el restaurante, sale de caja o de baucher y tiene que ir a algún lado".
 function filaEsParCuentaHotel(m){return !!m._par_key&&m.cuenta==='baucher';}
 function celdaMedioHtml(m,i){
