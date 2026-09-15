@@ -5561,17 +5561,30 @@ function renderDiasFestivos(){
       <td>${fmt(d.fecha)}</td>
       <td>${d.concepto||''}</td>
       <td class="num">${fmxn(doble)}</td>
-      <td>${d.impreso?'<span class="corte-badge ok">✓ Impreso</span>':'<span class="corte-badge pend">Pendiente</span>'}</td>
+      <td>${d.impreso?'<span class="corte-badge ok">✓ Impreso</span>':'<span class="corte-badge pend">Sin imprimir</span>'}</td>
+      <td><label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" ${d.pagado?'checked':''} onchange="togglePagoDiaFestivo('${d.id}',this.checked)"/>
+        ${d.pagado?`<span class="corte-badge ok">✓ Pagado</span>`:`<span class="corte-badge pend">Pendiente de pago</span>`}
+      </label></td>
       <td><button class="btn-text" style="color:var(--red)" onclick="eliminarDiaFestivo('${d.id}')">Eliminar</button></td>
     </tr>`;
   }).join('');
   el.innerHTML=`<table class="corte-tbl">
-    <thead><tr><th></th><th>Empleado</th><th>Fecha</th><th>Motivo</th><th class="num">Pago doble</th><th>Recibo</th><th></th></tr></thead>
+    <thead><tr><th></th><th>Empleado</th><th>Fecha</th><th>Motivo</th><th class="num">Pago doble</th><th>Recibo</th><th>Pago</th><th></th></tr></thead>
     <tbody>${filas}</tbody>
   </table>`;
 }
 function toggleDiaFestivoSel(id,checked){
   if(checked)diasFestivosSel.add(id);else diasFestivosSel.delete(id);
+}
+// Independiente de "impreso" -- a veces no se pagan los 2 festivos de golpe,
+// uno se liquida hoy y el otro después, y hace falta saber cuál ya se pagó
+// de verdad (no solo cuál ya se imprimió). Se puede marcar/desmarcar sin
+// necesidad de reimprimir el recibo.
+async function togglePagoDiaFestivo(id,pagado){
+  const{error}=await sb.from('dias_festivos_pagados').update({pagado,pagado_at:pagado?new Date().toISOString():null}).eq('id',id);
+  if(error){toast('Error: '+error.message,true);await loadDiasFestivos();renderDiasFestivos();return;}
+  await loadDiasFestivos();renderDiasFestivos();
 }
 async function agregarDiaFestivo(){
   const empleado_id=document.getElementById('df-empleado').value;
