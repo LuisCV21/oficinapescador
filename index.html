@@ -11679,6 +11679,80 @@ async function propagarAnteriorForward(sucursal,turnoIdBase,dBase,motivoOrigen){
   return propagados;
 }
 
+// Misma idea que propagarAnteriorForward (arriba) pero para el Hotel: las 4
+// cuentas (bodega/baucher/vales Sr. Antonio/vales Personal) SIEMPRE se
+// heredan del turno inmediato anterior (sea día o noche), pero el "anterior"
+// del checksum solo cambia al abrir un día CALENDARIO nuevo -- toma el
+// total_caja_1 del turno que cerró el día anterior -- y si el turno sigue el
+// MISMO día (la mitad noche de un corte combinado) lo hereda TAL CUAL, sin
+// recalcularlo -- exactamente la regla de sync_corte.py::mismo_dia allá.
+// Ventas/Gastos de cada turno no se tocan aquí (no dependen del arrastre de
+// las cuentas). Pedido explícito del dueño, 16-sept-2026 (turno #7):
+// corregir el corte de un día no movía el anterior del día siguiente, que se
+// quedaba descuadrado hasta que alguien lo repitiera a mano.
+async function propagarAnteriorForwardHotel(sucursal,turnoIdBase,aperturaBase,dBase,motivoOrigen){
+  const{data:siguientes,error:errSel}=await sb.from('cortes_caja').select('*')
+    .eq('sucursal',sucursal).gt('turno_id',turnoIdBase).order('turno_id',{ascending:true});
+  if(errSel)throw new Error(errSel.message);
+  const r2=x=>Math.round((Number(x)||0)*100)/100;
+  const CUENTAS4=['bodega','baucher','vales_antonio','vales_personal'];
+  const nombre=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina';
+  const rrBase=dBase.resumen_recepcion;
+  let anterior4={bodega:rrBase.totales_cuentas.bodega,baucher:rrBase.totales_cuentas.baucher,vales_antonio:rrBase.totales_cuentas.vales_antonio,vales_personal:rrBase.totales_cuentas.vales_personal};
+  let totalCaja1Prev=rrBase.total_caja_1;
+  let checksumVigente=rrBase.anterior; // por si el turno base tuviera una 3a mitad el mismo día (no debería, ver sync_corte.py)
+  let fechaContexto=(aperturaBase||'').slice(0,10);
+  let propagados=0;
+  for(const sig of(siguientes||[])){
+    const d2=JSON.parse(JSON.stringify(sig.datos||{}));
+    const rr2=d2.resumen_recepcion=d2.resumen_recepcion||{};
+    const fechaT=(sig.apertura||'').slice(0,10);
+    if(fechaT!==fechaContexto){checksumVigente=totalCaja1Prev;fechaContexto=fechaT;}
+    rr2.anterior_bodega=anterior4.bodega;
+    rr2.anterior_baucher=anterior4.baucher;
+    rr2.anterior_vales_antonio=anterior4.vales_antonio;
+    rr2.anterior_vales_personal=anterior4.vales_personal;
+    rr2.anterior=checksumVigente;
+    const totalesT={};
+    for(const cuenta of CUENTAS4){
+      totalesT[cuenta]=r2(anterior4[cuenta]+(rr2.movimientos_cuentas||[]).filter(m=>m.cuenta===cuenta).reduce((s,m)=>s+Number(m.monto||0),0));
+    }
+    rr2.totales_cuentas=totalesT;
+    rr2.total_caja_1=r2(totalesT.bodega+totalesT.baucher+totalesT.vales_antonio+totalesT.vales_personal+Number(rr2.monedas||0)+Number(rr2.billetes||0));
+    rr2.total_caja_2=r2(rr2.total_caja_1+Number(rr2.gastos||0));
+    rr2.total_check=r2(Number(rr2.anterior||0)+Number(rr2.ventas||0));
+    rr2.diferencia=r2(rr2.total_caja_2-rr2.total_check);
+    d2.cuadre={diferencia_cuadre:rr2.diferencia};
+    d2.ediciones=Array.isArray(d2.ediciones)?d2.ediciones:[];
+    d2.ediciones.push({
+      fecha:new Date().toISOString(),usuario:nombre,
+      motivo:`Recalculado en cadena: cambio el "anterior" al corregir el turno ${turnoIdBase}`+(motivoOrigen?` (${motivoOrigen})`:''),
+      diferencia_cuadre_antes:Number(sig.diferencia_cuadre||0),
+      diferencia_cuadre_despues:rr2.diferencia,
+    });
+    const{error}=await sb.from('cortes_caja').update({datos:d2,diferencia_cuadre:rr2.diferencia}).eq('id',sig.id);
+    if(error)throw new Error(`Turno ${sig.turno_id}: ${error.message}`);
+    propagados++;
+    anterior4=totalesT;
+    totalCaja1Prev=rr2.total_caja_1;
+  }
+  // Deja lista la corrección para que el POS del Hotel la jale sola en su
+  // próximo turno real que abra -- mismo mecanismo que "Corregir anterior" a
+  // mano (correcciones_anterior_pendientes, sucursal="Real de Poza Hotel").
+  const pendiente={
+    sucursal,anterior_caja:0,
+    anterior_bodega:anterior4.bodega,
+    anterior_baucher:anterior4.baucher,
+    anterior_vales_antonio:anterior4.vales_antonio,
+    anterior_vales_personal:anterior4.vales_personal,
+    motivo:`Auto-generado al corregir el turno ${turnoIdBase} y recalcular la cadena en Oficina`+(motivoOrigen?`: ${motivoOrigen}`:''),
+    creada_por:nombre+' (auto)',
+  };
+  const{error:errIns}=await sb.from('correcciones_anterior_pendientes').insert(pendiente);
+  if(errIns)throw new Error('Se recalculo la cadena pero no se pudo dejar la correccion pendiente para el POS: '+errIns.message);
+  return propagados;
+}
+
 let editCorte=null; // {id, esHotel, combinado, rows, movRows:[...], cuentaRows:[...], gastoRows:[...]}
 
 function openEditarCorteModal(idOrIds){
@@ -12035,8 +12109,18 @@ async function guardarEdicionCorteHotelCombinadoComun(dCombinado,motivo){
     ]);
     if(rP.error)throw new Error(`Turno día #${primero.turno_id}: ${rP.error.message}`);
     if(rU.error)throw new Error(`Turno noche #${ultimo.turno_id}: ${rU.error.message}`);
+    let propagados=0,errorCadena=null;
+    try{
+      propagados=await propagarAnteriorForwardHotel(ultimo.sucursal,ultimo.turno_id,ultimo.apertura,dUltimo,motivo);
+    }catch(e){errorCadena=e.message;}
     closeModal('m-editar-corte');
-    toast('Corte corregido y recuadrado (día + noche).');
+    if(errorCadena){
+      toast(`Corte corregido, pero no se pudo encadenar hacia los días siguientes: ${errorCadena}`,true);
+    }else if(propagados){
+      toast(`Corte corregido y recuadrado (día + noche). Se ajustó el "anterior" de ${propagados} turno(s) posteriores y quedó lista la corrección para que el Hotel la aplique sola.`);
+    }else{
+      toast('Corte corregido y recuadrado (día + noche).');
+    }
     await loadCortes();
     renderCortes();
     if(document.getElementById('m-corte-detail').classList.contains('open'))openCorteDetail(editCorte.id);
@@ -12063,15 +12147,18 @@ async function guardarEdicionCorteComun(d,motivo){
     });
     const {error}=await sb.from('cortes_caja').update({datos:d,diferencia_cuadre:d.cuadre.diferencia_cuadre}).eq('id',editCorte.id);
     if(error)throw new Error(error.message);
-    let propagados=0;
-    if(!editCorte.esHotel){
-      propagados=await propagarAnteriorForward(c.sucursal,c.turno_id,d,motivo);
-    }
+    let propagados=0,errorCadena=null;
+    try{
+      propagados=editCorte.esHotel
+        ?await propagarAnteriorForwardHotel(c.sucursal,c.turno_id,c.apertura,d,motivo)
+        :await propagarAnteriorForward(c.sucursal,c.turno_id,d,motivo);
+    }catch(e){errorCadena=e.message;}
     closeModal('m-editar-corte');
-    if(editCorte.esHotel){
-      toast('Corte corregido y recuadrado. Nota: el Hotel no encadena solo por el caso de días combinados -- revisa a mano el siguiente turno si aplica.');
+    if(errorCadena){
+      toast(`Corte corregido, pero no se pudo encadenar hacia los días siguientes: ${errorCadena}`,true);
     }else if(propagados){
-      toast(`Corte corregido y recuadrado. Se ajustó el "anterior" de ${propagados} corte(s) posteriores y quedó lista la corrección para que el POS la aplique sola.`);
+      const unidad=editCorte.esHotel?'turno(s)':'corte(s)';
+      toast(`Corte corregido y recuadrado. Se ajustó el "anterior" de ${propagados} ${unidad} posteriores y quedó lista la corrección para que ${editCorte.esHotel?'el Hotel la aplique sola':'el POS la aplique sola'}.`);
     }else{
       toast('Corte corregido y recuadrado.');
     }
