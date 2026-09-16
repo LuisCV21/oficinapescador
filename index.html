@@ -8741,6 +8741,12 @@ function preAnteriorDeCorte(c){
     baucher:(rr.totales_cuentas&&rr.totales_cuentas.baucher)||0,
     vales_antonio:(rr.totales_cuentas&&rr.totales_cuentas.vales_antonio)||0,
     vales_personal:(rr.totales_cuentas&&rr.totales_cuentas.vales_personal)||0,
+    // Total de Caja (1) de este corte YA cerrado = lo que debería quedar
+    // como "Anterior de Caja" del turno siguiente -- se muestra aquí nada
+    // más para referencia (comparar contra el corte físico), NO se
+    // preselecciona en el campo del modal (ese sigue vacío = "sin cambio"
+    // por default, ver camposHotel).
+    total_caja_1:rr.total_caja_1||0,
   };
   const sa=d.saldo_ado||{};
   const pre={
@@ -8778,7 +8784,7 @@ function renderCorteAnteriorPanel(){
     const pre=preAnteriorDeCorte(c);
     const pendiente=correccionAnteriorPendienteDe(s);
     const filas=pre.tipo==='hotel'
-      ?[['Vales Sr. Antonio',pre.vales_antonio],['Vales del Personal',pre.vales_personal],['Bodega',pre.bodega],['Baucher',pre.baucher]]
+      ?[['Vales Sr. Antonio',pre.vales_antonio],['Vales del Personal',pre.vales_personal],['Bodega',pre.bodega],['Baucher',pre.baucher],['Anterior de Caja (calculado)',pre.total_caja_1]]
       :[['Caja',pre.caja],['Bodega',pre.bodega],['Vales',pre.vales],['Baucher',pre.baucher]];
     return`<div class="acc-card" style="min-width:220px;flex:1;background:${corteBg(s,6)};border-left:4px solid ${corteSucColor(s)}">
       <div style="font-weight:600;font-size:13px;margin-bottom:6px"><span class="ent-dot" style="background:${corteSucColor(s)}"></span> ${corteSucLabel(s)}</div>
@@ -13061,6 +13067,8 @@ function openCorreccionAnteriorModal(sucursal,pre){
     <div class="f-row"><label>Anterior de Vales del Personal</label><input type="number" step="0.01" id="ca-vales-personal" value="${p.vales_personal||0}"/></div>
     <div class="f-row"><label>Anterior de Bodega</label><input type="number" step="0.01" id="ca-bodega" value="${p.bodega||0}"/></div>
     <div class="f-row"><label>Anterior de Baucher</label><input type="number" step="0.01" id="ca-baucher" value="${p.baucher||0}"/></div>
+    <div style="font-size:11px;color:var(--text3);margin:10px 0 4px">Anterior de Caja (checksum del corte -- el sistema calcula ${fmxn(p.total_caja_1||0)}; opcional, deja vacío para no tocarlo)</div>
+    <div class="f-row"><label>Anterior de Caja</label><input type="number" step="0.01" id="ca-anterior-caja" placeholder="sin cambio"/></div>
   `;
   const ADO_ETIQUETAS={ado_jalapa:'ADO Jalapa',ado_platino:'ADO Platino',ado_gl:'ADO GL',ado_norte:'ADO Norte',ado_veracruz:'ADO Veracruz',ado_puebla:'ADO Puebla'};
   const camposRestaurante=`
@@ -13103,13 +13111,22 @@ async function guardarCorreccionAnterior(sucursal){
   try{
     if(esHotel){
       payload={
-        sucursal,anterior_caja:0,
+        sucursal,
         anterior_bodega:leerCampo('ca-bodega','Anterior de Bodega'),
         anterior_baucher:leerCampo('ca-baucher','Anterior de Baucher'),
         anterior_vales_antonio:leerCampo('ca-vales-antonio','Anterior de Vales Sr. Antonio'),
         anterior_vales_personal:leerCampo('ca-vales-personal','Anterior de Vales del Personal'),
         motivo,creada_por:creadaPor,
       };
+      // Anterior de Caja (el checksum) es opcional -- a diferencia de los 4
+      // de arriba, que Pescador POS aplica TODOS juntos cada vez, este es
+      // independiente (set_anterior_caja aparte, ver aplicar_correccion_
+      // anterior_pendiente en hotel-sistema): vacío = no tocar el que ya
+      // quedó guardado al abrir turno. Antes se mandaba siempre en 0, lo
+      // cual dejaba el checksum del hotel roto -- no había forma de
+      // corregirlo. Pedido del dueño, 16-sept-2026.
+      const rawAntCaja=document.getElementById('ca-anterior-caja').value;
+      if(rawAntCaja.trim()!=='')payload.anterior_caja=parseFloat(rawAntCaja);
     }else{
       payload={
         sucursal,
