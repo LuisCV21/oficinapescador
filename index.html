@@ -1505,6 +1505,12 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 </div>
 </div>
 
+<!-- Directorio de clientes_fiscales para autocompletar al facturar --
+buscarClienteFiscal() lo llena con "RFC — Razón social" (ver
+cargarClientesFiscalesCache); compartido por "Facturar folio individual"
+y "Crear CFDI sustituto". -->
+<datalist id="dl-clientes-fiscales"></datalist>
+
 <!-- MODAL FACTURAR UN FOLIO INDIVIDUAL A UN CLIENTE -->
 <div class="modal-overlay" id="m-facturar-individual">
 <div class="modal" style="max-width:460px">
@@ -9953,6 +9959,7 @@ async function openFacturarModal(sucursal,folio){
   document.getElementById('m-facturar-individual-body').innerHTML=`<div class="loading"><div class="spinner"></div>Buscando folio...</div>`;
   document.getElementById('m-facturar-individual-ftr').innerHTML='';
   openModal('m-facturar-individual');
+  cargarClientesFiscalesCache();
   let out;
   try{
     out=await gpLlamarFuncion({accion:'buscar_folio',entidad,folio});
@@ -9966,7 +9973,7 @@ async function openFacturarModal(sucursal,folio){
       <span>${pago.sat_nombre} · ${pago.cuenta||'—'} · ${pago.fecha?new Date(pago.fecha).toLocaleDateString('es-MX'):''}</span>
       <strong>${fmxn(total)}</strong>
     </div>
-    <div class="f-row"><label>RFC del cliente <span class="req">*</span></label><input type="text" id="fi-rfc" style="text-transform:uppercase" placeholder="XAXX010101000" onblur="buscarClienteFiscalOfi(this.value)"/><span id="fi-rfc-hint" style="font-size:11px;color:var(--green)"></span></div>
+    <div class="f-row"><label>RFC o nombre del cliente <span class="req">*</span></label><input type="text" id="fi-rfc" list="dl-clientes-fiscales" placeholder="XAXX010101000 o empieza a escribir el nombre" oninput="buscarClienteFiscal(this.value,'fi')"/><span id="fi-rfc-hint" style="font-size:11px;color:var(--green)"></span></div>
     <div class="f-row"><label>Razón social <span class="req">*</span></label><input type="text" id="fi-razon" placeholder="Nombre o razón social"/></div>
     <div class="f-row"><label>Código postal fiscal <span class="req">*</span></label><input type="text" id="fi-cp" maxlength="5" placeholder="93320"/></div>
     <div class="f-row"><label>Régimen fiscal <span class="req">*</span></label>
@@ -9976,6 +9983,7 @@ async function openFacturarModal(sucursal,folio){
       <select id="fi-uso">${USOS_CFDI_OFI.map(([c,l])=>`<option value="${c}" ${c==='G03'?'selected':''}>${l}</option>`).join('')}</select>
     </div>
     <div class="f-row"><label>Correo (opcional)</label><input type="email" id="fi-email" placeholder="cliente@correo.com"/></div>
+    <div class="f-row"><label>Descripción del concepto</label><input type="text" id="fi-descripcion" value="${entidad==='HOT'?'Servicio de hospedaje':'Alimentos y bebidas'}" placeholder="Descripción que aparece en la factura"/></div>
     <div class="f-row"><label>Método de pago</label>
       <select id="fi-metodo"><option value="PUE" selected>PUE — Pago en una sola exhibición</option><option value="PPD">PPD — Pago en parcialidades o diferido</option></select>
     </div>
@@ -9985,22 +9993,56 @@ async function openFacturarModal(sucursal,folio){
     `<button class="btn btn-filled" id="fi-timbrar-btn" onclick="confirmarFacturarIndividual('${entidad}',${folio})">Timbrar CFDI</button>`;
 }
 
-// Autocompleta con el directorio consolidado de clientes_fiscales -- un
-// cliente que ya facturó en OTRA sucursal no hay que volver a capturarlo
-// a mano.
-async function buscarClienteFiscalOfi(rfcTexto){
-  const rfc=(rfcTexto||'').trim().toUpperCase();
-  const hint=document.getElementById('fi-rfc-hint');
-  if(!hint)return;
-  if(rfc.length<12){hint.textContent='';return;}
-  const{data}=await sb.from('clientes_fiscales').select('*').eq('rfc',rfc).maybeSingle();
-  if(!data){hint.textContent='';return;}
-  document.getElementById('fi-razon').value=data.razon_social||'';
-  if(data.cp)document.getElementById('fi-cp').value=data.cp;
-  if(data.regimen_fiscal)document.getElementById('fi-regimen').value=data.regimen_fiscal;
-  if(data.uso_cfdi)document.getElementById('fi-uso').value=data.uso_cfdi;
-  if(data.email)document.getElementById('fi-email').value=data.email;
-  hint.textContent=`✓ Cliente encontrado (ya facturó en ${(data.sucursales||[]).map(e=>ENTS[e]?.label||e).join(', ')})`;
+// Directorio consolidado de clientes_fiscales, cacheado en el navegador
+// (1700+ filas, no vale la pena repetir el select cada vez) -- se carga al
+// abrir "Facturar folio individual" / "Crear CFDI sustituto" y llena el
+// <datalist> con "RFC — Razón social" para poder buscar por nombre, no
+// solo tecleando el RFC exacto (pedido del dueño, 17-sept-2026: "no me
+// sale la opción de buscarlo").
+let clientesFiscalesCache=null;
+async function cargarClientesFiscalesCache(){
+  if(clientesFiscalesCache)return clientesFiscalesCache;
+  const{data}=await sb.from('clientes_fiscales').select('rfc,razon_social,regimen_fiscal,uso_cfdi,cp,email,sucursales');
+  clientesFiscalesCache=data||[];
+  const dl=document.getElementById('dl-clientes-fiscales');
+  if(dl)dl.innerHTML=clientesFiscalesCache.map(c=>
+    `<option value="${(c.rfc||'').replace(/"/g,'&quot;')} — ${(c.razon_social||'').replace(/"/g,'&quot;')}">`
+  ).join('');
+  return clientesFiscalesCache;
+}
+// Autocompleta RFC/razón social/CP/régimen/uso CFDI/correo -- funciona
+// tecleando el RFC directo (igual que antes) o eligiendo del <datalist> por
+// nombre. Comparte esta lógica "Facturar folio individual" (prefix 'fi') y
+// "Crear CFDI sustituto" (prefix 'cs', con soloSiVacio:true porque ahí la
+// razón social ya viene prellenada con el dato A CORREGIR y no se debe
+// pisar sola).
+function buscarClienteFiscal(valorInput,prefix,{soloSiVacio=false}={}){
+  const raw=(valorInput||'').trim();
+  const esSeleccionDatalist=raw.includes(' — ');
+  const rfc=(esSeleccionDatalist?raw.split(' — ')[0]:raw).trim().toUpperCase();
+  const rfcInput=document.getElementById(prefix+'-rfc');
+  // Solo se reescribe el input cuando viene de elegir el datalist (limpia
+  // "RFC — Razón" a solo el RFC) -- si se reescribiera en cada tecleo se
+  // saltaría el cursor al final mientras alguien escribe un nombre letra
+  // por letra.
+  if(esSeleccionDatalist&&rfcInput)rfcInput.value=rfc;
+  const hint=document.getElementById(prefix+'-rfc-hint');
+  if(rfc.length<12){if(hint)hint.textContent='';return;}
+  const aplicar=(c)=>{
+    if(!c){if(hint)hint.textContent='';return;}
+    const razonEl=document.getElementById(prefix+'-razon');
+    if(razonEl&&(!soloSiVacio||!razonEl.value))razonEl.value=c.razon_social||'';
+    if(c.cp)document.getElementById(prefix+'-cp').value=c.cp;
+    if(c.regimen_fiscal)document.getElementById(prefix+'-regimen').value=c.regimen_fiscal;
+    if(c.uso_cfdi)document.getElementById(prefix+'-uso').value=c.uso_cfdi;
+    if(c.email)document.getElementById(prefix+'-email').value=c.email;
+    if(hint)hint.textContent=`✓ Cliente encontrado (ya facturó en ${(c.sucursales||[]).map(e=>ENTS[e]?.label||e).join(', ')})`;
+  };
+  if(clientesFiscalesCache){
+    aplicar(clientesFiscalesCache.find(c=>c.rfc===rfc)||null);
+    return;
+  }
+  sb.from('clientes_fiscales').select('*').eq('rfc',rfc).maybeSingle().then(({data})=>aplicar(data));
 }
 
 async function confirmarFacturarIndividual(entidad,folio){
@@ -10010,13 +10052,14 @@ async function confirmarFacturarIndividual(entidad,folio){
   const regimen_fiscal=document.getElementById('fi-regimen').value;
   const uso_cfdi=document.getElementById('fi-uso').value;
   const email=document.getElementById('fi-email').value.trim();
+  const descripcion=document.getElementById('fi-descripcion').value.trim();
   const metodo_pago=document.getElementById('fi-metodo').value;
   if(!rfc||!razon_social||!cp){toast('RFC, razón social y CP son obligatorios',true);return;}
   if(!confirm(`Esto genera un CFDI real ante el SAT a nombre de ${razon_social} (${rfc}), no se puede deshacer con un simple clic. ¿Confirmas timbrar?`))return;
   const btn=document.getElementById('fi-timbrar-btn');
   btn.disabled=true;btn.textContent='Timbrando...';
   try{
-    const out=await gpLlamarFuncion({accion:'timbrar_individual',entidad,folio,rfc,razon_social,cp,regimen_fiscal,uso_cfdi,email,metodo_pago});
+    const out=await gpLlamarFuncion({accion:'timbrar_individual',entidad,folio,rfc,razon_social,cp,regimen_fiscal,uso_cfdi,email,metodo_pago,descripcion});
     closeModal('m-facturar-individual');
     toast(`✓ Timbrada — folio fiscal ${out.factura.folio_pac||out.factura.uuid_fiscal.slice(0,8)}`);
     renderVentasMes();
@@ -13113,6 +13156,7 @@ async function openCrearSustitutoModal(sucursal,folio,uuidOriginal,entidad){
   document.getElementById('m-crear-sustituto-body').innerHTML=`<div class="loading"><div class="spinner"></div>Buscando folio...</div>`;
   document.getElementById('m-crear-sustituto-ftr').innerHTML='';
   openModal('m-crear-sustituto');
+  cargarClientesFiscalesCache();
   let out;
   try{
     out=await gpLlamarFuncion({accion:'buscar_folio_sustituto',entidad,folio});
@@ -13133,7 +13177,7 @@ async function openCrearSustitutoModal(sucursal,folio,uuidOriginal,entidad){
       <span>${pago.sat_nombre} · ${pago.cuenta||'—'} · ${pago.fecha?new Date(pago.fecha).toLocaleDateString('es-MX'):''}</span>
       <strong>${fmxn(total)}</strong>
     </div>
-    <div class="f-row"><label>RFC del cliente <span class="req">*</span></label><input type="text" id="cs-rfc" style="text-transform:uppercase" value="${previo.rfc_receptor||''}" placeholder="XAXX010101000" onblur="buscarClienteFiscalCs(this.value)"/><span id="cs-rfc-hint" style="font-size:11px;color:var(--green)"></span></div>
+    <div class="f-row"><label>RFC o nombre del cliente <span class="req">*</span></label><input type="text" id="cs-rfc" list="dl-clientes-fiscales" value="${previo.rfc_receptor||''}" placeholder="XAXX010101000 o empieza a escribir el nombre" oninput="buscarClienteFiscal(this.value,'cs',{soloSiVacio:true})"/><span id="cs-rfc-hint" style="font-size:11px;color:var(--green)"></span></div>
     <div class="f-row"><label>Razón social <span class="req">*</span></label><input type="text" id="cs-razon" value="${(previo.razon_social||'').replace(/"/g,'&quot;')}" placeholder="Nombre o razón social"/></div>
     <div class="f-row"><label>Código postal fiscal <span class="req">*</span></label><input type="text" id="cs-cp" maxlength="5" placeholder="93320"/></div>
     <div class="f-row"><label>Régimen fiscal <span class="req">*</span></label>
@@ -13143,6 +13187,7 @@ async function openCrearSustitutoModal(sucursal,folio,uuidOriginal,entidad){
       <select id="cs-uso">${USOS_CFDI_OFI.map(([c,l])=>`<option value="${c}" ${c==='G03'?'selected':''}>${l}</option>`).join('')}</select>
     </div>
     <div class="f-row"><label>Correo (opcional)</label><input type="email" id="cs-email" placeholder="cliente@correo.com"/></div>
+    <div class="f-row"><label>Descripción del concepto</label><input type="text" id="cs-descripcion" value="${entidad==='HOT'?'Servicio de hospedaje':'Alimentos y bebidas'}" placeholder="Descripción que aparece en la factura"/></div>
     <div class="f-row"><label>Método de pago</label>
       <select id="cs-metodo"><option value="PUE" selected>PUE — Pago en una sola exhibición</option><option value="PPD">PPD — Pago en parcialidades o diferido</option></select>
     </div>
@@ -13150,25 +13195,7 @@ async function openCrearSustitutoModal(sucursal,folio,uuidOriginal,entidad){
   document.getElementById('m-crear-sustituto-ftr').innerHTML=
     `<button class="btn" onclick="closeModal('m-crear-sustituto')">Cancelar</button>`+
     `<button class="btn btn-filled" id="cs-timbrar-btn" onclick="confirmarCrearSustituto('${entidad}',${folio},'${uuidOriginal.replace(/'/g,"\\'")}')">Timbrar sustituto</button>`;
-  if(previo.rfc_receptor)buscarClienteFiscalCs(previo.rfc_receptor);
-}
-
-// Autocompleta con el directorio consolidado de clientes_fiscales -- mismo
-// directorio que ya usa openFacturarModal, para no volver a capturar a
-// mano un cliente que ya facturó antes en cualquier sucursal.
-async function buscarClienteFiscalCs(rfcTexto){
-  const rfc=(rfcTexto||'').trim().toUpperCase();
-  const hint=document.getElementById('cs-rfc-hint');
-  if(!hint)return;
-  if(rfc.length<12){hint.textContent='';return;}
-  const{data}=await sb.from('clientes_fiscales').select('*').eq('rfc',rfc).maybeSingle();
-  if(!data){hint.textContent='';return;}
-  if(!document.getElementById('cs-razon').value)document.getElementById('cs-razon').value=data.razon_social||'';
-  if(data.cp)document.getElementById('cs-cp').value=data.cp;
-  if(data.regimen_fiscal)document.getElementById('cs-regimen').value=data.regimen_fiscal;
-  if(data.uso_cfdi)document.getElementById('cs-uso').value=data.uso_cfdi;
-  if(data.email)document.getElementById('cs-email').value=data.email;
-  hint.textContent=`✓ Cliente encontrado (ya facturó en ${(data.sucursales||[]).map(e=>ENTS[e]?.label||e).join(', ')})`;
+  if(previo.rfc_receptor)buscarClienteFiscal(previo.rfc_receptor,'cs',{soloSiVacio:true});
 }
 
 async function confirmarCrearSustituto(entidad,folio,uuidOriginal){
@@ -13178,13 +13205,14 @@ async function confirmarCrearSustituto(entidad,folio,uuidOriginal){
   const regimen_fiscal=document.getElementById('cs-regimen').value;
   const uso_cfdi=document.getElementById('cs-uso').value;
   const email=document.getElementById('cs-email').value.trim();
+  const descripcion=document.getElementById('cs-descripcion').value.trim();
   const metodo_pago=document.getElementById('cs-metodo').value;
   if(!rfc||!razon_social||!cp){toast('RFC, razón social y CP son obligatorios',true);return;}
   if(!confirm(`Esto genera un CFDI real ante el SAT a nombre de ${razon_social} (${rfc}), como sustituto del folio ${folio}. No se puede deshacer con un simple clic. ¿Confirmas timbrar?`))return;
   const btn=document.getElementById('cs-timbrar-btn');
   btn.disabled=true;btn.textContent='Timbrando...';
   try{
-    const out=await gpLlamarFuncion({accion:'timbrar_sustituto',entidad,folio,uuid_original:uuidOriginal,rfc,razon_social,cp,regimen_fiscal,uso_cfdi,email,metodo_pago});
+    const out=await gpLlamarFuncion({accion:'timbrar_sustituto',entidad,folio,uuid_original:uuidOriginal,rfc,razon_social,cp,regimen_fiscal,uso_cfdi,email,metodo_pago,descripcion});
     closeModal('m-crear-sustituto');
     const sustField=document.getElementById('cc-sustituto');
     if(sustField)sustField.value=out.factura.uuid_fiscal;

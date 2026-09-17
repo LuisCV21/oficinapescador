@@ -69,6 +69,26 @@ function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+// Calcula subtotal/IVA/ISH a partir de un monto que YA INCLUYE impuestos
+// (lo que el cliente pagó). IVA (y el ISH del Hotel) se calculan DIRECTO
+// del monto total, redondeando una sola vez, y el Subtotal se deriva como
+// el residuo (monto - IVA - ISH) -- así Subtotal+IVA+ISH suma EXACTO al
+// centavo contra el monto original SIEMPRE, sin excepción.
+//
+// Antes el IVA del Hotel salía de Base×Tasa con la Base YA redondeada a 2
+// decimales primero -- en casos de borde (el redondeo de Base y el de
+// Base×Tasa caen en direcciones opuestas) eso dejaba la factura un
+// centavo abajo del monto real (ej. una venta de $300.00 timbrada como
+// $299.99). Pedido del dueño, 17-sept-2026: "siempre tienen que salir
+// [exactos, sin ese centavo de diferencia]".
+function calcularImpuestos(monto: number, entidad: string): { subtotal: number; iva: number; ish: number } {
+  const tasaTotal = entidad === "HOT" ? IVA_TASA + ISH_TASA : IVA_TASA;
+  const iva = round2(monto * IVA_TASA / (1 + tasaTotal));
+  const ish = entidad === "HOT" ? round2(monto * ISH_TASA / (1 + tasaTotal)) : 0;
+  const subtotal = round2(monto - iva - ish);
+  return { subtotal, iva, ish };
+}
+
 function facturacomHeaders(apiKey: string, secretKey: string) {
   return {
     "Content-Type": "application/json",
@@ -281,7 +301,6 @@ async function buscarPagoPorFolioComoEsta(db: any, entidad: string, folio: numbe
 }
 
 function agruparPorFormaPago(candidatos: Pago[], entidad: string) {
-  const tasaTotal = entidad === "HOT" ? IVA_TASA + ISH_TASA : IVA_TASA;
   const grupos: Record<string, {
     sat_code: string; sat_nombre: string; folios: Pago[];
     subtotal: number; iva: number; ish: number; total: number;
@@ -291,9 +310,7 @@ function agruparPorFormaPago(candidatos: Pago[], entidad: string) {
       sat_code: c.sat_code, sat_nombre: c.sat_nombre, folios: [],
       subtotal: 0, iva: 0, ish: 0, total: 0,
     });
-    const subtotal = round2(c.monto / (1 + tasaTotal));
-    const iva = entidad === "HOT" ? round2(subtotal * IVA_TASA) : round2(c.monto - subtotal);
-    const ish = entidad === "HOT" ? round2(c.monto - subtotal - iva) : 0;
+    const { subtotal, iva, ish } = calcularImpuestos(c.monto, entidad);
     g.folios.push(c);
     g.subtotal = round2(g.subtotal + subtotal);
     g.iva = round2(g.iva + iva);
@@ -304,14 +321,11 @@ function agruparPorFormaPago(candidatos: Pago[], entidad: string) {
 }
 
 function construirConceptos(entidad: string, folios: Pago[]) {
-  const tasaTotal = entidad === "HOT" ? IVA_TASA + ISH_TASA : IVA_TASA;
   const claveProdServ = entidad === "HOT" ? "90111800" : "90101501";
   const claveUnidad = entidad === "HOT" ? "E48" : "ACT";
   const descripcion = entidad === "HOT" ? "Servicio de hospedaje" : "Venta de alimentos y bebidas";
   return folios.map((f) => {
-    const subtotal = round2(f.monto / (1 + tasaTotal));
-    const iva = entidad === "HOT" ? round2(subtotal * IVA_TASA) : round2(f.monto - subtotal);
-    const ish = entidad === "HOT" ? round2(f.monto - subtotal - iva) : 0;
+    const { subtotal, iva, ish } = calcularImpuestos(f.monto, entidad);
     return {
       ClaveProdServ: claveProdServ, Cantidad: 1, ClaveUnidad: claveUnidad, Unidad: "Actividad",
       ValorUnitario: subtotal, Descripcion: descripcion, ObjetoImp: "02",
@@ -352,7 +366,7 @@ Deno.serve(async (req) => {
     const {
       accion, entidad, mes, anio, forma_pago, factura_global_id,
       folio, rfc, razon_social, cp, regimen_fiscal, uso_cfdi, email, metodo_pago,
-      uuid_original,
+      uuid_original, descripcion: descripcionCustom,
     } = body ?? {};
 
     if (!entidad || !KEYWORD[entidad]) return json({ error: "entidad inválida (usa HOT, PUE o FLO)" }, 400);
@@ -379,10 +393,7 @@ Deno.serve(async (req) => {
       if (!pago) {
         return json({ error: "Ese folio no existe, ya está facturado, o ya quedó cubierto por otra factura." }, 404);
       }
-      const tasaTotal = entidad === "HOT" ? IVA_TASA + ISH_TASA : IVA_TASA;
-      const subtotal = round2(pago.monto / (1 + tasaTotal));
-      const iva = entidad === "HOT" ? round2(subtotal * IVA_TASA) : round2(pago.monto - subtotal);
-      const ish = entidad === "HOT" ? round2(pago.monto - subtotal - iva) : 0;
+      const { subtotal, iva, ish } = calcularImpuestos(pago.monto, entidad);
       return json({ pago, subtotal, iva, ish, total: pago.monto });
     }
 
@@ -393,10 +404,7 @@ Deno.serve(async (req) => {
       if (!folio) return json({ error: "folio es obligatorio" }, 400);
       const pago = await buscarPagoPorFolioComoEsta(db, entidad, Number(folio));
       if (!pago) return json({ error: "Ese folio no se encontró en los cortes de esta entidad." }, 404);
-      const tasaTotal = entidad === "HOT" ? IVA_TASA + ISH_TASA : IVA_TASA;
-      const subtotal = round2(pago.monto / (1 + tasaTotal));
-      const iva = entidad === "HOT" ? round2(subtotal * IVA_TASA) : round2(pago.monto - subtotal);
-      const ish = entidad === "HOT" ? round2(pago.monto - subtotal - iva) : 0;
+      const { subtotal, iva, ish } = calcularImpuestos(pago.monto, entidad);
       return json({ pago, subtotal, iva, ish, total: pago.monto });
     }
 
@@ -422,13 +430,17 @@ Deno.serve(async (req) => {
       const { data: fiscal } = await db.from("entidades_fiscales").select("cp").eq("entidad", entidad).maybeSingle();
       if (!fiscal?.cp) return json({ error: `Falta el código postal de facturación de ${entidad}.` }, 500);
 
-      const tasaTotal = entidad === "HOT" ? IVA_TASA + ISH_TASA : IVA_TASA;
-      const subtotal = round2(pago.monto / (1 + tasaTotal));
-      const iva = entidad === "HOT" ? round2(subtotal * IVA_TASA) : round2(pago.monto - subtotal);
-      const ish = entidad === "HOT" ? round2(pago.monto - subtotal - iva) : 0;
+      const { subtotal, iva, ish } = calcularImpuestos(pago.monto, entidad);
       const claveProdServ = entidad === "HOT" ? "90111800" : "90101501";
       const claveUnidad = "E48";
-      const descripcion = entidad === "HOT" ? "Servicio de hospedaje" : "Alimentos y bebidas";
+      // Descripción del concepto en el CFDI -- cada empresa vende algo
+      // distinto (hospedaje, comida, etc.), así que se deja escribir a mano
+      // desde Oficina en vez de forzar siempre el mismo texto genérico por
+      // entidad (pedido del dueño, 17-sept-2026); si no se manda nada, cae
+      // al default de siempre.
+      const descripcion = (typeof descripcionCustom === "string" && descripcionCustom.trim())
+        ? descripcionCustom.trim()
+        : (entidad === "HOT" ? "Servicio de hospedaje" : "Alimentos y bebidas");
       const metodo = metodo_pago || "PUE";
       const rfcUpper = String(rfc).trim().toUpperCase();
 
@@ -516,13 +528,17 @@ Deno.serve(async (req) => {
       const { data: fiscal } = await db.from("entidades_fiscales").select("cp").eq("entidad", entidad).maybeSingle();
       if (!fiscal?.cp) return json({ error: `Falta el código postal de facturación de ${entidad}.` }, 500);
 
-      const tasaTotal = entidad === "HOT" ? IVA_TASA + ISH_TASA : IVA_TASA;
-      const subtotal = round2(pago.monto / (1 + tasaTotal));
-      const iva = entidad === "HOT" ? round2(subtotal * IVA_TASA) : round2(pago.monto - subtotal);
-      const ish = entidad === "HOT" ? round2(pago.monto - subtotal - iva) : 0;
+      const { subtotal, iva, ish } = calcularImpuestos(pago.monto, entidad);
       const claveProdServ = entidad === "HOT" ? "90111800" : "90101501";
       const claveUnidad = "E48";
-      const descripcion = entidad === "HOT" ? "Servicio de hospedaje" : "Alimentos y bebidas";
+      // Descripción del concepto en el CFDI -- cada empresa vende algo
+      // distinto (hospedaje, comida, etc.), así que se deja escribir a mano
+      // desde Oficina en vez de forzar siempre el mismo texto genérico por
+      // entidad (pedido del dueño, 17-sept-2026); si no se manda nada, cae
+      // al default de siempre.
+      const descripcion = (typeof descripcionCustom === "string" && descripcionCustom.trim())
+        ? descripcionCustom.trim()
+        : (entidad === "HOT" ? "Servicio de hospedaje" : "Alimentos y bebidas");
       const metodo = metodo_pago || "PUE";
       const rfcUpper = String(rfc).trim().toUpperCase();
 
