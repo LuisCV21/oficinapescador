@@ -1070,7 +1070,6 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
           <div style="font-size:18px;font-weight:500">Recursos humanos</div>
           <div style="display:flex;gap:8px">
-            <button class="btn" onclick="openDiasFestivosModal()">🎉 Días festivos</button>
             <button class="btn" onclick="openPlayerasModal()">🎽 Playeras</button>
             <button class="btn btn-filled" onclick="openEmpModal()">+ Nuevo empleado</button>
           </div>
@@ -2004,18 +2003,16 @@ mismo blob ya cargado, sin volver a pedirlo. -->
 </div>
 
 <div class="modal-overlay" id="m-festivo">
-<div class="modal" style="max-width:640px">
+<div class="modal" style="max-width:520px">
   <div class="modal-hdr"><div class="modal-title">Día festivo trabajado</div><button class="btn-icon" onclick="closeModal('m-festivo')">✕</button></div>
   <div class="modal-body">
     <div id="fes-emp-ref" style="font-size:12px;color:var(--text2);padding:9px 12px;background:var(--surface2);border-radius:var(--r);margin-bottom:14px;border-left:3px solid var(--copper)"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
-      <div class="f-row"><label>Año</label><input type="number" id="fes-anio" oninput="renderFestivoOpts();calcFestivo()"/></div>
-      <div class="f-row"><label>Salario diario</label><input type="number" step="0.01" id="fes-salario" oninput="calcFestivo()"/></div>
-    </div>
+    <div class="f-row"><label>Año</label><input type="number" id="fes-anio" oninput="renderFestivoOpts()"/></div>
     <div class="f-row"><label>Día festivo</label><select class="fsel" id="fes-select" style="width:100%" onchange="onFestivoSelect()"></select></div>
-    <div class="f-row" id="fes-otra-fecha-row" style="display:none"><label>Fecha</label><input type="date" id="fes-otra-fecha" oninput="calcFestivo()"/></div>
-    <div class="modal-sec" style="margin-top:14px">Desglose</div>
-    <div id="fes-breakdown"></div>
+    <div class="f-row" id="fes-otra-fecha-row" style="display:none"><label>Fecha</label><input type="date" id="fes-otra-fecha"/></div>
+    <div class="f-row"><label>Salario diario <span style="font-weight:400;color:var(--text3);text-transform:none">(solo para dejarlo constar en el recibo)</span></label><input type="number" step="0.01" id="fes-salario"/></div>
+    <div class="f-row"><label>Cantidad a pagar <span class="req">*</span></label><input type="number" step="0.01" id="fes-monto" placeholder="0.00"/></div>
+    <div style="font-size:11px;color:var(--text3)">Captura aquí lo que le vas a pagar en este momento -- si no le pagas los días de golpe, haz un recibo por cada pago.</div>
   </div>
   <div class="modal-ftr">
     <button class="btn" onclick="closeModal('m-festivo')">Cerrar</button>
@@ -2029,27 +2026,6 @@ mismo blob ya cargado, sin volver a pedirlo. -->
   <div class="modal-hdr"><div class="modal-title" id="m-emp-detail-title">Expediente</div><button class="btn-icon" onclick="closeModal('m-emp-detail')">✕</button></div>
   <div class="modal-body" id="m-emp-detail-body"></div>
   <div class="modal-ftr" id="m-emp-detail-ftr"></div>
-</div>
-</div>
-
-<!-- MODAL DÍAS FESTIVOS -->
-<div class="modal-overlay" id="m-diasfestivos">
-<div class="modal" style="max-width:820px">
-  <div class="modal-hdr"><div class="modal-title">Días festivos trabajados</div><button class="btn-icon" onclick="closeModal('m-diasfestivos')">✕</button></div>
-  <div class="modal-body">
-    <div class="tabs-bar" id="df-ent-tabs" style="margin-bottom:14px;border-radius:var(--r);overflow:hidden"></div>
-    <div class="df-add-form" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:14px">
-      <div class="f-row" style="min-width:220px;margin:0"><label>Empleado</label><select id="df-empleado"></select></div>
-      <div class="f-row" style="margin:0"><label>Fecha del festivo</label><input type="date" id="df-fecha"/></div>
-      <div class="f-row" style="min-width:180px;margin:0"><label>Motivo (opcional)</label><input type="text" id="df-concepto" placeholder="Ej. 16 de septiembre"/></div>
-      <button class="btn btn-filled" onclick="agregarDiaFestivo()">+ Agregar</button>
-    </div>
-    <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;margin-bottom:10px">
-      <button class="btn btn-sm" onclick="imprimirRecibosDiasFestivos()">🖨️ Imprimir recibos seleccionados</button>
-    </div>
-    <div style="overflow-x:auto" id="diasfestivos-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
-  </div>
-  <div class="modal-ftr"><button class="btn" onclick="closeModal('m-diasfestivos')">Cerrar</button></div>
 </div>
 </div>
 
@@ -4644,6 +4620,7 @@ function openFestivoModal(empId){
   document.getElementById('fes-anio').value=new Date().getFullYear();
   document.getElementById('fes-salario').value=e.salario_diario||0;
   document.getElementById('fes-otra-fecha').value='';
+  document.getElementById('fes-monto').value='';
   renderFestivoOpts();
   openModal('m-festivo');
 }
@@ -4659,44 +4636,24 @@ function renderFestivoOpts(){
 function onFestivoSelect(){
   const sel=document.getElementById('fes-select');
   document.getElementById('fes-otra-fecha-row').style.display=sel.value==='otro'?'block':'none';
-  calcFestivo();
 }
-function calcFestivo(){
+// Ya no calcula nada (antes: triple por Art. 75) -- pedido del dueño,
+// 17-sept-2026: "que no haga el cálculo del día, que simplemente venga
+// por la cantidad total que se va a pagar en ese momento" -- a veces no
+// se paga de golpe, así que el monto se captura a mano cada vez (puede
+// ser un pago parcial) y el recibo ya no trae desglose ("extra"/"normal"),
+// solo la cantidad, igual que el formato en papel que ya usaban.
+function imprimirFestivo(){
   const e=empData.find(x=>x.id===fesEmpId);
-  const out=document.getElementById('fes-breakdown');
-  if(!e||!out)return null;
+  if(!e)return;
   const sel=document.getElementById('fes-select');
-  if(!sel.value)return null;
+  if(!sel.value){toast('Elige el día festivo',true);return;}
   const fecha=sel.value==='otro'?document.getElementById('fes-otra-fecha').value:sel.value;
   const label=sel.value==='otro'?'Día festivo (fecha manual)':sel.options[sel.selectedIndex].textContent;
+  if(!fecha){toast('Indica la fecha del día festivo',true);return;}
   const salario=Number(document.getElementById('fes-salario').value)||0;
-  if(!fecha){out.innerHTML='<div class="empty" style="padding:16px">Indica la fecha del día festivo</div>';return null;}
-  const extra=salario*2;
-  const total=salario*3;
-  out.innerHTML=`
-    <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.5">Conforme al artículo 75 de la LFT: quien trabaja un día de descanso obligatorio recibe su salario normal del día <strong>más el doble</strong> por el servicio prestado — pago triple en total.</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
-      <tr><td style="padding:7px 4px;border-bottom:1px solid var(--border)">Salario normal del día (ya incluido en su pago habitual)</td><td style="padding:7px 4px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--mono)">${fmxn(salario)}</td></tr>
-      <tr><td style="padding:7px 4px;border-bottom:1px solid var(--border)">Pago extra por trabajar día festivo (2 días)</td><td style="padding:7px 4px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--mono)">${fmxn(extra)}</td></tr>
-      <tr><td style="padding:10px 4px;font-weight:700">TOTAL DEL DÍA (TRIPLE)</td><td style="padding:10px 4px;text-align:right;font-weight:700;font-size:15px;font-family:var(--mono);color:var(--green)">${fmxn(total)}</td></tr>
-    </table>
-  `;
-  return{e,fecha,label,salario,extra,total};
-}
-// Mismo formato/CSS que ya se usa en Vacaciones y en el Día festivo de la
-// bitácora de RH (letterhead real por sucursal, monto con letra, BUENO
-// POR, sin marco al imprimir) -- pedido del dueño, 17-sept-2026, este
-// tercer botón (el de la tarjeta del empleado) se me había quedado con el
-// formato viejo. OJO: este calcula TRIPLE (salario normal + doble extra,
-// Art. 75 LFT) -- distinto del botón de Días festivos en RH, que solo
-// calcula el DOBLE extra (Art. 74, asumiendo que el salario normal ya se
-// pagó en la nómina semanal). Son dos formas válidas de capturarlo según
-// si ese día ya se pagó aparte o no -- se deja la lógica de cada uno tal
-// cual estaba, solo se pareja la presentación.
-function imprimirFestivo(){
-  const r=calcFestivo();
-  if(!r)return;
-  const e=r.e;
+  const monto=Number(document.getElementById('fes-monto').value)||0;
+  if(!monto){toast('Indica la cantidad a pagar',true);return;}
   const entLabel=(ENTS[e.entidad]||{label:e.entidad}).label;
   const puesto=puestoNombre(e.puesto_id)||'';
   const fiscal=entidadesFiscalesData.find(x=>x.entidad===e.entidad);
@@ -4716,15 +4673,12 @@ body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#16323c;background
 .fq-letterhead{text-align:center;margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid #e2eef0}
 .fq-letterhead .razon{font-size:15px;font-weight:700;color:#0f3d52;letter-spacing:.01em}
 .fq-letterhead .datos{font-size:11px;color:#3a5a63;margin-top:5px;line-height:1.6}
-.fq-bueno{font-size:14px;font-weight:700;color:#0f3d52;margin-bottom:18px}
 .fq-info{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;font-size:13px;margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid #e2eef0}
 .fq-info b{color:#0f3d52}
 .fq-parrafo{font-size:13px;line-height:1.85;text-align:justify;margin-bottom:18px;color:#16323c}
 .fq-parrafo b{color:#0f3d52}
-table.fq-tbl{width:100%;border-collapse:collapse;margin-bottom:20px}
-table.fq-tbl td{padding:11px 8px;border-bottom:1px solid #e2eef0;font-size:13.5px}
-table.fq-tbl td:last-child{text-align:right;font-family:'Courier New',monospace}
-.fq-total td{font-weight:700;font-size:16px;border-top:2px solid #0f3d52;border-bottom:none;padding-top:14px}
+.fq-renglon{display:flex;justify-content:space-between;font-size:13.5px;padding:8px 0;border-bottom:1px solid #e2eef0}
+.fq-total-simple{display:flex;justify-content:space-between;font-weight:700;font-size:16px;color:#0f3d52;padding:12px 0 0}
 .fq-firmas{display:flex;justify-content:center;margin-top:100px}
 .fq-firma{text-align:center;font-size:12px;color:#3a5a63;min-width:300px}
 .fq-firma-line{border-top:1px solid #16323c;margin-bottom:6px;padding-top:6px;font-weight:700;color:#16323c}
@@ -4745,19 +4699,13 @@ table.fq-tbl td:last-child{text-align:right;font-family:'Courier New',monospace}
       <div class="razon">${patronNombre}</div>
       ${fiscal?`<div class="datos">RFC: ${fiscal.rfc}<br>${fiscal.domicilio_fiscal||''}${fiscal.cp?' · CP. '+fiscal.cp:''}</div>`:''}
     </div>
-    <div class="fq-bueno">BUENO POR ${fmxn(r.total)}</div>
     <div class="fq-info">
       <div><b>Trabajador:</b> ${e.nombre}</div>
       <div><b>Puesto:</b> ${puesto}</div>
-      <div><b>Día festivo:</b> ${r.label}</div>
-      <div><b>Salario diario:</b> ${fmxn(r.salario)}</div>
     </div>
-    <div class="fq-parrafo">En ${NOMINA_EMPRESA[e.entidad]?.ciudad||'POZA RICA, VER.'}, a ${fmtFechaLarga(todayLocalISO())} recibí de <b>${patronNombre}</b> la cantidad de <b>${fmxn(r.total)} (${numeroALetras(r.total)})</b>, correspondiente al pago del día de descanso obligatorio trabajado el ${fmtFechaLarga(r.fecha)} (${r.label}), de conformidad con el artículo 75 de la Ley Federal del Trabajo, que establece salario normal del día más el doble por el servicio prestado (pago triple en total), cantidad que recibo a mi entera satisfacción y firmo al calce para constancia.</div>
-    <table class="fq-tbl">
-      <tr><td>Salario normal del día</td><td>${fmxn(r.salario)}</td></tr>
-      <tr><td>Pago extra por trabajar (2 días, Art. 75 LFT)</td><td>${fmxn(r.extra)}</td></tr>
-      <tr class="fq-total"><td>TOTAL DEL DÍA (TRIPLE)</td><td>${fmxn(r.total)}</td></tr>
-    </table>
+    <div class="fq-parrafo">En ${NOMINA_EMPRESA[e.entidad]?.ciudad||'POZA RICA, VER.'}, a ${fmtFechaLarga(todayLocalISO())} recibí de <b>${patronNombre}</b> la cantidad de <b>${fmxn(monto)} (${numeroALetras(monto)})</b>, por concepto del pago del día festivo correspondiente a la fecha del presente documento, de conformidad con el artículo 74 de la Ley Federal del Trabajo, cantidad que recibo a mi entera satisfacción y firmo al calce para constancia.<br><br>Así mismo hago constar que mi salario diario en la Empresa es de <b>${fmxn(salario)}</b>.</div>
+    <div class="fq-renglon"><span>Día festivo</span><span>${fmtFechaLarga(fecha)}</span></div>
+    <div class="fq-total-simple"><span>Total a pagar</span><span>${fmxn(monto)}</span></div>
     <div class="fq-firmas"><div class="fq-firma"><div class="fq-firma-line">&nbsp;</div>${e.nombre}</div></div>
   </div>
 </div>
@@ -5822,222 +5770,6 @@ function imprimirRecibosHorasExtra(){
   }).join('');
   document.getElementById('print-horasextra').innerHTML=`<div class="recibo-grid">${cards||'<div class="empty">Nadie tiene horas extra, retardos, bonificación ni descuento que liquidar esta semana</div>'}</div>`;
   window.print();
-}
-
-// ─── DÍAS FESTIVOS ──────────────────────────────────────────────────
-// Por ley, un día festivo trabajado se paga DOBLE además del salario
-// normal de ese día -- el empleado ya cobra su día normal dentro de su
-// nómina semanal de siempre, así que aquí solo se registra/recibe el doble
-// EXTRA (decisión del dueño, 14-sept-2026). Cada fecha genera su propio
-// recibo con firma (a diferencia de horas_extra, que consolida toda la
-// semana en un solo recibo) -- un empleado con 2 festivos pendientes de
-// pagar necesita 2 recibos firmados, uno por cada fecha.
-let diasFestivosData=[],diasFestivosSel=new Set();
-// Días festivos vivía como pestaña de "Nómina y asistencia" -- se movió a
-// Recursos Humanos (pedido del dueño, 17-sept-2026: "casi siempre va
-// aparte como vacaciones") como modal propio, igual que Vacaciones/
-// Playeras. Usa currentRhEnt (la pestaña de sucursal ya activa en RH)
-// como filtro, con sus propias pestañas dentro del modal para poder
-// cambiar de sucursal sin tener que cerrarlo.
-function openDiasFestivosModal(){
-  openModal('m-diasfestivos');
-  renderDiasFestivosEntTabs();
-  loadDiasFestivos().then(renderDiasFestivos);
-}
-function renderDiasFestivosEntTabs(){
-  const el=document.getElementById('df-ent-tabs');
-  if(!el)return;
-  if(!ENT_ORDER.includes(currentRhEnt))currentRhEnt=ENT_ORDER[0];
-  el.innerHTML=ENT_ORDER.map(ek=>{
-    const ent=ENTS[ek];if(!ent)return'';
-    return`<div class="tab ${currentRhEnt===ek?'active':''}" onclick="switchDiasFestivosEnt('${ek}')"><span class="ent-dot" style="background:${ent.color}"></span>${ent.label}</div>`;
-  }).join('');
-}
-function switchDiasFestivosEnt(ek){
-  currentRhEnt=ek;
-  renderDiasFestivosEntTabs();
-  loadDiasFestivos().then(renderDiasFestivos);
-}
-async function loadDiasFestivos(){
-  const{data}=await sb.from('dias_festivos_pagados').select('*').eq('entidad',currentRhEnt).order('fecha',{ascending:false});
-  diasFestivosData=data||[];
-  diasFestivosSel=new Set([...diasFestivosSel].filter(id=>diasFestivosData.some(d=>d.id===id)));
-}
-function populateDiasFestivosEmpleadoSelect(){
-  const sel=document.getElementById('df-empleado');
-  if(!sel)return;
-  const prev=sel.value;
-  const activos=empData.filter(e=>e.entidad===currentRhEnt&&e.activo!==false).sort((a,b)=>a.nombre.localeCompare(b.nombre));
-  sel.innerHTML=activos.map(e=>`<option value="${e.id}">${e.nombre}</option>`).join('');
-  if([...sel.options].some(o=>o.value===prev))sel.value=prev;
-  if(!document.getElementById('df-fecha').value)document.getElementById('df-fecha').value=new Date().toISOString().slice(0,10);
-}
-function renderDiasFestivos(){
-  populateDiasFestivosEmpleadoSelect();
-  const el=document.getElementById('diasfestivos-list');
-  if(!el)return;
-  if(!diasFestivosData.length){
-    el.innerHTML='<div class="empty" style="padding:16px">Ningún día festivo registrado todavía para '+(ENTS[currentRhEnt]?.label||currentRhEnt)+'.</div>';
-    return;
-  }
-  const empById={};empData.forEach(e=>{empById[e.id]=e;});
-  const filas=diasFestivosData.map(d=>{
-    const e=empById[d.empleado_id];
-    const doble=Number(d.salario_diario)*2;
-    return `<tr>
-      <td><input type="checkbox" ${diasFestivosSel.has(d.id)?'checked':''} onchange="toggleDiaFestivoSel('${d.id}',this.checked)"/></td>
-      <td>${e?e.nombre:'(empleado eliminado)'}</td>
-      <td>${fmt(d.fecha)}</td>
-      <td>${d.concepto||''}</td>
-      <td class="num">${fmxn(doble)}</td>
-      <td>${d.impreso?'<span class="corte-badge ok">✓ Impreso</span>':'<span class="corte-badge pend">Sin imprimir</span>'}</td>
-      <td><label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-        <input type="checkbox" ${d.pagado?'checked':''} onchange="togglePagoDiaFestivo('${d.id}',this.checked)"/>
-        ${d.pagado?`<span class="corte-badge ok">✓ Pagado</span>`:`<span class="corte-badge pend">Pendiente de pago</span>`}
-      </label></td>
-      <td><button class="btn-text" style="color:var(--red)" onclick="eliminarDiaFestivo('${d.id}')">Eliminar</button></td>
-    </tr>`;
-  }).join('');
-  el.innerHTML=`<table class="corte-tbl">
-    <thead><tr><th></th><th>Empleado</th><th>Fecha</th><th>Motivo</th><th class="num">Pago doble</th><th>Recibo</th><th>Pago</th><th></th></tr></thead>
-    <tbody>${filas}</tbody>
-  </table>`;
-}
-function toggleDiaFestivoSel(id,checked){
-  if(checked)diasFestivosSel.add(id);else diasFestivosSel.delete(id);
-}
-// Independiente de "impreso" -- a veces no se pagan los 2 festivos de golpe,
-// uno se liquida hoy y el otro después, y hace falta saber cuál ya se pagó
-// de verdad (no solo cuál ya se imprimió). Se puede marcar/desmarcar sin
-// necesidad de reimprimir el recibo.
-async function togglePagoDiaFestivo(id,pagado){
-  const{error}=await sb.from('dias_festivos_pagados').update({pagado,pagado_at:pagado?new Date().toISOString():null}).eq('id',id);
-  if(error){toast('Error: '+error.message,true);await loadDiasFestivos();renderDiasFestivos();return;}
-  await loadDiasFestivos();renderDiasFestivos();
-}
-async function agregarDiaFestivo(){
-  const empleado_id=document.getElementById('df-empleado').value;
-  const fecha=document.getElementById('df-fecha').value;
-  const concepto=document.getElementById('df-concepto').value.trim()||null;
-  if(!empleado_id){toast('Selecciona un empleado',true);return;}
-  if(!fecha){toast('Indica la fecha del festivo',true);return;}
-  const e=empData.find(x=>x.id===empleado_id);
-  if(!e||!e.salario_diario){toast('Este empleado no tiene salario diario capturado (Editar en Recursos Humanos)',true);return;}
-  const{error}=await sb.from('dias_festivos_pagados').insert({
-    empleado_id,entidad:currentRhEnt,fecha,concepto,salario_diario:e.salario_diario,creado_por:currentUser?.id||null,
-  });
-  if(error){toast('Error: '+(error.code==='23505'?'Ya hay un festivo registrado para este empleado en esa fecha':error.message),true);return;}
-  document.getElementById('df-concepto').value='';
-  await loadDiasFestivos();renderDiasFestivos();
-  toast('Día festivo agregado');
-}
-async function eliminarDiaFestivo(id){
-  if(!confirm('¿Eliminar este registro de día festivo?'))return;
-  const{error}=await sb.from('dias_festivos_pagados').delete().eq('id',id);
-  if(error){toast('Error: '+error.message,true);return;}
-  diasFestivosSel.delete(id);
-  await loadDiasFestivos();renderDiasFestivos();
-}
-// Recibo de día festivo de hoja completa, un recibo por página (con salto
-// de página entre cada uno) -- mismo formato legal que ya se usaba en
-// papel (membrete del patrón real + RFC + domicilio, párrafo "recibí de...
-// la cantidad de $X (monto con letra)... Art. 74 LFT", firma), con el
-// mismo diseño degradado que ya usan Vacaciones/Finiquito/Balance. Pedido
-// del dueño, 17-sept-2026 ("lo mismo para días festivos" que en
-// Vacaciones). El monto es el pago DOBLE que ya calculaba el sistema
-// (aparte del salario normal de ese día, ver comentario arriba de
-// dias_festivos_pagados) -- se mantiene esa cifra, solo se completó el
-// texto legal para que quede explícito que es el doble por Art. 74, no
-// un día sencillo.
-async function imprimirRecibosDiasFestivos(){
-  if(!diasFestivosSel.size){toast('Selecciona al menos un día festivo para imprimir',true);return;}
-  const empById={};empData.forEach(e=>{empById[e.id]=e;});
-  const seleccionados=diasFestivosData.filter(d=>diasFestivosSel.has(d.id));
-  if(!seleccionados.length)return;
-  const paginas=seleccionados.map(d=>{
-    const e=empById[d.empleado_id];
-    if(!e)return'';
-    const doble=Number(d.salario_diario)*2;
-    const entLabel=(ENTS[d.entidad]||{label:d.entidad}).label;
-    const fiscal=entidadesFiscalesData.find(x=>x.entidad===d.entidad);
-    const patronNombre=fiscal?fiscal.razon_social:(NOMINA_EMPRESA[d.entidad]?.patron||entLabel);
-    const ciudad=NOMINA_EMPRESA[d.entidad]?.ciudad||'POZA RICA, VER.';
-    return`
-    <div class="fq-page">
-      <div class="fq-wrap">
-        <div class="fq-hdr"><img src="${PA_LOGO}" alt="El Pescador"><div><div class="fq-hdr-text">RECIBO DE DÍA FESTIVO</div><div class="fq-hdr-sub">${entLabel} — El Pescador</div></div></div>
-        <div class="fq-body">
-          <div class="fq-letterhead">
-            <div class="razon">${patronNombre}</div>
-            ${fiscal?`<div class="datos">RFC: ${fiscal.rfc}<br>${fiscal.domicilio_fiscal||''}${fiscal.cp?' · CP. '+fiscal.cp:''}</div>`:''}
-          </div>
-          <div class="fq-bueno">BUENO POR ${fmxn(doble)}</div>
-          <div class="fq-info">
-            <div><b>Trabajador:</b> ${e.nombre}</div>
-            <div><b>Puesto:</b> ${puestoNombre(e.puesto_id)||''}</div>
-            <div><b>Sucursal:</b> ${entLabel}</div>
-            <div><b>Salario diario:</b> ${fmxn(d.salario_diario)}</div>
-          </div>
-          <div class="fq-parrafo">En ${ciudad}, a ${fmtFechaLarga(todayLocalISO())} recibí de <b>${patronNombre}</b> la cantidad de <b>${fmxn(doble)} (${numeroALetras(doble)})</b>, correspondiente al pago doble del día festivo trabajado el ${fmtFechaLarga(d.fecha)}${d.concepto?' — '+d.concepto:''}, de conformidad con el artículo 74 de la Ley Federal del Trabajo, cantidad que recibo a mi entera satisfacción y firmo al calce para constancia.<br><br>Así mismo hago constar que mi salario diario en la Empresa es de <b>${fmxn(d.salario_diario)}</b>.</div>
-          <table class="fq-tbl">
-            <tr><td>Primer pago — día festivo (${fmt(d.fecha)})</td><td>${fmxn(d.salario_diario)}</td></tr>
-            <tr><td>Segundo pago — doble por ley (Art. 74 LFT)</td><td>${fmxn(d.salario_diario)}</td></tr>
-            <tr class="fq-total"><td>TOTAL A PAGAR</td><td>${fmxn(doble)}</td></tr>
-          </table>
-          <div class="fq-firmas"><div class="fq-firma"><div class="fq-firma-line">&nbsp;</div>${e.nombre}</div></div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Recibos de días festivos</title>
-<style>
-@page{size:8.5in 11in;margin:1.2cm}
-*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
-body{font-family:Arial,sans-serif;margin:0;padding:0;color:#16323c;background:#eaf4f5}
-.fq-page{padding:16px;page-break-after:always}
-.fq-page:last-child{page-break-after:auto}
-.fq-wrap{max-width:720px;margin:0 auto}
-.fq-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:16px 22px;border-radius:8px 8px 0 0}
-.fq-hdr img{height:42px;width:42px;object-fit:contain;flex-shrink:0}
-.fq-hdr-text{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;letter-spacing:.02em}
-.fq-hdr-sub{font-size:11px;opacity:.85;margin-top:2px}
-.fq-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:26px 32px}
-.fq-letterhead{text-align:center;margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid #e2eef0}
-.fq-letterhead .razon{font-size:15px;font-weight:700;color:#0f3d52;letter-spacing:.01em}
-.fq-letterhead .datos{font-size:11px;color:#3a5a63;margin-top:5px;line-height:1.6}
-.fq-bueno{font-size:14px;font-weight:700;color:#0f3d52;margin-bottom:18px}
-.fq-info{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;font-size:13px;margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid #e2eef0}
-.fq-info b{color:#0f3d52}
-.fq-parrafo{font-size:13px;line-height:1.85;text-align:justify;margin-bottom:18px;color:#16323c}
-.fq-parrafo b{color:#0f3d52}
-table.fq-tbl{width:100%;border-collapse:collapse;margin-bottom:20px}
-table.fq-tbl td{padding:11px 8px;border-bottom:1px solid #e2eef0;font-size:13.5px}
-table.fq-tbl td:last-child{text-align:right;font-family:'Courier New',monospace}
-.fq-total td{font-weight:700;font-size:16px;border-top:2px solid #0f3d52;border-bottom:none;padding-top:14px}
-.fq-firmas{display:flex;justify-content:center;margin-top:100px}
-.fq-firma{text-align:center;font-size:12px;color:#3a5a63;min-width:300px}
-.fq-firma-line{border-top:1px solid #16323c;margin-bottom:6px;padding-top:6px;font-weight:700;color:#16323c}
-.print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
-/* Mismo criterio que Vacaciones: en pantalla se ve como tarjeta, impreso
-va de orilla a orilla como documento formal, sin marco ni fondo de color. */
-@media print{
-  .print-btn{display:none}
-  body{padding:0;background:#fff}
-  .fq-page{padding:0}
-  .fq-wrap{max-width:100%}
-  .fq-hdr{border-radius:0}
-  .fq-body{border:none;border-radius:0;padding:8px 6px 0}
-}
-</style></head><body>
-<button class="print-btn" onclick="window.print()">🖨 Imprimir (${paginas.length})</button>
-${paginas}
-</body></html>`;
-  const w=window.open('','_blank');
-  w.document.write(html);
-  w.document.close();
-  const ids=[...diasFestivosSel];
-  await sb.from('dias_festivos_pagados').update({impreso:true}).in('id',ids);
-  await loadDiasFestivos();renderDiasFestivos();
 }
 
 const NOMINA_EMPRESA={
@@ -14543,7 +14275,6 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'nomina_periodos'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='nomina')await loadNomina().then(renderNomina);})
     .on('postgres_changes',{event:'*',schema:'public',table:'nomina_lineas'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='nomina')await loadNomina().then(renderNomina);})
     .on('postgres_changes',{event:'*',schema:'public',table:'horas_extra'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='horasextra')await loadHorasExtra().then(renderHorasExtraGrid);})
-    .on('postgres_changes',{event:'*',schema:'public',table:'dias_festivos_pagados'},async()=>{if(document.getElementById('m-diasfestivos')?.classList.contains('open'))await loadDiasFestivos().then(renderDiasFestivos);})
     .on('postgres_changes',{event:'*',schema:'public',table:'horas_extra_semana'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='horasextra')await loadHorasExtra().then(renderHorasExtraGrid);})
     .subscribe((status)=>{
       if(status==='SUBSCRIBED'){console.log('Realtime conectado ✓');showRealtimeIndicator(true);}
