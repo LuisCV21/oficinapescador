@@ -4549,29 +4549,40 @@ function imprimirVacaciones(){
 html,body{width:100%;height:100%}
 body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#16323c;background:#eaf4f5}
 .fq-wrap{max-width:720px;margin:0 auto}
-.fq-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:14px 20px;border-radius:8px 8px 0 0}
+.fq-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:16px 22px;border-radius:8px 8px 0 0}
 .fq-hdr img{height:42px;width:42px;object-fit:contain;flex-shrink:0}
 .fq-hdr-text{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;letter-spacing:.02em}
 .fq-hdr-sub{font-size:11px;opacity:.85;margin-top:2px}
-.fq-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:22px 26px}
-.fq-letterhead{text-align:center;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #e2eef0}
-.fq-letterhead .razon{font-size:14px;font-weight:700;color:#0f3d52;letter-spacing:.01em}
-.fq-letterhead .datos{font-size:10.5px;color:#3a5a63;margin-top:4px;line-height:1.5}
-.fq-bueno{font-size:13px;font-weight:700;color:#0f3d52;margin-bottom:14px}
-.fq-info{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #e2eef0}
+.fq-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:26px 32px}
+.fq-letterhead{text-align:center;margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid #e2eef0}
+.fq-letterhead .razon{font-size:15px;font-weight:700;color:#0f3d52;letter-spacing:.01em}
+.fq-letterhead .datos{font-size:11px;color:#3a5a63;margin-top:5px;line-height:1.6}
+.fq-bueno{font-size:14px;font-weight:700;color:#0f3d52;margin-bottom:18px}
+.fq-info{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;font-size:13px;margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid #e2eef0}
 .fq-info b{color:#0f3d52}
-.fq-parrafo{font-size:12px;line-height:1.7;text-align:justify;margin-bottom:14px;color:#16323c}
+.fq-parrafo{font-size:13px;line-height:1.85;text-align:justify;margin-bottom:18px;color:#16323c}
 .fq-parrafo b{color:#0f3d52}
-table.fq-tbl{width:100%;border-collapse:collapse;margin-bottom:16px}
-table.fq-tbl td{padding:8px 6px;border-bottom:1px solid #e2eef0;font-size:12.5px}
+table.fq-tbl{width:100%;border-collapse:collapse;margin-bottom:20px}
+table.fq-tbl td{padding:11px 8px;border-bottom:1px solid #e2eef0;font-size:13.5px}
 table.fq-tbl td:last-child{text-align:right;font-family:'Courier New',monospace}
-.fq-total td{font-weight:700;font-size:15px;border-top:2px solid #0f3d52;border-bottom:none;padding-top:12px}
+.fq-total td{font-weight:700;font-size:16px;border-top:2px solid #0f3d52;border-bottom:none;padding-top:14px}
 .fq-legal{font-size:10.5px;color:#3a5a63;line-height:1.55;margin:18px 0;text-align:justify}
-.fq-firmas{display:flex;justify-content:center;margin-top:60px}
-.fq-firma{text-align:center;font-size:11.5px;color:#3a5a63;min-width:280px}
+.fq-firmas{display:flex;justify-content:center;margin-top:110px}
+.fq-firma{text-align:center;font-size:12px;color:#3a5a63;min-width:300px}
 .fq-firma-line{border-top:1px solid #16323c;margin-bottom:6px;padding-top:6px;font-weight:700;color:#16323c}
 .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
-@media print{.print-btn{display:none}body{padding:0;background:#fff}}
+/* En pantalla se ve como tarjeta flotando sobre un fondo -- bonito para
+previsualizar, pero impreso se veía como "una hoja dentro de otra hoja"
+(bordes redondeados, borde delgado, fondo de color alrededor). Al
+imprimir se quita todo eso: el documento va de orilla a orilla de la
+hoja como un documento formal de verdad, sin tarjeta ni marco. */
+@media print{
+  .print-btn{display:none}
+  body{padding:0;background:#fff}
+  .fq-wrap{max-width:100%}
+  .fq-hdr{border-radius:0}
+  .fq-body{border:none;border-radius:0;padding:8px 6px 0}
+}
 </style></head><body>
 <button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
 <div class="fq-wrap">
@@ -5962,28 +5973,37 @@ body{font-family:Arial,sans-serif;margin:0;padding:0;color:#16323c;background:#e
 .fq-page{padding:16px;page-break-after:always}
 .fq-page:last-child{page-break-after:auto}
 .fq-wrap{max-width:720px;margin:0 auto}
-.fq-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:14px 20px;border-radius:8px 8px 0 0}
+.fq-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:16px 22px;border-radius:8px 8px 0 0}
 .fq-hdr img{height:42px;width:42px;object-fit:contain;flex-shrink:0}
 .fq-hdr-text{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;letter-spacing:.02em}
 .fq-hdr-sub{font-size:11px;opacity:.85;margin-top:2px}
-.fq-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:22px 26px}
-.fq-letterhead{text-align:center;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #e2eef0}
-.fq-letterhead .razon{font-size:14px;font-weight:700;color:#0f3d52;letter-spacing:.01em}
-.fq-letterhead .datos{font-size:10.5px;color:#3a5a63;margin-top:4px;line-height:1.5}
-.fq-bueno{font-size:13px;font-weight:700;color:#0f3d52;margin-bottom:14px}
-.fq-info{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #e2eef0}
+.fq-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:26px 32px}
+.fq-letterhead{text-align:center;margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid #e2eef0}
+.fq-letterhead .razon{font-size:15px;font-weight:700;color:#0f3d52;letter-spacing:.01em}
+.fq-letterhead .datos{font-size:11px;color:#3a5a63;margin-top:5px;line-height:1.6}
+.fq-bueno{font-size:14px;font-weight:700;color:#0f3d52;margin-bottom:18px}
+.fq-info{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;font-size:13px;margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid #e2eef0}
 .fq-info b{color:#0f3d52}
-.fq-parrafo{font-size:12px;line-height:1.7;text-align:justify;margin-bottom:14px;color:#16323c}
+.fq-parrafo{font-size:13px;line-height:1.85;text-align:justify;margin-bottom:18px;color:#16323c}
 .fq-parrafo b{color:#0f3d52}
-table.fq-tbl{width:100%;border-collapse:collapse;margin-bottom:16px}
-table.fq-tbl td{padding:8px 6px;border-bottom:1px solid #e2eef0;font-size:12.5px}
+table.fq-tbl{width:100%;border-collapse:collapse;margin-bottom:20px}
+table.fq-tbl td{padding:11px 8px;border-bottom:1px solid #e2eef0;font-size:13.5px}
 table.fq-tbl td:last-child{text-align:right;font-family:'Courier New',monospace}
-.fq-total td{font-weight:700;font-size:15px;border-top:2px solid #0f3d52;border-bottom:none;padding-top:12px}
-.fq-firmas{display:flex;justify-content:center;margin-top:60px}
-.fq-firma{text-align:center;font-size:11.5px;color:#3a5a63;min-width:280px}
+.fq-total td{font-weight:700;font-size:16px;border-top:2px solid #0f3d52;border-bottom:none;padding-top:14px}
+.fq-firmas{display:flex;justify-content:center;margin-top:100px}
+.fq-firma{text-align:center;font-size:12px;color:#3a5a63;min-width:300px}
 .fq-firma-line{border-top:1px solid #16323c;margin-bottom:6px;padding-top:6px;font-weight:700;color:#16323c}
 .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
-@media print{.print-btn{display:none}body{padding:0;background:#fff}}
+/* Mismo criterio que Vacaciones: en pantalla se ve como tarjeta, impreso
+va de orilla a orilla como documento formal, sin marco ni fondo de color. */
+@media print{
+  .print-btn{display:none}
+  body{padding:0;background:#fff}
+  .fq-page{padding:0}
+  .fq-wrap{max-width:100%}
+  .fq-hdr{border-radius:0}
+  .fq-body{border:none;border-radius:0;padding:8px 6px 0}
+}
 </style></head><body>
 <button class="print-btn" onclick="window.print()">🖨 Imprimir (${paginas.length})</button>
 ${paginas}
