@@ -3,10 +3,17 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 // Canal para que Pescador POS jale las solicitudes de cancelacion/
 // sustitucion (y cambio de forma de pago sobre una venta YA facturada) que
 // Oficina dejo pendientes, y reporte como quedaron -- aplicada (con o sin
-// exito) o rechazada por la sucursal. A diferencia de pos-correcciones-pago,
-// esto NUNCA se aplica solo: el POS siempre muestra un dialogo de
-// confirmacion antes de tocar el SAT. Mismo patron de auth que las demas:
+// exito) o rechazada por la sucursal. Mismo patron de auth que las demas:
 // header x-pos-secret, el POS siempre inicia la conexion.
+//
+// tipo 'cancelacion'/'sustitucion': una SOLICITUD -- el POS SIEMPRE muestra
+// un dialogo de confirmacion (PIN) antes de tocar el SAT, nunca se aplica
+// solo.
+// tipo 'cancelacion_directa' (agregado 17-sept-2026): Oficina YA cancelo/
+// sustituyo el CFDI de verdad (ver cancelar-cfdi/index.ts) -- el POS NO
+// debe volver a tocar el SAT, solo reflejar esto en su base local (traer
+// uuid_original/uuid_sustituto/folio_pac_sustituto + los datos fiscales del
+// sustituto ya calculados, para dar de alta la factura sustituta completa).
 //
 // GET  ?sucursal=Florida                                -> pendientes para esa sucursal
 // POST { id, estado: "aplicada"|"rechazada", resultado, resuelta_por }
@@ -44,7 +51,10 @@ Deno.serve(async (req) => {
 
       const { data, error } = await adminClient
         .from("acciones_venta_pendientes")
-        .select("id, folio, turno_id, tipo, forma_pago_nueva, motivo, creada_por, creada_at")
+        .select(`id, folio, turno_id, tipo, forma_pago_nueva, motivo, creada_por, creada_at,
+          uuid_original, uuid_sustituto, folio_pac_sustituto,
+          rfc_receptor, razon_social, regimen_fiscal, uso_cfdi, cp_receptor, email_receptor,
+          subtotal, iva, total, forma_pago, metodo_pago`)
         .eq("sucursal", sucursal)
         .eq("estado", "pendiente")
         .order("creada_at");

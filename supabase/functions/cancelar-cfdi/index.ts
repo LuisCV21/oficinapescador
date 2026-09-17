@@ -10,10 +10,12 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 // sustituto para el 01 -- mismas reglas que ya implementa facturacom.py en
 // pescador-pos.
 //
-// OJO -- gap conocido: esto NO avisa de vuelta a la base local de Pescador
-// POS / hotel-sistema, asi que su tabla `facturas` puede seguir marcando el
-// folio como vigente hasta que se construya ese sync de regreso. El
-// historial real de esta cancelacion vive en cfdi_cancelaciones.
+// Tambien deja un aviso en acciones_venta_pendientes (tipo
+// 'cancelacion_directa', ver mas abajo) para que Pescador POS / hotel-
+// sistema reflejen esto en su base local -- antes esto NO se avisaba de
+// vuelta y el folio seguia viendose vigente en la sucursal (gap cerrado
+// 17-sept-2026). El historial real de la cancelacion vive en
+// cfdi_cancelaciones.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -143,7 +145,43 @@ Deno.serve(async (req) => {
       });
     }
 
-    return json({ ok: true, resultado });
+    // Avisa a Pescador POS / hotel-sistema (via el mismo canal que ya jalan
+    // -- acciones_venta_pendientes, tipo 'cancelacion_directa') para que
+    // reflejen esto en su base local: marcar la factura vieja cancelada y,
+    // si hubo sustituto, dar de alta la nueva completa -- sin volver a tocar
+    // el SAT ni pedir PIN, porque aqui ya se hizo de verdad. Pedido del
+    // dueno, 17-sept-2026: "ellos seran los que terminen enviandosela al
+    // cliente". Best-effort -- si esto falla no se revierte la cancelacion
+    // (ya es irreversible), solo se avisa en el aviso de la respuesta.
+    let avisoSync: string | null = null;
+    if (sucursal && folio) {
+      let datosSustituto: Record<string, unknown> = {};
+      if (motivo === "01") {
+        const { data: fi } = await db.from("facturas_individuales")
+          .select("rfc_receptor, razon_social, regimen_fiscal, uso_cfdi, cp_receptor, email_receptor, subtotal, iva, total, forma_pago, metodo_pago, uuid_fiscal, folio_pac")
+          .eq("entidad", entidad).eq("folio", Number(folio)).maybeSingle();
+        if (fi) {
+          datosSustituto = {
+            uuid_sustituto: fi.uuid_fiscal, folio_pac_sustituto: fi.folio_pac,
+            rfc_receptor: fi.rfc_receptor, razon_social: fi.razon_social,
+            regimen_fiscal: fi.regimen_fiscal, uso_cfdi: fi.uso_cfdi,
+            cp_receptor: fi.cp_receptor, email_receptor: fi.email_receptor,
+            subtotal: fi.subtotal, iva: fi.iva, total: fi.total,
+            forma_pago: fi.forma_pago, metodo_pago: fi.metodo_pago,
+          };
+        } else {
+          avisoSync = "No se encontro el registro local del sustituto para avisarle a la sucursal -- revisa manualmente.";
+        }
+      }
+      const { error: syncErr } = await db.from("acciones_venta_pendientes").insert({
+        sucursal, folio: Number(folio), turno_id: turno_id ?? null,
+        tipo: "cancelacion_directa", motivo, creada_por: caller.email ?? caller.id,
+        uuid_original: uuid_fiscal, ...datosSustituto,
+      });
+      if (syncErr) avisoSync = `No se pudo dejar el aviso para la sucursal: ${syncErr.message}`;
+    }
+
+    return json({ ok: true, resultado, aviso: avisoSync ?? undefined });
   } catch (e) {
     return json({ error: String(e) }, 500);
   }
