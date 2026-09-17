@@ -69,6 +69,17 @@ function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+// JSON.stringify manda un número JS sin parte decimal tal cual (300, no
+// "300.00") en cuanto el valor cae justo en un entero -- ValorUnitario/
+// Base/Importe DEBEN viajar con sus 2 decimales explícitos (mismo criterio
+// que ya usa este archivo para TasaOCuota, que va como string "0.16", no
+// 0.16 numérico) porque a Factura.com a veces le ha tocado de menos
+// cuando le llega un monto "entero" sin decimales -- pedido del dueño,
+// 17-sept-2026: "siempre tienen que ir con suficientes decimales".
+function money(n: number): string {
+  return n.toFixed(2);
+}
+
 // Calcula subtotal/IVA/ISH a partir de un monto que YA INCLUYE impuestos
 // (lo que el cliente pagó). IVA (y el ISH del Hotel) se calculan DIRECTO
 // del monto total, redondeando una sola vez, y el Subtotal se deriva como
@@ -328,12 +339,12 @@ function construirConceptos(entidad: string, folios: Pago[]) {
     const { subtotal, iva, ish } = calcularImpuestos(f.monto, entidad);
     return {
       ClaveProdServ: claveProdServ, Cantidad: 1, ClaveUnidad: claveUnidad, Unidad: "Actividad",
-      ValorUnitario: subtotal, Descripcion: descripcion, ObjetoImp: "02",
+      ValorUnitario: money(subtotal), Descripcion: descripcion, ObjetoImp: "02",
       Impuestos: {
-        Traslados: [{ Base: subtotal, Impuesto: "002", TipoFactor: "Tasa", TasaOCuota: "0.16", Importe: iva }],
+        Traslados: [{ Base: money(subtotal), Impuesto: "002", TipoFactor: "Tasa", TasaOCuota: "0.16", Importe: money(iva) }],
         Retenidos: [],
         Locales: entidad === "HOT" && ish
-          ? [{ Base: subtotal, Impuesto: "ISH", TipoFactor: "Tasa", TasaOCuota: "0.02", Importe: ish }]
+          ? [{ Base: money(subtotal), Impuesto: "ISH", TipoFactor: "Tasa", TasaOCuota: "0.02", Importe: money(ish) }]
           : [],
       },
     };
@@ -455,12 +466,12 @@ Deno.serve(async (req) => {
         CfdiRelacionados: { TipoRelacion: "04", UUID: [uuid_original] },
         Conceptos: [{
           ClaveProdServ: claveProdServ, Cantidad: 1, ClaveUnidad: claveUnidad, Unidad: "Actividad",
-          ValorUnitario: subtotal, Descripcion: descripcion, ObjetoImp: "02",
+          ValorUnitario: money(subtotal), Descripcion: descripcion, ObjetoImp: "02",
           Impuestos: {
-            Traslados: [{ Base: subtotal, Impuesto: "002", TipoFactor: "Tasa", TasaOCuota: "0.16", Importe: iva }],
+            Traslados: [{ Base: money(subtotal), Impuesto: "002", TipoFactor: "Tasa", TasaOCuota: "0.16", Importe: money(iva) }],
             Retenidos: [],
             Locales: entidad === "HOT" && ish
-              ? [{ Base: subtotal, Impuesto: "ISH", TipoFactor: "Tasa", TasaOCuota: "0.02", Importe: ish }]
+              ? [{ Base: money(subtotal), Impuesto: "ISH", TipoFactor: "Tasa", TasaOCuota: "0.02", Importe: money(ish) }]
               : [],
           },
         }],
@@ -552,12 +563,12 @@ Deno.serve(async (req) => {
         TipoDocumento: "factura",
         Conceptos: [{
           ClaveProdServ: claveProdServ, Cantidad: 1, ClaveUnidad: claveUnidad, Unidad: "Actividad",
-          ValorUnitario: subtotal, Descripcion: descripcion, ObjetoImp: "02",
+          ValorUnitario: money(subtotal), Descripcion: descripcion, ObjetoImp: "02",
           Impuestos: {
-            Traslados: [{ Base: subtotal, Impuesto: "002", TipoFactor: "Tasa", TasaOCuota: "0.16", Importe: iva }],
+            Traslados: [{ Base: money(subtotal), Impuesto: "002", TipoFactor: "Tasa", TasaOCuota: "0.16", Importe: money(iva) }],
             Retenidos: [],
             Locales: entidad === "HOT" && ish
-              ? [{ Base: subtotal, Impuesto: "ISH", TipoFactor: "Tasa", TasaOCuota: "0.02", Importe: ish }]
+              ? [{ Base: money(subtotal), Impuesto: "ISH", TipoFactor: "Tasa", TasaOCuota: "0.02", Importe: money(ish) }]
               : [],
           },
         }],
