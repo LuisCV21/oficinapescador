@@ -377,7 +377,7 @@ Deno.serve(async (req) => {
     const {
       accion, entidad, mes, anio, forma_pago, factura_global_id,
       folio, rfc, razon_social, cp, regimen_fiscal, uso_cfdi, email, metodo_pago,
-      uuid_original, descripcion: descripcionCustom,
+      uuid_original, descripcion: descripcionCustom, forma_pago_nueva,
     } = body ?? {};
 
     if (!entidad || !KEYWORD[entidad]) return json({ error: "entidad inválida (usa HOT, PUE o FLO)" }, 400);
@@ -454,6 +454,16 @@ Deno.serve(async (req) => {
         : (entidad === "HOT" ? "Servicio de hospedaje" : "Alimentos y bebidas");
       const metodo = metodo_pago || "PUE";
       const rfcUpper = String(rfc).trim().toUpperCase();
+      // La forma de pago del sustituto por default es la misma que traía el
+      // folio original -- pero si ESE fue justo el error a corregir (la
+      // cajera capturó Efectivo cuando en realidad fue Débito, etc.), Oficina
+      // manda forma_pago_nueva y aquí se usa esa en vez de la de pago.sat_code.
+      // Pedido del dueño, 17-sept-2026: antes no había forma de corregir la
+      // forma de pago de un folio YA facturado -- "el sistema solo te deja
+      // cambiar el método de pago si no tiene factura integrada".
+      const formaPagoSat = (typeof forma_pago_nueva === "string" && FORMA_SAT[forma_pago_nueva.toLowerCase()])
+        ? FORMA_SAT[forma_pago_nueva.toLowerCase()][0]
+        : pago.sat_code;
 
       const clienteUid = await buscarOCrearCliente(cred.api_key, cred.secret_key, {
         rfc: rfcUpper, razonSocial: razon_social, cp, regimen: regimen_fiscal, usoCfdi: uso_cfdi,
@@ -477,7 +487,7 @@ Deno.serve(async (req) => {
         }],
         UsoCFDI: uso_cfdi,
         Serie: serieId,
-        FormaPago: pago.sat_code,
+        FormaPago: formaPagoSat,
         MetodoPago: metodo,
         Moneda: "MXN",
         LugarExpedicion: fiscal.cp,
@@ -494,7 +504,7 @@ Deno.serve(async (req) => {
       const row = {
         entidad, folio: Number(folio), cuenta: pago.cuenta, fecha_venta: pago.fecha,
         subtotal, iva: iva + ish, total: pago.monto,
-        forma_pago: pago.sat_code, metodo_pago: metodo,
+        forma_pago: formaPagoSat, metodo_pago: metodo,
         rfc_receptor: rfcUpper, razon_social, regimen_fiscal, uso_cfdi,
         cp_receptor: cp, email_receptor: email || null,
         estado: "timbrada", facturapi_id: facturapiId, uuid_fiscal: uuidFiscal, folio_pac: folioPac,

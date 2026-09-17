@@ -13393,6 +13393,14 @@ async function openCrearSustitutoModal(sucursal,folio,uuidOriginal,entidad){
       <span>${pago.sat_nombre} · ${pago.cuenta||'—'} · ${pago.fecha?new Date(pago.fecha).toLocaleDateString('es-MX'):''}</span>
       <strong>${fmxn(total)}</strong>
     </div>
+    <div class="f-row"><label>Forma de pago correcta <span style="font-weight:400;color:var(--text3);text-transform:none">(cámbiala si el error fue justo la forma de pago capturada)</span></label>
+      <select id="cs-forma-pago">
+        <option value="efectivo" ${pago.sat_code==='01'?'selected':''}>Efectivo</option>
+        <option value="debito" ${pago.sat_code==='28'?'selected':''}>Tarjeta de débito</option>
+        <option value="credito" ${pago.sat_code==='04'?'selected':''}>Tarjeta de crédito</option>
+        <option value="transferencia" ${pago.sat_code==='03'?'selected':''}>Transferencia</option>
+      </select>
+    </div>
     <div class="f-row"><label>RFC o nombre del cliente <span class="req">*</span></label><input type="text" id="cs-rfc" list="dl-clientes-fiscales" value="${previo.rfc_receptor||''}" placeholder="XAXX010101000 o empieza a escribir el nombre" oninput="buscarClienteFiscal(this.value,'cs',{soloSiVacio:true})"/><span id="cs-rfc-hint" style="font-size:11px;color:var(--green)"></span></div>
     <div class="f-row"><label>Razón social <span class="req">*</span></label><input type="text" id="cs-razon" value="${(previo.razon_social||'').replace(/"/g,'&quot;')}" placeholder="Nombre o razón social"/></div>
     <div class="f-row"><label>Código postal fiscal <span class="req">*</span></label><input type="text" id="cs-cp" maxlength="5" placeholder="93320"/></div>
@@ -13423,12 +13431,13 @@ async function confirmarCrearSustituto(entidad,folio,uuidOriginal){
   const email=document.getElementById('cs-email').value.trim();
   const descripcion=document.getElementById('cs-descripcion').value.trim();
   const metodo_pago=document.getElementById('cs-metodo').value;
+  const forma_pago_nueva=document.getElementById('cs-forma-pago').value;
   if(!rfc||!razon_social||!cp){toast('RFC, razón social y CP son obligatorios',true);return;}
   if(!confirm(`Esto genera un CFDI real ante el SAT a nombre de ${razon_social} (${rfc}), como sustituto del folio ${folio}. No se puede deshacer con un simple clic. ¿Confirmas timbrar?`))return;
   const btn=document.getElementById('cs-timbrar-btn');
   btn.disabled=true;btn.textContent='Timbrando...';
   try{
-    const out=await gpLlamarFuncion({accion:'timbrar_sustituto',entidad,folio,uuid_original:uuidOriginal,rfc,razon_social,cp,regimen_fiscal,uso_cfdi,email,metodo_pago,descripcion});
+    const out=await gpLlamarFuncion({accion:'timbrar_sustituto',entidad,folio,uuid_original:uuidOriginal,rfc,razon_social,cp,regimen_fiscal,uso_cfdi,email,metodo_pago,descripcion,forma_pago_nueva});
     closeModal('m-crear-sustituto');
     const sustField=document.getElementById('cc-sustituto');
     if(sustField)sustField.value=out.factura.uuid_fiscal;
