@@ -4580,7 +4580,7 @@ table.fq-tbl td:last-child{text-align:right;font-family:'Courier New',monospace}
       <div><b>Sucursal:</b> ${entLabel}</div>
       <div><b>Salario diario:</b> ${fmxn(r.salario)}</div>
     </div>
-    <div class="fq-parrafo">En Poza Rica, Ver., a ${fmtFechaLarga(r.fCalcStr)} recibí de <b>${patronNombre}</b> la cantidad de <b>${fmxn(r.total)} (${numeroALetras(r.total)})</b>, correspondiente al pago de <b>VACACIONES Y PRIMA VACACIONAL</b> del período comprendido en los años de ${r.anioServicioInicio} a ${r.anioServicioFin}, de conformidad con los artículos 76, 80 y 81 de la Ley Federal del Trabajo, cantidad que recibo a mi entera satisfacción y firmo al calce para constancia.<br><br>Así mismo hago constar que mi antigüedad en la Empresa es de <b>${r.antiguedadTxt}</b>.</div>
+    <div class="fq-parrafo">En ${NOMINA_EMPRESA[e.entidad]?.ciudad||'POZA RICA, VER.'}, a ${fmtFechaLarga(r.fCalcStr)} recibí de <b>${patronNombre}</b> la cantidad de <b>${fmxn(r.total)} (${numeroALetras(r.total)})</b>, correspondiente al pago de <b>VACACIONES Y PRIMA VACACIONAL</b> del período comprendido en los años de ${r.anioServicioInicio} a ${r.anioServicioFin}, de conformidad con los artículos 76, 80 y 81 de la Ley Federal del Trabajo, cantidad que recibo a mi entera satisfacción y firmo al calce para constancia.<br><br>Así mismo hago constar que mi antigüedad en la Empresa es de <b>${r.antiguedadTxt}</b>.</div>
     <table class="fq-tbl">
       <tr><td>VACACIONES (${r.diasTomados} día${r.diasTomados!==1?'s':''})</td><td>${fmxn(r.montoDias)}</td></tr>
       <tr><td>PRIMA VACACIONAL (25%)</td><td>${fmxn(r.primaVac)}</td></tr>
@@ -5871,25 +5871,94 @@ async function eliminarDiaFestivo(id){
   diasFestivosSel.delete(id);
   await loadDiasFestivos();renderDiasFestivos();
 }
+// Recibo de día festivo de hoja completa, un recibo por página (con salto
+// de página entre cada uno) -- mismo formato legal que ya se usaba en
+// papel (membrete del patrón real + RFC + domicilio, párrafo "recibí de...
+// la cantidad de $X (monto con letra)... Art. 74 LFT", firma), con el
+// mismo diseño degradado que ya usan Vacaciones/Finiquito/Balance. Pedido
+// del dueño, 17-sept-2026 ("lo mismo para días festivos" que en
+// Vacaciones). El monto es el pago DOBLE que ya calculaba el sistema
+// (aparte del salario normal de ese día, ver comentario arriba de
+// dias_festivos_pagados) -- se mantiene esa cifra, solo se completó el
+// texto legal para que quede explícito que es el doble por Art. 74, no
+// un día sencillo.
 async function imprimirRecibosDiasFestivos(){
   if(!diasFestivosSel.size){toast('Selecciona al menos un día festivo para imprimir',true);return;}
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
   const seleccionados=diasFestivosData.filter(d=>diasFestivosSel.has(d.id));
-  const cards=seleccionados.map(d=>{
+  if(!seleccionados.length)return;
+  const paginas=seleccionados.map(d=>{
     const e=empById[d.empleado_id];
     if(!e)return'';
     const doble=Number(d.salario_diario)*2;
-    return reciboCardHTML({
-      titulo:'Recibo de Día Festivo',
-      metaLabel1:'Fecha del festivo',semanaLabel:fmt(d.fecha),
-      metaLabel2:'Motivo',fechaPago:d.concepto||'—',
-      entidad:d.entidad,nombre:e.nombre,puesto:puestoNombre(e.puesto_id)||'',
-      filas:[{concepto:'Día festivo trabajado (pago doble adicional, aparte del salario normal de ese día)',dias:'1',horas:'',importe:fmxn(doble)}],
-      totalLabel:'TOTAL A PAGAR',totalMonto:fmxn(doble),
-    });
+    const entLabel=(ENTS[d.entidad]||{label:d.entidad}).label;
+    const fiscal=entidadesFiscalesData.find(x=>x.entidad===d.entidad);
+    const patronNombre=fiscal?fiscal.razon_social:(NOMINA_EMPRESA[d.entidad]?.patron||entLabel);
+    const ciudad=NOMINA_EMPRESA[d.entidad]?.ciudad||'POZA RICA, VER.';
+    return`
+    <div class="fq-page">
+      <div class="fq-wrap">
+        <div class="fq-hdr"><img src="${PA_LOGO}" alt="El Pescador"><div><div class="fq-hdr-text">RECIBO DE DÍA FESTIVO</div><div class="fq-hdr-sub">${entLabel} — El Pescador</div></div></div>
+        <div class="fq-body">
+          <div class="fq-letterhead">
+            <div class="razon">${patronNombre}</div>
+            ${fiscal?`<div class="datos">RFC: ${fiscal.rfc}<br>${fiscal.domicilio_fiscal||''}${fiscal.cp?' · CP. '+fiscal.cp:''}</div>`:''}
+          </div>
+          <div class="fq-bueno">BUENO POR ${fmxn(doble)}</div>
+          <div class="fq-info">
+            <div><b>Trabajador:</b> ${e.nombre}</div>
+            <div><b>Puesto:</b> ${puestoNombre(e.puesto_id)||''}</div>
+            <div><b>Sucursal:</b> ${entLabel}</div>
+            <div><b>Salario diario:</b> ${fmxn(d.salario_diario)}</div>
+          </div>
+          <div class="fq-parrafo">En ${ciudad}, a ${fmtFechaLarga(todayLocalISO())} recibí de <b>${patronNombre}</b> la cantidad de <b>${fmxn(doble)} (${numeroALetras(doble)})</b>, correspondiente al pago doble del día festivo trabajado el ${fmtFechaLarga(d.fecha)}${d.concepto?' — '+d.concepto:''}, de conformidad con el artículo 74 de la Ley Federal del Trabajo, cantidad que recibo a mi entera satisfacción y firmo al calce para constancia.<br><br>Así mismo hago constar que mi salario diario en la Empresa es de <b>${fmxn(d.salario_diario)}</b>.</div>
+          <table class="fq-tbl">
+            <tr><td>Día festivo trabajado (${fmt(d.fecha)})</td><td>${fmxn(d.salario_diario)}</td></tr>
+            <tr><td>Pago doble adicional (Art. 74 LFT)</td><td>${fmxn(d.salario_diario)}</td></tr>
+            <tr class="fq-total"><td>TOTAL A PAGAR</td><td>${fmxn(doble)}</td></tr>
+          </table>
+          <div class="fq-firmas"><div class="fq-firma"><div class="fq-firma-line">&nbsp;</div>${e.nombre}</div></div>
+        </div>
+      </div>
+    </div>`;
   }).join('');
-  document.getElementById('print-horasextra').innerHTML=`<div class="recibo-grid">${cards}</div>`;
-  window.print();
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Recibos de días festivos</title>
+<style>
+@page{size:8.5in 11in;margin:1.2cm}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+body{font-family:Arial,sans-serif;margin:0;padding:0;color:#16323c;background:#eaf4f5}
+.fq-page{padding:16px;page-break-after:always}
+.fq-page:last-child{page-break-after:auto}
+.fq-wrap{max-width:720px;margin:0 auto}
+.fq-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:14px 20px;border-radius:8px 8px 0 0}
+.fq-hdr img{height:42px;width:42px;object-fit:contain;flex-shrink:0}
+.fq-hdr-text{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;letter-spacing:.02em}
+.fq-hdr-sub{font-size:11px;opacity:.85;margin-top:2px}
+.fq-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:22px 26px}
+.fq-letterhead{text-align:center;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #e2eef0}
+.fq-letterhead .razon{font-size:14px;font-weight:700;color:#0f3d52;letter-spacing:.01em}
+.fq-letterhead .datos{font-size:10.5px;color:#3a5a63;margin-top:4px;line-height:1.5}
+.fq-bueno{font-size:13px;font-weight:700;color:#0f3d52;margin-bottom:14px}
+.fq-info{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #e2eef0}
+.fq-info b{color:#0f3d52}
+.fq-parrafo{font-size:12px;line-height:1.7;text-align:justify;margin-bottom:14px;color:#16323c}
+.fq-parrafo b{color:#0f3d52}
+table.fq-tbl{width:100%;border-collapse:collapse;margin-bottom:16px}
+table.fq-tbl td{padding:8px 6px;border-bottom:1px solid #e2eef0;font-size:12.5px}
+table.fq-tbl td:last-child{text-align:right;font-family:'Courier New',monospace}
+.fq-total td{font-weight:700;font-size:15px;border-top:2px solid #0f3d52;border-bottom:none;padding-top:12px}
+.fq-firmas{display:flex;justify-content:center;margin-top:60px}
+.fq-firma{text-align:center;font-size:11.5px;color:#3a5a63;min-width:280px}
+.fq-firma-line{border-top:1px solid #16323c;margin-bottom:6px;padding-top:6px;font-weight:700;color:#16323c}
+.print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+@media print{.print-btn{display:none}body{padding:0;background:#fff}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨 Imprimir (${paginas.length})</button>
+${paginas}
+</body></html>`;
+  const w=window.open('','_blank');
+  w.document.write(html);
+  w.document.close();
   const ids=[...diasFestivosSel];
   await sb.from('dias_festivos_pagados').update({impreso:true}).in('id',ids);
   await loadDiasFestivos();renderDiasFestivos();
