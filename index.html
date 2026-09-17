@@ -280,6 +280,8 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .tab-badge{font-size:9px;padding:1px 5px;border-radius:8px;
   background:var(--copper);color:#fff;font-weight:700}
 .ent-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.grupo-tabbar-wrap{margin-bottom:16px}
+.grupo-tabbar-wrap .tabs-bar{border-bottom:none}
 
 /* ── TOOLBAR ── */
 .toolbar{display:flex;align-items:center;justify-content:space-between;
@@ -894,10 +896,6 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <span class="sb-item-icon">👥</span>
         <span class="sb-item-label">Recursos Humanos</span>
       </div>
-      <div class="sb-item" onclick="showPage('nominayasist')" id="si-nominayasist">
-        <span class="sb-item-icon">💵</span>
-        <span class="sb-item-label">Nómina y asistencia</span>
-      </div>
       <div class="sb-item" onclick="showPage('flotilla')" id="si-flotilla">
         <span class="sb-item-icon">🚗</span>
         <span class="sb-item-label">Flotilla</span>
@@ -912,33 +910,27 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <span class="sb-item-icon">📒</span>
         <span class="sb-item-label">Directorio</span>
       </div>
-      <div class="sb-item" onclick="showPage('balance')" id="si-balance">
+      <!-- Los 8 módulos de Finanzas/Nómina (antes cada uno su propia entrada)
+      se agruparon en 3 (pedido del dueño, 17-sept-2026: "siento que ya
+      llevamos demasiados módulos... que no haya tantas cosas en otras áreas
+      cuando pueden estar en una") -- cada entrada abre la 1a página del
+      grupo y muestra una pestaña arriba (#grupo-tabbar, ver PAGE_GROUPS/
+      renderGrupoTabbar) para saltar a las demás páginas del grupo, que
+      siguen siendo las mismas <div class="page"> de siempre sin tocar su
+      lógica interna. Nómina y asistencia se movió aquí desde "Personal"
+      porque ya comparte grupo con Balance (que trae su propia Bitácora
+      Nómina como sub-pestaña).  -->
+      <div class="sb-item" onclick="showPage('cortes')" id="si-cajaventas">
         <span class="sb-item-icon">📊</span>
-        <span class="sb-item-label">Balance mensual</span>
+        <span class="sb-item-label">Caja y Ventas</span>
       </div>
-      <div class="sb-item" onclick="showPage('cortes')" id="si-cortes">
+      <div class="sb-item" onclick="showPage('globalespreview')" id="si-facturacion">
         <span class="sb-item-icon">🧾</span>
-        <span class="sb-item-label">Cortes de caja</span>
+        <span class="sb-item-label">Facturación SAT</span>
       </div>
-      <div class="sb-item" onclick="showPage('ventasmes')" id="si-ventasmes">
-        <span class="sb-item-icon">📈</span>
-        <span class="sb-item-label">Ventas del mes</span>
-      </div>
-      <div class="sb-item" onclick="showPage('globalespreview')" id="si-globalespreview">
-        <span class="sb-item-icon">📦</span>
-        <span class="sb-item-label">Facturación Global</span>
-      </div>
-      <div class="sb-item" onclick="showPage('autofacturas')" id="si-autofacturas">
-        <span class="sb-item-icon">🔎</span>
-        <span class="sb-item-label">Autofacturas</span>
-      </div>
-      <div class="sb-item" onclick="showPage('controlgastos')" id="si-controlgastos">
-        <span class="sb-item-icon">🧮</span>
-        <span class="sb-item-label">Control de Gastos</span>
-      </div>
-      <div class="sb-item" onclick="showPage('polizabanco')" id="si-polizabanco">
-        <span class="sb-item-icon">🏦</span>
-        <span class="sb-item-label">Póliza Banco</span>
+      <div class="sb-item" onclick="showPage('balance')" id="si-balancenomina">
+        <span class="sb-item-icon">💰</span>
+        <span class="sb-item-label">Balance y Nómina</span>
       </div>
       <div class="sb-sep"></div>
       <div class="sb-item" onclick="showPage('archivos')" id="si-archivos">
@@ -954,6 +946,13 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       </div>
     </div>
     <div class="content">
+
+      <!-- Pestaña de submódulos del grupo activo (Caja y Ventas / Facturación
+      SAT / Balance y Nómina) -- la llena renderGrupoTabbar() desde showPage(),
+      oculta si la página activa no pertenece a ningún grupo. -->
+      <div class="tabs-wrap grupo-tabbar-wrap" id="grupo-tabbar-wrap" style="display:none">
+        <div class="tabs-bar" id="grupo-tabbar"></div>
+      </div>
 
       <!-- INICIO -->
       <div class="page active" id="page-inicio">
@@ -1263,7 +1262,6 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
                 <input type="checkbox" id="vm-solo-nofact" onchange="renderVentasMes()"> Solo sin facturar
               </label>
               <button class="btn btn-filled btn-sm" onclick="exportVentasMesCSV()">⬇️ Exportar Excel</button>
-              <button class="btn btn-sm" onclick="openReporteFacturacion()">📋 Reporte de facturación</button>
             </div>
             <div class="lcount" id="vm-count"></div>
           </div>
@@ -1305,11 +1303,20 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         </div>
         <div class="tabs-wrap">
           <div class="tabs-bar" id="af-tabs-bar"></div>
+          <div style="padding:14px 16px 0">
+            <div class="ledger-subtabs" id="af-estado-tabs">
+              <div class="ledger-subtab active" onclick="switchAFEstado('pendiente')">⏳ Pendientes</div>
+              <div class="ledger-subtab" onclick="switchAFEstado('facturada')">✓ Facturadas</div>
+            </div>
+          </div>
           <div class="toolbar">
             <div class="toolbar-l" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
-                <input type="checkbox" id="af-solo-pendientes" checked onchange="renderAutofacturas()"/> Solo pendientes
-              </label>
+              <!-- Solo tiene sentido en "Facturadas" -- el reporte lista folios
+              ya timbrados, un pendiente no aparecería ahí (renderAutofacturas
+              lo muestra/oculta según currentAFEstado). Se movió aquí desde
+              Ventas del mes (pedido del dueño, 17-sept-2026) para no repetir
+              lo de facturación en dos módulos distintos. -->
+              <button class="btn btn-sm" id="af-reporte-btn" onclick="openReporteFacturacion()" style="display:none">📋 Reporte de facturación</button>
             </div>
             <div class="toolbar-r" style="display:flex;gap:8px">
               <button class="btn btn-filled" id="af-verificar-btn" onclick="verificarAutofacturas()">🔄 Verificar autofacturas</button>
@@ -2987,12 +2994,48 @@ async function loadAccesos(){
 }
 
 // ─── PAGE SWITCH ──────────────────────────────────────────────
+// Grupos de menú que juntan varias <div class="page"> viejas bajo una sola
+// entrada del sidebar + una pestaña propia arriba del contenido (ver
+// #grupo-tabbar-wrap) -- pedido del dueño 17-sept-2026 para que el menú no
+// se sintiera con "tantos módulos". Cada página listada aquí sigue siendo
+// exactamente la misma <div id="page-XXX"> con su misma lógica interna,
+// solo cambia desde dónde se llega a ella.
+const PAGE_GROUPS={
+  cajaventas:{label:'Caja y Ventas',pages:[
+    {id:'cortes',label:'Cortes de caja'},
+    {id:'ventasmes',label:'Ventas del mes'},
+    {id:'controlgastos',label:'Control de Gastos'},
+    {id:'polizabanco',label:'Póliza Banco'},
+  ]},
+  facturacion:{label:'Facturación SAT',pages:[
+    {id:'globalespreview',label:'Facturación Global'},
+    {id:'autofacturas',label:'Autofacturas'},
+  ]},
+  balancenomina:{label:'Balance y Nómina',pages:[
+    {id:'balance',label:'Balance mensual'},
+    {id:'nominayasist',label:'Nómina y asistencia'},
+  ]},
+};
+const PAGE_TO_GROUP={};
+Object.entries(PAGE_GROUPS).forEach(([gid,g])=>g.pages.forEach(p=>PAGE_TO_GROUP[p.id]=gid));
+function renderGrupoTabbar(id){
+  const gid=PAGE_TO_GROUP[id];
+  const wrap=document.getElementById('grupo-tabbar-wrap');
+  if(!gid){wrap.style.display='none';return;}
+  const g=PAGE_GROUPS[gid];
+  document.getElementById('grupo-tabbar').innerHTML=g.pages.map(p=>
+    `<div class="tab ${p.id===id?'active':''}" onclick="showPage('${p.id}')">${p.label}</div>`
+  ).join('');
+  wrap.style.display='block';
+}
+
 function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.sb-item').forEach(s=>s.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');
-  const si=document.getElementById('si-'+id);
+  const si=document.getElementById('si-'+(PAGE_TO_GROUP[id]||id));
   if(si)si.classList.add('active');
+  renderGrupoTabbar(id);
   if(id==='archivos'){repoPath=[];renderRepo();}
   else if(id==='rh')renderEmps();
   else if(id==='accesos')renderAccesos();
@@ -9233,12 +9276,14 @@ function construirHojaFacturacion(sucursal,fechaYMD){
 
 function openReporteFacturacion(){
   const sucSel=document.getElementById('rf-suc');
-  // currentVMSuc trae el nombre CRUDO de la sucursal (ej. "Av. Puebla"),
-  // que no coincide con los <option value> del selector ("Puebla"/"Hotel"/
-  // "Florida") -- si se asigna tal cual, el <select> queda sin nada
-  // seleccionado (value="") y el reporte sale vacío aunque sí haya
-  // facturas. Se normaliza igual que en facturasDetalleDelDia.
-  sucSel.value=corteSucLabel(currentVMSuc)||'Florida';
+  // currentAFSuc/currentVMSuc traen el nombre CRUDO de la sucursal (ej.
+  // "Av. Puebla"), que no coincide con los <option value> del selector
+  // ("Puebla"/"Hotel"/"Florida") -- si se asigna tal cual, el <select>
+  // queda sin nada seleccionado (value="") y el reporte sale vacío aunque
+  // sí haya facturas. Se normaliza igual que en facturasDetalleDelDia.
+  // El botón vive en Autofacturas (currentAFSuc) desde el 17-sept-2026;
+  // currentVMSuc queda de respaldo por si algún día se abre desde otro lado.
+  sucSel.value=corteSucLabel(currentAFSuc||currentVMSuc)||'Florida';
   const fEl=document.getElementById('rf-fecha');
   if(!fEl.value)fEl.value=new Date().toISOString().slice(0,10);
   const desdeEl=document.getElementById('rf-desde'),hastaEl=document.getElementById('rf-hasta');
@@ -9542,6 +9587,13 @@ function gpRenderResultado(){
 // tab_autofacturas.py) y reescribe el corte correspondiente si cambió --
 // no depende de que la sucursal corra su propio botón y reenvíe el corte.
 let currentAFSuc='';
+let currentAFEstado='pendiente'; // 'pendiente' | 'facturada'
+function switchAFEstado(estado){
+  currentAFEstado=estado;
+  document.querySelectorAll('#af-estado-tabs .ledger-subtab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('#af-estado-tabs .ledger-subtab')[estado==='pendiente'?0:1].classList.add('active');
+  renderAutofacturas();
+}
 
 function renderAFTabs(){
   const bar=document.getElementById('af-tabs-bar');
@@ -9611,15 +9663,16 @@ function renderAutofacturas(){
   const el=document.getElementById('af-content');
   if(!el)return;
   renderAFTabs();
+  const btnReporte=document.getElementById('af-reporte-btn');
+  if(btnReporte)btnReporte.style.display=currentAFEstado==='facturada'?'inline-flex':'none';
   if(!currentAFSuc){
     el.innerHTML=`<div class="empty"><div class="empty-ico">🔎</div>Ninguna sucursal ha mandado autofacturas todavía.</div>`;
     return;
   }
-  const soloPendientes=document.getElementById('af-solo-pendientes')?.checked;
-  let filas=afFilasSucursalActual();
-  if(soloPendientes)filas=filas.filter(f=>!f.facturado);
+  const esPendiente=currentAFEstado==='pendiente';
+  let filas=afFilasSucursalActual().filter(f=>esPendiente?!f.facturado:!!f.facturado);
   if(!filas.length){
-    el.innerHTML=`<div class="empty"><div class="empty-ico">✅</div>${soloPendientes?'No hay autofacturas pendientes':'No hay autofacturas'} en ${corteSucLabel(currentAFSuc)}.</div>`;
+    el.innerHTML=`<div class="empty"><div class="empty-ico">✅</div>${esPendiente?'No hay autofacturas pendientes':'No hay autofacturas ya facturadas'} en ${corteSucLabel(currentAFSuc)}.</div>`;
     return;
   }
   const filasTbl=filas.map(f=>{
