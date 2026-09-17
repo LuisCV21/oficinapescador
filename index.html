@@ -1070,6 +1070,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
           <div style="font-size:18px;font-weight:500">Recursos humanos</div>
           <div style="display:flex;gap:8px">
+            <button class="btn" onclick="openDiasFestivosModal()">🎉 Días festivos</button>
             <button class="btn" onclick="openPlayerasModal()">🎽 Playeras</button>
             <button class="btn btn-filled" onclick="openEmpModal()">+ Nuevo empleado</button>
           </div>
@@ -1116,7 +1117,6 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <div class="tabs-bar" id="nya-sub-tabs">
           <div class="tab active" data-sub="asistencia" onclick="switchModuloTab('asistencia')">📅 Asistencia</div>
           <div class="tab" data-sub="horasextra" onclick="switchModuloTab('horasextra')">⏱️ Horas extra</div>
-          <div class="tab" data-sub="diasfestivos" onclick="switchModuloTab('diasfestivos')">🎉 Días festivos</div>
           <div class="tab" data-sub="nomina" onclick="switchModuloTab('nomina')">💵 Nómina</div>
         </div>
 
@@ -1134,19 +1134,6 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             <button class="btn btn-sm" onclick="abrirPreviewRecibosHorasExtra()">🖨️ Recibos</button>
           </div>
           <div style="overflow-x:auto;margin:14px 0" id="horasextra-grid-wrap"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
-        </div>
-
-        <div class="modulo-sub" id="sub-diasfestivos" style="display:none">
-          <div class="df-add-form" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:12px 0">
-            <div class="f-row" style="min-width:220px"><label>Empleado</label><select id="df-empleado"></select></div>
-            <div class="f-row"><label>Fecha del festivo</label><input type="date" id="df-fecha"/></div>
-            <div class="f-row" style="min-width:180px"><label>Motivo (opcional)</label><input type="text" id="df-concepto" placeholder="Ej. 16 de septiembre"/></div>
-            <button class="btn btn-filled" onclick="agregarDiaFestivo()">+ Agregar</button>
-          </div>
-          <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;margin:12px 0 10px">
-            <button class="btn btn-sm" onclick="imprimirRecibosDiasFestivos()">🖨️ Imprimir recibos seleccionados</button>
-          </div>
-          <div style="overflow-x:auto;margin:14px 0" id="diasfestivos-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         </div>
 
         <div class="modulo-sub" id="sub-nomina" style="display:none">
@@ -2042,6 +2029,27 @@ mismo blob ya cargado, sin volver a pedirlo. -->
   <div class="modal-hdr"><div class="modal-title" id="m-emp-detail-title">Expediente</div><button class="btn-icon" onclick="closeModal('m-emp-detail')">✕</button></div>
   <div class="modal-body" id="m-emp-detail-body"></div>
   <div class="modal-ftr" id="m-emp-detail-ftr"></div>
+</div>
+</div>
+
+<!-- MODAL DÍAS FESTIVOS -->
+<div class="modal-overlay" id="m-diasfestivos">
+<div class="modal" style="max-width:820px">
+  <div class="modal-hdr"><div class="modal-title">Días festivos trabajados</div><button class="btn-icon" onclick="closeModal('m-diasfestivos')">✕</button></div>
+  <div class="modal-body">
+    <div class="tabs-bar" id="df-ent-tabs" style="margin-bottom:14px;border-radius:var(--r);overflow:hidden"></div>
+    <div class="df-add-form" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:14px">
+      <div class="f-row" style="min-width:220px;margin:0"><label>Empleado</label><select id="df-empleado"></select></div>
+      <div class="f-row" style="margin:0"><label>Fecha del festivo</label><input type="date" id="df-fecha"/></div>
+      <div class="f-row" style="min-width:180px;margin:0"><label>Motivo (opcional)</label><input type="text" id="df-concepto" placeholder="Ej. 16 de septiembre"/></div>
+      <button class="btn btn-filled" onclick="agregarDiaFestivo()">+ Agregar</button>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;margin-bottom:10px">
+      <button class="btn btn-sm" onclick="imprimirRecibosDiasFestivos()">🖨️ Imprimir recibos seleccionados</button>
+    </div>
+    <div style="overflow-x:auto" id="diasfestivos-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+  <div class="modal-ftr"><button class="btn" onclick="closeModal('m-diasfestivos')">Cerrar</button></div>
 </div>
 </div>
 
@@ -4844,7 +4852,6 @@ function reloadModuloActivo(){
   };
   if(moduloActivoTab==='asistencia')loadAsistencia().then(()=>{renderAsistGrid();aplicarSlide();});
   else if(moduloActivoTab==='horasextra')loadHorasExtra().then(()=>{renderHorasExtraGrid();aplicarSlide();});
-  else if(moduloActivoTab==='diasfestivos')loadDiasFestivos().then(()=>{renderDiasFestivos();aplicarSlide();});
   else if(moduloActivoTab==='nomina')loadNomina().then(()=>{renderNomina();aplicarSlide();});
 }
 
@@ -5791,8 +5798,33 @@ function imprimirRecibosHorasExtra(){
 // semana en un solo recibo) -- un empleado con 2 festivos pendientes de
 // pagar necesita 2 recibos firmados, uno por cada fecha.
 let diasFestivosData=[],diasFestivosSel=new Set();
+// Días festivos vivía como pestaña de "Nómina y asistencia" -- se movió a
+// Recursos Humanos (pedido del dueño, 17-sept-2026: "casi siempre va
+// aparte como vacaciones") como modal propio, igual que Vacaciones/
+// Playeras. Usa currentRhEnt (la pestaña de sucursal ya activa en RH)
+// como filtro, con sus propias pestañas dentro del modal para poder
+// cambiar de sucursal sin tener que cerrarlo.
+function openDiasFestivosModal(){
+  openModal('m-diasfestivos');
+  renderDiasFestivosEntTabs();
+  loadDiasFestivos().then(renderDiasFestivos);
+}
+function renderDiasFestivosEntTabs(){
+  const el=document.getElementById('df-ent-tabs');
+  if(!el)return;
+  if(!ENT_ORDER.includes(currentRhEnt))currentRhEnt=ENT_ORDER[0];
+  el.innerHTML=ENT_ORDER.map(ek=>{
+    const ent=ENTS[ek];if(!ent)return'';
+    return`<div class="tab ${currentRhEnt===ek?'active':''}" onclick="switchDiasFestivosEnt('${ek}')"><span class="ent-dot" style="background:${ent.color}"></span>${ent.label}</div>`;
+  }).join('');
+}
+function switchDiasFestivosEnt(ek){
+  currentRhEnt=ek;
+  renderDiasFestivosEntTabs();
+  loadDiasFestivos().then(renderDiasFestivos);
+}
 async function loadDiasFestivos(){
-  const{data}=await sb.from('dias_festivos_pagados').select('*').eq('entidad',moduloActivoEnt).order('fecha',{ascending:false});
+  const{data}=await sb.from('dias_festivos_pagados').select('*').eq('entidad',currentRhEnt).order('fecha',{ascending:false});
   diasFestivosData=data||[];
   diasFestivosSel=new Set([...diasFestivosSel].filter(id=>diasFestivosData.some(d=>d.id===id)));
 }
@@ -5800,7 +5832,7 @@ function populateDiasFestivosEmpleadoSelect(){
   const sel=document.getElementById('df-empleado');
   if(!sel)return;
   const prev=sel.value;
-  const activos=empData.filter(e=>e.entidad===moduloActivoEnt&&e.activo!==false).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  const activos=empData.filter(e=>e.entidad===currentRhEnt&&e.activo!==false).sort((a,b)=>a.nombre.localeCompare(b.nombre));
   sel.innerHTML=activos.map(e=>`<option value="${e.id}">${e.nombre}</option>`).join('');
   if([...sel.options].some(o=>o.value===prev))sel.value=prev;
   if(!document.getElementById('df-fecha').value)document.getElementById('df-fecha').value=new Date().toISOString().slice(0,10);
@@ -5810,7 +5842,7 @@ function renderDiasFestivos(){
   const el=document.getElementById('diasfestivos-list');
   if(!el)return;
   if(!diasFestivosData.length){
-    el.innerHTML='<div class="empty" style="padding:16px">Ningún día festivo registrado todavía para '+(ENTS[moduloActivoEnt]?.label||moduloActivoEnt)+'.</div>';
+    el.innerHTML='<div class="empty" style="padding:16px">Ningún día festivo registrado todavía para '+(ENTS[currentRhEnt]?.label||currentRhEnt)+'.</div>';
     return;
   }
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
@@ -5857,7 +5889,7 @@ async function agregarDiaFestivo(){
   const e=empData.find(x=>x.id===empleado_id);
   if(!e||!e.salario_diario){toast('Este empleado no tiene salario diario capturado (Editar en Recursos Humanos)',true);return;}
   const{error}=await sb.from('dias_festivos_pagados').insert({
-    empleado_id,entidad:moduloActivoEnt,fecha,concepto,salario_diario:e.salario_diario,creado_por:currentUser?.id||null,
+    empleado_id,entidad:currentRhEnt,fecha,concepto,salario_diario:e.salario_diario,creado_por:currentUser?.id||null,
   });
   if(error){toast('Error: '+(error.code==='23505'?'Ya hay un festivo registrado para este empleado en esa fecha':error.message),true);return;}
   document.getElementById('df-concepto').value='';
@@ -14467,7 +14499,7 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'nomina_periodos'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='nomina')await loadNomina().then(renderNomina);})
     .on('postgres_changes',{event:'*',schema:'public',table:'nomina_lineas'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='nomina')await loadNomina().then(renderNomina);})
     .on('postgres_changes',{event:'*',schema:'public',table:'horas_extra'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='horasextra')await loadHorasExtra().then(renderHorasExtraGrid);})
-    .on('postgres_changes',{event:'*',schema:'public',table:'dias_festivos_pagados'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='diasfestivos')await loadDiasFestivos().then(renderDiasFestivos);})
+    .on('postgres_changes',{event:'*',schema:'public',table:'dias_festivos_pagados'},async()=>{if(document.getElementById('m-diasfestivos')?.classList.contains('open'))await loadDiasFestivos().then(renderDiasFestivos);})
     .on('postgres_changes',{event:'*',schema:'public',table:'horas_extra_semana'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='horasextra')await loadHorasExtra().then(renderHorasExtraGrid);})
     .subscribe((status)=>{
       if(status==='SUBSCRIBED'){console.log('Realtime conectado ✓');showRealtimeIndicator(true);}
