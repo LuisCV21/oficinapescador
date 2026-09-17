@@ -4423,6 +4423,45 @@ table.fq-tbl td:last-child{text-align:right;font-family:'Courier New',monospace}
   w.document.close();
 }
 
+// Convierte un monto a texto en español ("cuatro mil setecientos cuarenta
+// pesos 00/100 M.N.") -- para el recibo de vacaciones, que por ley (y por
+// costumbre contable en México) siempre lleva el monto también con letra,
+// no solo con número. Alcanza hasta 999,999 -- de sobra para un recibo de
+// nómina, no vale la pena soportar millones aquí.
+function numeroALetras(monto){
+  const UNIDADES=['','un','dos','tres','cuatro','cinco','seis','siete','ocho','nueve'];
+  const ESPECIALES=['diez','once','doce','trece','catorce','quince','dieciséis','diecisiete','dieciocho','diecinueve'];
+  const DECENAS=['veinte','treinta','cuarenta','cincuenta','sesenta','setenta','ochenta','noventa'];
+  const CENTENAS=['','ciento','doscientos','trescientos','cuatrocientos','quinientos','seiscientos','setecientos','ochocientos','novecientos'];
+  function dosDigitos(n){
+    if(n===0)return'';
+    if(n<10)return UNIDADES[n];
+    if(n<20)return ESPECIALES[n-10];
+    if(n===20)return'veinte';
+    if(n<30)return n===21?'veintiún':'veinti'+UNIDADES[n-20];
+    const d=Math.floor(n/10),u=n%10;
+    return DECENAS[d-2]+(u?' y '+UNIDADES[u]:'');
+  }
+  function tresDigitos(n){
+    if(n===0)return'';
+    if(n===100)return'cien';
+    const c=Math.floor(n/100),r=n%100;
+    return(c?CENTENAS[c]+(r?' ':''):'')+dosDigitos(r);
+  }
+  function entero(n){
+    if(n===0)return'cero';
+    if(n<1000)return tresDigitos(n);
+    const miles=Math.floor(n/1000),resto=n%1000;
+    const milesTxt=miles===1?'mil':tresDigitos(miles)+' mil';
+    return milesTxt+(resto?' '+tresDigitos(resto):'');
+  }
+  const entPart=Math.floor(Math.round(monto*100)/100);
+  const centavos=Math.round((monto-entPart)*100);
+  let txt=entero(entPart);
+  txt=txt.charAt(0).toUpperCase()+txt.slice(1);
+  return`${txt} pesos ${String(centavos).padStart(2,'0')}/100 M.N.`;
+}
+
 // ─── VACACIONES ──────────────────────────────────────────────
 let vcEmpId=null,vcDiasManual=false;
 function openVacacionesModal(empId){
@@ -4471,16 +4510,30 @@ function calcVacaciones(){
       <tr><td style="padding:10px 4px;font-weight:700">TOTAL A PAGAR</td><td style="padding:10px 4px;text-align:right;font-weight:700;font-size:15px;font-family:var(--mono);color:var(--green)">${fmxn(total)}</td></tr>
     </table>
   `;
-  return{e,fCalcStr,salario,añosCompletos,añoServicioActual,diasTablaVac,diasTomados,montoDias,primaVac,total,antiguedadTxt};
+  // Años calendario que abarca el año de servicio que se está pagando (ej.
+  // "del período comprendido en los años de 2025 a 2026") -- el año de
+  // servicio N va de fecha_ingreso+(N-1) años a fecha_ingreso+N años.
+  const anioServicioInicio=fIng.getFullYear()+(añoServicioActual-1);
+  const anioServicioFin=fIng.getFullYear()+añoServicioActual;
+
+  return{e,fCalcStr,salario,añosCompletos,añoServicioActual,diasTablaVac,diasTomados,montoDias,primaVac,total,antiguedadTxt,anioServicioInicio,anioServicioFin};
 }
+// Recibo de vacaciones de hoja completa, con el mismo texto legal que ya
+// se usaba en papel (BUENO POR, monto con letra, período por años,
+// artículos 76/80/81 LFT, antigüedad) pero con el diseño moderno que ya
+// usan el resto de los formatos impresos de Oficina (header degradado +
+// tarjeta blanca, ver viewBalance/imprimirFiniquito) -- y respetando el
+// patrón legal real de cada sucursal (Luis para Florida, Kateryn para
+// Puebla/Hotel, cada quien con su RFC y domicilio fiscal reales), no un
+// genérico "El Pescador". Pedido del dueño, 17-sept-2026.
 function imprimirVacaciones(){
   const r=calcVacaciones();
   if(!r)return;
   const e=r.e;
   const entLabel=(ENTS[e.entidad]||{label:e.entidad}).label;
   const puesto=puestoNombre(e.puesto_id)||'';
-  const fechaInicio=new Date(r.fCalcStr+'T12:00:00');
-  const fechaFin=new Date(fechaInicio);fechaFin.setDate(fechaFin.getDate()+Math.max(0,r.diasTomados-1));
+  const fiscal=entidadesFiscalesData.find(x=>x.entidad===e.entidad);
+  const patronNombre=fiscal?fiscal.razon_social:entLabel;
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Vacaciones — ${e.nombre}</title>
 <style>
 @page{size:8.5in 11in;margin:1.2cm}
@@ -4492,17 +4545,23 @@ body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#16323c;background
 .fq-hdr img{height:42px;width:42px;object-fit:contain;flex-shrink:0}
 .fq-hdr-text{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;letter-spacing:.02em}
 .fq-hdr-sub{font-size:11px;opacity:.85;margin-top:2px}
-.fq-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:18px 20px}
-.fq-info{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid #e2eef0}
+.fq-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:22px 26px}
+.fq-letterhead{text-align:center;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #e2eef0}
+.fq-letterhead .razon{font-size:14px;font-weight:700;color:#0f3d52;letter-spacing:.01em}
+.fq-letterhead .datos{font-size:10.5px;color:#3a5a63;margin-top:4px;line-height:1.5}
+.fq-bueno{font-size:13px;font-weight:700;color:#0f3d52;margin-bottom:14px}
+.fq-info{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #e2eef0}
 .fq-info b{color:#0f3d52}
+.fq-parrafo{font-size:12px;line-height:1.7;text-align:justify;margin-bottom:14px;color:#16323c}
+.fq-parrafo b{color:#0f3d52}
 table.fq-tbl{width:100%;border-collapse:collapse;margin-bottom:16px}
 table.fq-tbl td{padding:8px 6px;border-bottom:1px solid #e2eef0;font-size:12.5px}
 table.fq-tbl td:last-child{text-align:right;font-family:'Courier New',monospace}
 .fq-total td{font-weight:700;font-size:15px;border-top:2px solid #0f3d52;border-bottom:none;padding-top:12px}
 .fq-legal{font-size:10.5px;color:#3a5a63;line-height:1.55;margin:18px 0;text-align:justify}
-.fq-firmas{display:flex;justify-content:space-between;margin-top:50px;gap:30px}
-.fq-firma{flex:1;text-align:center;font-size:11px;color:#3a5a63}
-.fq-firma-line{border-top:1px solid #16323c;margin-bottom:6px;padding-top:6px}
+.fq-firmas{display:flex;justify-content:center;margin-top:60px}
+.fq-firma{text-align:center;font-size:11.5px;color:#3a5a63;min-width:280px}
+.fq-firma-line{border-top:1px solid #16323c;margin-bottom:6px;padding-top:6px;font-weight:700;color:#16323c}
 .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
 @media print{.print-btn{display:none}body{padding:0;background:#fff}}
 </style></head><body>
@@ -4510,23 +4569,25 @@ table.fq-tbl td:last-child{text-align:right;font-family:'Courier New',monospace}
 <div class="fq-wrap">
   <div class="fq-hdr"><img src="${PA_LOGO}" alt="El Pescador"><div><div class="fq-hdr-text">RECIBO DE VACACIONES</div><div class="fq-hdr-sub">${entLabel} — El Pescador</div></div></div>
   <div class="fq-body">
+    <div class="fq-letterhead">
+      <div class="razon">${patronNombre}</div>
+      ${fiscal?`<div class="datos">RFC: ${fiscal.rfc}<br>${fiscal.domicilio_fiscal||''}${fiscal.cp?' · CP. '+fiscal.cp:''}</div>`:''}
+    </div>
+    <div class="fq-bueno">BUENO POR ${fmxn(r.total)}</div>
     <div class="fq-info">
       <div><b>Trabajador:</b> ${e.nombre}</div>
       <div><b>Puesto:</b> ${puesto}</div>
-      <div><b>Antigüedad:</b> ${r.antiguedadTxt}</div>
+      <div><b>Sucursal:</b> ${entLabel}</div>
       <div><b>Salario diario:</b> ${fmxn(r.salario)}</div>
-      <div><b>Periodo de vacaciones:</b> ${fmt(r.fCalcStr)} al ${fmt(dateToISO(fechaFin))}</div>
-      <div><b>Días tomados:</b> ${r.diasTomados}</div>
     </div>
+    <div class="fq-parrafo">En Poza Rica, Ver., a ${fmtFechaLarga(r.fCalcStr)} recibí de <b>${patronNombre}</b> la cantidad de <b>${fmxn(r.total)} (${numeroALetras(r.total)})</b>, correspondiente al pago de <b>VACACIONES Y PRIMA VACACIONAL</b> del período comprendido en los años de ${r.anioServicioInicio} a ${r.anioServicioFin}, de conformidad con los artículos 76, 80 y 81 de la Ley Federal del Trabajo, cantidad que recibo a mi entera satisfacción y firmo al calce para constancia.<br><br>Así mismo hago constar que mi antigüedad en la Empresa es de <b>${r.antiguedadTxt}</b>.</div>
     <table class="fq-tbl">
-      <tr><td>Pago de ${r.diasTomados} día${r.diasTomados!==1?'s':''} de vacaciones</td><td>${fmxn(r.montoDias)}</td></tr>
-      <tr><td>Prima vacacional (25%)</td><td>${fmxn(r.primaVac)}</td></tr>
-      <tr class="fq-total"><td>TOTAL A PAGAR</td><td>${fmxn(r.total)}</td></tr>
+      <tr><td>VACACIONES (${r.diasTomados} día${r.diasTomados!==1?'s':''})</td><td>${fmxn(r.montoDias)}</td></tr>
+      <tr><td>PRIMA VACACIONAL (25%)</td><td>${fmxn(r.primaVac)}</td></tr>
+      <tr class="fq-total"><td>TOTAL NETO RECIBIDO</td><td>${fmxn(r.total)}</td></tr>
     </table>
-    <div class="fq-legal">El trabajador manifiesta que recibe de conformidad la cantidad señalada en este documento por concepto de pago de vacaciones y prima vacacional correspondientes al periodo indicado, conforme a los artículos 76 y 80 de la Ley Federal del Trabajo.</div>
     <div class="fq-firmas">
-      <div class="fq-firma"><div class="fq-firma-line">Firma del trabajador</div>${e.nombre}</div>
-      <div class="fq-firma"><div class="fq-firma-line">Firma de la empresa</div>${entLabel}</div>
+      <div class="fq-firma"><div class="fq-firma-line">&nbsp;</div>${e.nombre}</div>
     </div>
   </div>
 </div>
