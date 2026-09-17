@@ -5956,8 +5956,8 @@ async function imprimirRecibosDiasFestivos(){
           </div>
           <div class="fq-parrafo">En ${ciudad}, a ${fmtFechaLarga(todayLocalISO())} recibí de <b>${patronNombre}</b> la cantidad de <b>${fmxn(doble)} (${numeroALetras(doble)})</b>, correspondiente al pago doble del día festivo trabajado el ${fmtFechaLarga(d.fecha)}${d.concepto?' — '+d.concepto:''}, de conformidad con el artículo 74 de la Ley Federal del Trabajo, cantidad que recibo a mi entera satisfacción y firmo al calce para constancia.<br><br>Así mismo hago constar que mi salario diario en la Empresa es de <b>${fmxn(d.salario_diario)}</b>.</div>
           <table class="fq-tbl">
-            <tr><td>Día festivo trabajado (${fmt(d.fecha)})</td><td>${fmxn(d.salario_diario)}</td></tr>
-            <tr><td>Pago doble adicional (Art. 74 LFT)</td><td>${fmxn(d.salario_diario)}</td></tr>
+            <tr><td>Primer pago — día festivo (${fmt(d.fecha)})</td><td>${fmxn(d.salario_diario)}</td></tr>
+            <tr><td>Segundo pago — doble por ley (Art. 74 LFT)</td><td>${fmxn(d.salario_diario)}</td></tr>
             <tr class="fq-total"><td>TOTAL A PAGAR</td><td>${fmxn(doble)}</td></tr>
           </table>
           <div class="fq-firmas"><div class="fq-firma"><div class="fq-firma-line">&nbsp;</div>${e.nombre}</div></div>
