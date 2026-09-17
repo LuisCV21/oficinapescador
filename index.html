@@ -4683,12 +4683,24 @@ function calcFestivo(){
   `;
   return{e,fecha,label,salario,extra,total};
 }
+// Mismo formato/CSS que ya se usa en Vacaciones y en el Día festivo de la
+// bitácora de RH (letterhead real por sucursal, monto con letra, BUENO
+// POR, sin marco al imprimir) -- pedido del dueño, 17-sept-2026, este
+// tercer botón (el de la tarjeta del empleado) se me había quedado con el
+// formato viejo. OJO: este calcula TRIPLE (salario normal + doble extra,
+// Art. 75 LFT) -- distinto del botón de Días festivos en RH, que solo
+// calcula el DOBLE extra (Art. 74, asumiendo que el salario normal ya se
+// pagó en la nómina semanal). Son dos formas válidas de capturarlo según
+// si ese día ya se pagó aparte o no -- se deja la lógica de cada uno tal
+// cual estaba, solo se pareja la presentación.
 function imprimirFestivo(){
   const r=calcFestivo();
   if(!r)return;
   const e=r.e;
   const entLabel=(ENTS[e.entidad]||{label:e.entidad}).label;
   const puesto=puestoNombre(e.puesto_id)||'';
+  const fiscal=entidadesFiscalesData.find(x=>x.entidad===e.entidad);
+  const patronNombre=fiscal?fiscal.razon_social:entLabel;
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Día festivo — ${e.nombre}</title>
 <style>
 @page{size:8.5in 11in;margin:1.2cm}
@@ -4696,45 +4708,57 @@ function imprimirFestivo(){
 html,body{width:100%;height:100%}
 body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#16323c;background:#eaf4f5}
 .fq-wrap{max-width:720px;margin:0 auto}
-.fq-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:14px 20px;border-radius:8px 8px 0 0}
+.fq-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:16px 22px;border-radius:8px 8px 0 0}
 .fq-hdr img{height:42px;width:42px;object-fit:contain;flex-shrink:0}
 .fq-hdr-text{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;letter-spacing:.02em}
 .fq-hdr-sub{font-size:11px;opacity:.85;margin-top:2px}
-.fq-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:18px 20px}
-.fq-info{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid #e2eef0}
+.fq-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:26px 32px}
+.fq-letterhead{text-align:center;margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid #e2eef0}
+.fq-letterhead .razon{font-size:15px;font-weight:700;color:#0f3d52;letter-spacing:.01em}
+.fq-letterhead .datos{font-size:11px;color:#3a5a63;margin-top:5px;line-height:1.6}
+.fq-bueno{font-size:14px;font-weight:700;color:#0f3d52;margin-bottom:18px}
+.fq-info{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;font-size:13px;margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid #e2eef0}
 .fq-info b{color:#0f3d52}
-table.fq-tbl{width:100%;border-collapse:collapse;margin-bottom:16px}
-table.fq-tbl td{padding:8px 6px;border-bottom:1px solid #e2eef0;font-size:12.5px}
+.fq-parrafo{font-size:13px;line-height:1.85;text-align:justify;margin-bottom:18px;color:#16323c}
+.fq-parrafo b{color:#0f3d52}
+table.fq-tbl{width:100%;border-collapse:collapse;margin-bottom:20px}
+table.fq-tbl td{padding:11px 8px;border-bottom:1px solid #e2eef0;font-size:13.5px}
 table.fq-tbl td:last-child{text-align:right;font-family:'Courier New',monospace}
-.fq-total td{font-weight:700;font-size:15px;border-top:2px solid #0f3d52;border-bottom:none;padding-top:12px}
-.fq-legal{font-size:10.5px;color:#3a5a63;line-height:1.55;margin:18px 0;text-align:justify}
-.fq-firmas{display:flex;justify-content:space-between;margin-top:50px;gap:30px}
-.fq-firma{flex:1;text-align:center;font-size:11px;color:#3a5a63}
-.fq-firma-line{border-top:1px solid #16323c;margin-bottom:6px;padding-top:6px}
+.fq-total td{font-weight:700;font-size:16px;border-top:2px solid #0f3d52;border-bottom:none;padding-top:14px}
+.fq-firmas{display:flex;justify-content:center;margin-top:100px}
+.fq-firma{text-align:center;font-size:12px;color:#3a5a63;min-width:300px}
+.fq-firma-line{border-top:1px solid #16323c;margin-bottom:6px;padding-top:6px;font-weight:700;color:#16323c}
 .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
-@media print{.print-btn{display:none}body{padding:0;background:#fff}}
+@media print{
+  .print-btn{display:none}
+  body{padding:0;background:#fff}
+  .fq-wrap{max-width:100%}
+  .fq-hdr{border-radius:0}
+  .fq-body{border:none;border-radius:0;padding:8px 6px 0}
+}
 </style></head><body>
 <button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
 <div class="fq-wrap">
   <div class="fq-hdr"><img src="${PA_LOGO}" alt="El Pescador"><div><div class="fq-hdr-text">RECIBO — DÍA FESTIVO TRABAJADO</div><div class="fq-hdr-sub">${entLabel} — El Pescador</div></div></div>
   <div class="fq-body">
+    <div class="fq-letterhead">
+      <div class="razon">${patronNombre}</div>
+      ${fiscal?`<div class="datos">RFC: ${fiscal.rfc}<br>${fiscal.domicilio_fiscal||''}${fiscal.cp?' · CP. '+fiscal.cp:''}</div>`:''}
+    </div>
+    <div class="fq-bueno">BUENO POR ${fmxn(r.total)}</div>
     <div class="fq-info">
       <div><b>Trabajador:</b> ${e.nombre}</div>
       <div><b>Puesto:</b> ${puesto}</div>
       <div><b>Día festivo:</b> ${r.label}</div>
-      <div><b>Fecha:</b> ${fmt(r.fecha)}</div>
       <div><b>Salario diario:</b> ${fmxn(r.salario)}</div>
     </div>
+    <div class="fq-parrafo">En ${NOMINA_EMPRESA[e.entidad]?.ciudad||'POZA RICA, VER.'}, a ${fmtFechaLarga(todayLocalISO())} recibí de <b>${patronNombre}</b> la cantidad de <b>${fmxn(r.total)} (${numeroALetras(r.total)})</b>, correspondiente al pago del día de descanso obligatorio trabajado el ${fmtFechaLarga(r.fecha)} (${r.label}), de conformidad con el artículo 75 de la Ley Federal del Trabajo, que establece salario normal del día más el doble por el servicio prestado (pago triple en total), cantidad que recibo a mi entera satisfacción y firmo al calce para constancia.</div>
     <table class="fq-tbl">
-      <tr><td>Salario normal del día (ya incluido en su pago habitual)</td><td>${fmxn(r.salario)}</td></tr>
-      <tr><td>Pago extra por trabajar día festivo (2 días)</td><td>${fmxn(r.extra)}</td></tr>
+      <tr><td>Salario normal del día</td><td>${fmxn(r.salario)}</td></tr>
+      <tr><td>Pago extra por trabajar (2 días, Art. 75 LFT)</td><td>${fmxn(r.extra)}</td></tr>
       <tr class="fq-total"><td>TOTAL DEL DÍA (TRIPLE)</td><td>${fmxn(r.total)}</td></tr>
     </table>
-    <div class="fq-legal">El trabajador manifiesta que recibe de conformidad la cantidad señalada en este documento por haber prestado sus servicios en el día de descanso obligatorio indicado, conforme al artículo 75 de la Ley Federal del Trabajo.</div>
-    <div class="fq-firmas">
-      <div class="fq-firma"><div class="fq-firma-line">Firma del trabajador</div>${e.nombre}</div>
-      <div class="fq-firma"><div class="fq-firma-line">Firma de la empresa</div>${entLabel}</div>
-    </div>
+    <div class="fq-firmas"><div class="fq-firma"><div class="fq-firma-line">&nbsp;</div>${e.nombre}</div></div>
   </div>
 </div>
 </body></html>`;
