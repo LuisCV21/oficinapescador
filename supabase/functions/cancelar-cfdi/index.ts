@@ -158,11 +158,12 @@ Deno.serve(async (req) => {
       let datosSustituto: Record<string, unknown> = {};
       if (motivo === "01") {
         const { data: fi } = await db.from("facturas_individuales")
-          .select("rfc_receptor, razon_social, regimen_fiscal, uso_cfdi, cp_receptor, email_receptor, subtotal, iva, total, forma_pago, metodo_pago, uuid_fiscal, folio_pac")
+          .select("rfc_receptor, razon_social, regimen_fiscal, uso_cfdi, cp_receptor, email_receptor, subtotal, iva, total, forma_pago, metodo_pago, uuid_fiscal, folio_pac, facturapi_id")
           .eq("entidad", entidad).eq("folio", Number(folio)).maybeSingle();
         if (fi) {
           datosSustituto = {
             uuid_sustituto: fi.uuid_fiscal, folio_pac_sustituto: fi.folio_pac,
+            facturapi_id_sustituto: fi.facturapi_id,
             rfc_receptor: fi.rfc_receptor, razon_social: fi.razon_social,
             regimen_fiscal: fi.regimen_fiscal, uso_cfdi: fi.uso_cfdi,
             cp_receptor: fi.cp_receptor, email_receptor: fi.email_receptor,

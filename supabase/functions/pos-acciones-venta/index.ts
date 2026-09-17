@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
       const { data, error } = await adminClient
         .from("acciones_venta_pendientes")
         .select(`id, folio, turno_id, tipo, forma_pago_nueva, motivo, creada_por, creada_at,
-          uuid_original, uuid_sustituto, folio_pac_sustituto,
+          uuid_original, uuid_sustituto, folio_pac_sustituto, facturapi_id_sustituto,
           rfc_receptor, razon_social, regimen_fiscal, uso_cfdi, cp_receptor, email_receptor,
           subtotal, iva, total, forma_pago, metodo_pago`)
         .eq("sucursal", sucursal)
