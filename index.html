@@ -6807,6 +6807,42 @@ function openDocVehModal(vehId,vehNombre){
   resetFileZones([['fz-doc-veh','fl-doc-veh','📄','Adjuntar documento — PDF o imagen','ff-doc-veh']]);
   openModal('m-doc-veh');
 }
+// Sincroniza un documento de vehículo con vencimiento (seguro/tenencia/
+// verificación) hacia Obligaciones, para que su fecha límite aparezca ahí
+// junto con el resto de los trámites -- pedido del dueño, 17-sept-2026:
+// "la mayoría de esos trámites tienen su vencimiento y hay que ponerlo en
+// obligaciones". Se guarda en origen_clave='vehiculo:<id>:<tipo>' (no en
+// el id del documento, que cambia cada vez que se reemplaza -- ver
+// saveDocVehiculo, que borra e inserta de nuevo) para poder hacer upsert
+// sin duplicar la obligación cada vez que se sube un documento nuevo del
+// mismo tipo. Si el vehículo tiene varios documentos del mismo tipo (botón
+// "+ Agregar otro"), se sincroniza con el de vencimiento más lejano (el
+// vigente); si ya no queda ninguno con fecha, se desactiva la obligación.
+const DOC_TIPOS_CON_VENCIMIENTO=['seguro','tenencia','verificacion'];
+const DOC_LABELS_OBL_VEH={seguro:'Seguro',tenencia:'Tenencia',verificacion:'Verificación'};
+async function sincronizarObligacionVehiculo(vehId,tipo){
+  if(!DOC_TIPOS_CON_VENCIMIENTO.includes(tipo))return;
+  const v=vehiculosData.find(x=>x.id===vehId);
+  if(!v)return;
+  const origenClave=`vehiculo:${vehId}:${tipo}`;
+  const vigente=(v.documentos_vehiculo||[])
+    .filter(d=>d.tipo===tipo&&d.fecha_vencimiento)
+    .sort((a,b)=>b.fecha_vencimiento.localeCompare(a.fecha_vencimiento))[0];
+  if(!vigente){
+    await sb.from('obligaciones').update({activa:false}).eq('origen_clave',origenClave);
+    return;
+  }
+  const{error}=await sb.from('obligaciones').upsert({
+    origen_tabla:'documentos_vehiculo',origen_clave:origenClave,
+    nombre:`${DOC_LABELS_OBL_VEH[tipo]} — ${v.nombre}`,
+    entidad:v.entidad,categoria:'vehiculo',fecha_limite:vigente.fecha_vencimiento,
+    recurrencia:'annual',notas:'Sincronizado automáticamente desde Flotilla.',activa:true,
+  },{onConflict:'origen_clave'});
+  if(error)console.error('No se pudo sincronizar la obligación del vehículo:',error);
+  if(typeof loadObligaciones==='function'&&document.getElementById('page-obligaciones')?.classList.contains('active')){
+    await loadObligaciones();renderList();renderWidgets();renderCalendar();
+  }
+}
 async function uploadDocFromCard(vehId,tipo,input){
   const file=input.files[0];if(!file)return;
   toast('Subiendo documento...');
@@ -6815,24 +6851,31 @@ async function uploadDocFromCard(vehId,tipo,input){
   const blob=await fileToBlob(file);
   const{error:se}=await sb.storage.from('vehiculos').upload(path,blob,{contentType:file.type,upsert:true});
   if(se){toast('Error al subir: '+se.message,true);return;}
-  // Get vencimiento if seguro or tenencia
+  // Get vencimiento if seguro o tenencia
   let fecha_vencimiento=null;
-  if(tipo==='seguro'||tipo==='tenencia'||tipo==='verificacion'){
+  if(DOC_TIPOS_CON_VENCIMIENTO.includes(tipo)){
     fecha_vencimiento=prompt('¿Fecha de vencimiento? (AAAA-MM-DD) — opcional, Enter para omitir:');
     if(fecha_vencimiento&&!/^\d{4}-\d{2}-\d{2}$/.test(fecha_vencimiento))fecha_vencimiento=null;
   }
   await sb.from('documentos_vehiculo').insert({vehiculo_id:vehId,tipo,nombre_archivo:file.name,storage_path:path,fecha_vencimiento:fecha_vencimiento||null,size_bytes:file.size,mime_type:file.type});
   toast('✓ Documento subido correctamente');
   await loadVehiculos();
+  await sincronizarObligacionVehiculo(vehId,tipo);
   renderFlotilla();
 }
 async function eliminarDocVehiculo(docId,storagePath){
   if(!confirm('¿Eliminar este documento?'))return;
+  let vehId=null,tipo=null;
+  for(const v of vehiculosData){
+    const doc=(v.documentos_vehiculo||[]).find(d=>d.id===docId);
+    if(doc){vehId=v.id;tipo=doc.tipo;break;}
+  }
   const{error:se}=await sb.storage.from('vehiculos').remove([storagePath]);
   if(se){toast('Error al eliminar: '+se.message,true);return;}
   await sb.from('documentos_vehiculo').delete().eq('id',docId);
   toast('Documento eliminado');
   await loadVehiculos();
+  if(vehId&&tipo)await sincronizarObligacionVehiculo(vehId,tipo);
   renderFlotilla();
 }
 
@@ -6852,7 +6895,7 @@ async function saveDocVehiculo(){
   await sb.from('documentos_vehiculo').insert({vehiculo_id:docVehId,tipo,nombre_archivo:f.name,storage_path:path,fecha_vencimiento:venc,size_bytes:f.size,mime_type:f.mime});
   setLoading('doc-veh-save-btn',false);
   toast('Documento subido correctamente');
-  closeModal('m-doc-veh');await loadVehiculos();renderFlotilla();
+  closeModal('m-doc-veh');await loadVehiculos();await sincronizarObligacionVehiculo(docVehId,tipo);renderFlotilla();
 }
 
 // CARGA GASOLINA
