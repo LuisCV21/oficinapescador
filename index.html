@@ -1401,7 +1401,9 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
           <div class="bal-tab" id="bal-tab-ado" onclick="switchBalTab('ado')">🚌 Bitácora ADO</div>
           <div class="bal-tab" id="bal-tab-mio" onclick="switchBalTab('mio')" style="display:none">🔒 Mi Balance</div>
         </div>
+        <div id="balance-preview-luis" style="margin-bottom:14px"></div>
         <div id="balance-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+        <div id="balance-preview-kat" style="display:none;margin-bottom:14px"></div>
         <div id="balance-kat-list" style="display:none"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
         <div id="mi-balance-view" style="display:none">
           <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
@@ -7724,6 +7726,62 @@ async function recargarAutoKateryn(){
   updateBalanceKatPreview();
 }
 
+// ─── VISTA PREVIA VISIBLE DEL BALANCE (mes en curso) ─────────────────────
+// Igual que la Vista Previa de Facturación Global: se recalcula sola cada
+// vez que se entra a la pestaña, con los mismos datos que ya jala
+// recargarAutoFlorida/Kateryn -- nada de esto se guarda en ningún lado,
+// es puro cálculo en vivo hasta que se le da "Completar egresos y
+// guardar" (que abre el asistente ya prellenado, igual que hoy). Pedido
+// del dueño, 17-sept-2026: que el balance "se vaya creando solito" y se
+// vea de entrada, sin tener que abrir nada, y que lo único que pida
+// actualización manual sean los egresos.
+async function renderBalancePreviewLuis(){
+  const el=document.getElementById('balance-preview-luis');
+  if(!el)return;
+  el.innerHTML='<div class="loading"><div class="spinner"></div>Calculando vista previa...</div>';
+  const hoy=todayLocalISO();
+  const{desde,hasta}=mesCalendarioDeCorte(hoy);
+  const r=ingresosFacturablesPeriodo('Florida',desde,hasta);
+  const nomAuto=await nominaFacturadaPeriodo('FLO',desde,hasta);
+  el.innerHTML=`
+    <div class="acc-card" style="border:1.5px solid var(--copper);background:var(--copper-light)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div style="font-weight:700;font-size:13px;color:var(--copper-dark)">📊 Vista previa — ${fmtFechaCorta(desde)} a hoy</div>
+        <button class="btn btn-sm btn-filled" onclick="openBalanceModal()">📝 Completar egresos y guardar →</button>
+      </div>
+      <div class="bal-live-row"><span>💳 Tarjeta + 🏦 Transferencia (Florida)</span><strong>${fmxn(r.tarjeta+r.transferencia)}</strong></div>
+      <div class="bal-live-row"><span style="color:var(--text3)">　 Ya facturado / Falta facturar</span><span>${fmxn(r.yaFacturado)} / <span style="color:${r.faltaFacturar>0.5?'var(--amber)':'inherit'}">${fmxn(r.faltaFacturar)}</span></span></div>
+      <div class="bal-live-row"><span>🧾 Nómina ya timbrada</span><strong>${fmxn(nomAuto)}</strong></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">Se recalcula solo cada vez que entras aquí — nada se guarda hasta que le des "Completar egresos y guardar". Falta capturar egresos (Gastos facturados, Camioneta, IMSS).</div>
+    </div>`;
+}
+async function renderBalancePreviewKat(){
+  const el=document.getElementById('balance-preview-kat');
+  if(!el)return;
+  el.innerHTML='<div class="loading"><div class="spinner"></div>Calculando vista previa...</div>';
+  const hoy=todayLocalISO();
+  const{desde,hasta}=mesCalendarioDeCorte(hoy);
+  const rPue=ingresosFacturablesPeriodo('Puebla',desde,hasta);
+  const rHot=ingresosFacturablesPeriodo('Hotel',desde,hasta);
+  const[nomPue,nomHot]=await Promise.all([nominaFacturadaPeriodo('PUE',desde,hasta),nominaFacturadaPeriodo('HOT',desde,hasta)]);
+  el.innerHTML=`
+    <div class="acc-card" style="border:1.5px solid var(--copper);background:var(--copper-light)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div style="font-weight:700;font-size:13px;color:var(--copper-dark)">📊 Vista previa — ${fmtFechaCorta(desde)} a hoy</div>
+        <button class="btn btn-sm btn-filled" onclick="openBalanceKatModal()">📝 Completar egresos y guardar →</button>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;margin:2px 0 2px">Av. Puebla</div>
+      <div class="bal-live-row"><span>💳 Tarjeta + 🏦 Transferencia</span><strong>${fmxn(rPue.tarjeta+rPue.transferencia)}</strong></div>
+      <div class="bal-live-row"><span style="color:var(--text3)">　 Falta facturar</span><span style="color:${rPue.faltaFacturar>0.5?'var(--amber)':'inherit'}">${fmxn(rPue.faltaFacturar)}</span></div>
+      <div class="bal-live-row"><span>🧾 Nómina ya timbrada</span><strong>${fmxn(nomPue)}</strong></div>
+      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;margin:10px 0 2px">Hotel</div>
+      <div class="bal-live-row"><span>💳 Tarjeta + 🏦 Transferencia</span><strong>${fmxn(rHot.tarjeta+rHot.transferencia)}</strong></div>
+      <div class="bal-live-row"><span style="color:var(--text3)">　 Falta facturar</span><span style="color:${rHot.faltaFacturar>0.5?'var(--amber)':'inherit'}">${fmxn(rHot.faltaFacturar)}</span></div>
+      <div class="bal-live-row"><span>🧾 Nómina ya timbrada</span><strong>${fmxn(nomHot)}</strong></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">Se recalcula solo cada vez que entras aquí — nada se guarda hasta que le des "Completar egresos y guardar". Falta capturar ADO y egresos (Gastos facturados, Camioneta, IMSS).</div>
+    </div>`;
+}
+
 let adoActiveTipo='pagada';
 const ENT_LABELS={FLO:'Florida',PUE:'Puebla',HOT:'Hotel'};
 const BAL_NISSAN_DEFAULT=7265.00;
@@ -7782,15 +7840,17 @@ function switchBalTab(tab){
   balActiveTab=tab;
   document.querySelectorAll('.bal-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('bal-tab-'+tab).classList.add('active');
+  document.getElementById('balance-preview-luis').style.display=tab==='luis'?'block':'none';
   document.getElementById('balance-list').style.display=tab==='luis'?'block':'none';
+  document.getElementById('balance-preview-kat').style.display=tab==='kat'?'block':'none';
   document.getElementById('balance-kat-list').style.display=tab==='kat'?'block':'none';
   document.getElementById('nomina-ledger-view').style.display=tab==='nomina'?'block':'none';
   document.getElementById('ado-ledger-view').style.display=tab==='ado'?'block':'none';
   document.getElementById('mi-balance-view').style.display=tab==='mio'?'block':'none';
   const newBtn=document.getElementById('balance-new-btn');
   const sub=document.getElementById('balance-page-sub');
-  if(tab==='luis'){newBtn.style.display='inline-flex';newBtn.textContent='+ Nuevo balance';newBtn.onclick=openBalanceModal;sub.textContent='Ingresos, egresos, ISR e IVA — Luis Antonio Clemente Vaquier (Florida)';renderBalanceList();}
-  else if(tab==='kat'){newBtn.style.display='inline-flex';newBtn.textContent='+ Nuevo balance';newBtn.onclick=openBalanceKatModal;sub.textContent='Ingresos, egresos, ISR e IVA — Ana Kateryn Clemente Vaquier (Puebla + Hotel)';renderBalanceKatList();}
+  if(tab==='luis'){newBtn.style.display='inline-flex';newBtn.textContent='+ Nuevo balance';newBtn.onclick=openBalanceModal;sub.textContent='Ingresos, egresos, ISR e IVA — Luis Antonio Clemente Vaquier (Florida)';renderBalanceList();renderBalancePreviewLuis();}
+  else if(tab==='kat'){newBtn.style.display='inline-flex';newBtn.textContent='+ Nuevo balance';newBtn.onclick=openBalanceKatModal;sub.textContent='Ingresos, egresos, ISR e IVA — Ana Kateryn Clemente Vaquier (Puebla + Hotel)';renderBalanceKatList();renderBalancePreviewKat();}
   else if(tab==='nomina'){newBtn.style.display='none';sub.textContent='Registra cada semana pagada — el balance la jala sola y la marca como usada';loadNomPeriodosParaLedger();renderNominaLedgerList();}
   else if(tab==='ado'){newBtn.style.display='none';sub.textContent='Registra cada vale de ADO (pagado o de crédito) — el balance de Kateryn los jala solo';renderAdoLedgerList();}
   else if(tab==='mio'){newBtn.style.display='none';sub.textContent='Privado — comparativo de ingresos vs egresos sin IVA de todos los balances';renderMiBalance();}
@@ -8859,7 +8919,7 @@ async function saveBalance(){
   editingBalanceId=null;
   closeModal('m-balance');
   toast(wasEditing?'Balance actualizado ✓':'Balance guardado ✓');
-  await loadBalances();await loadNominaLedger();renderBalanceList();
+  await loadBalances();await loadNominaLedger();renderBalanceList();renderBalancePreviewLuis();
 }
 
 async function deleteBalance(id){
@@ -13929,7 +13989,7 @@ async function saveBalanceKat(){
   editingBalanceKatId=null;
   closeModal('m-balance-kat');
   toast(wasEditing?'Balance actualizado ✓':'Balance guardado ✓');
-  await loadBalancesKat();await loadAdoLedger();await loadNominaLedger();renderBalanceKatList();
+  await loadBalancesKat();await loadAdoLedger();await loadNominaLedger();renderBalanceKatList();renderBalancePreviewKat();
 }
 
 async function deleteBalanceKat(id){
