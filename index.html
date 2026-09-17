@@ -1069,7 +1069,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       <div class="page" id="page-rh">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
           <div style="font-size:18px;font-weight:500">Recursos humanos</div>
-          <button class="btn btn-filled" onclick="openEmpModal()">+ Nuevo empleado</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn" onclick="openPlayerasModal()">🎽 Playeras</button>
+            <button class="btn btn-filled" onclick="openEmpModal()">+ Nuevo empleado</button>
+          </div>
         </div>
         <div class="widgets" id="rh-widgets"></div>
         <div class="tabs-wrap">
@@ -2037,6 +2040,27 @@ mismo blob ya cargado, sin volver a pedirlo. -->
   <div class="modal-hdr"><div class="modal-title" id="m-emp-detail-title">Expediente</div><button class="btn-icon" onclick="closeModal('m-emp-detail')">✕</button></div>
   <div class="modal-body" id="m-emp-detail-body"></div>
   <div class="modal-ftr" id="m-emp-detail-ftr"></div>
+</div>
+</div>
+
+<!-- MODAL PLAYERAS ENTREGADAS -->
+<div class="modal-overlay" id="m-playeras">
+<div class="modal" style="max-width:720px">
+  <div class="modal-hdr"><div class="modal-title">Playeras entregadas</div><button class="btn-icon" onclick="closeModal('m-playeras')">✕</button></div>
+  <div class="modal-body">
+    <div class="df-add-form" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:14px">
+      <div class="f-row" style="min-width:200px;margin:0"><label>Empleado</label><select id="pl-empleado"></select></div>
+      <div class="f-row" style="min-width:110px;margin:0"><label>Talla</label>
+        <select id="pl-talla"><option value="CH">CH</option><option value="M" selected>M</option><option value="G">G</option><option value="EG">EG</option><option value="XG">XG</option></select>
+      </div>
+      <div class="f-row" style="width:80px;margin:0"><label>Cantidad</label><input type="number" id="pl-cantidad" value="1" min="1"/></div>
+      <div class="f-row" style="margin:0"><label>Fecha</label><input type="date" id="pl-fecha"/></div>
+      <div class="f-row" style="min-width:160px;flex:1;margin:0"><label>Notas (opcional)</label><input type="text" id="pl-notas" placeholder="Ej: talla cambiada, reposición..."/></div>
+      <button class="btn btn-filled" onclick="agregarPlayera()">+ Registrar</button>
+    </div>
+    <div id="playeras-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+  <div class="modal-ftr"><button class="btn" onclick="closeModal('m-playeras')">Cerrar</button></div>
 </div>
 </div>
 
@@ -3885,6 +3909,95 @@ function renderRhTabs(){
   document.getElementById('rh-tabs-bar').innerHTML=html;
 }
 function switchRhEnt(ek){currentRhEnt=ek;renderEmps();}
+
+// ─── PLAYERAS ENTREGADAS ──────────────────────────────────────────
+// Historial de entregas (no un contador editable) -- una fila por cada
+// vez que se le dio playera a alguien, para poder ver cuándo fue la
+// última y si ya le tocaba otra. Pedido del dueño, 17-sept-2026.
+let playerasData=[];
+async function openPlayerasModal(){
+  openModal('m-playeras');
+  populatePlayerasEmpleadoSelect();
+  if(!document.getElementById('pl-fecha').value)document.getElementById('pl-fecha').value=new Date().toISOString().slice(0,10);
+  document.getElementById('playeras-list').innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  await loadPlayeras();
+  renderPlayerasList();
+}
+function populatePlayerasEmpleadoSelect(){
+  const sel=document.getElementById('pl-empleado');
+  if(!sel)return;
+  const prev=sel.value;
+  const activos=[...empData].filter(e=>e.activo!==false).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  sel.innerHTML=activos.map(e=>`<option value="${e.id}">${e.nombre} — ${ENTS[e.entidad]?.label||e.entidad}</option>`).join('');
+  if([...sel.options].some(o=>o.value===prev))sel.value=prev;
+}
+async function loadPlayeras(){
+  const{data}=await sb.from('playeras_entregadas').select('*').order('fecha_entrega',{ascending:false});
+  playerasData=data||[];
+}
+function renderPlayerasList(){
+  const el=document.getElementById('playeras-list');
+  if(!el)return;
+  if(!playerasData.length){
+    el.innerHTML='<div class="empty" style="padding:16px">Ninguna playera registrada todavía.</div>';
+    return;
+  }
+  const empById={};empData.forEach(e=>{empById[e.id]=e;});
+  const filas=playerasData.map(p=>{
+    const e=empById[p.empleado_id];
+    return `<tr>
+      <td>${e?e.nombre:'(empleado eliminado)'}</td>
+      <td><span class="ent-dot" style="background:${ENTS[p.entidad]?.color||'#999'}"></span>${ENTS[p.entidad]?.label||p.entidad}</td>
+      <td>${p.talla||'—'}</td>
+      <td class="num">${p.cantidad}</td>
+      <td>${fmt(p.fecha_entrega)}</td>
+      <td>${p.notas||''}</td>
+      <td><button class="btn-text" style="color:var(--red)" onclick="eliminarPlayera('${p.id}')">Eliminar</button></td>
+    </tr>`;
+  }).join('');
+  // Resumen por empleado -- cuántas lleva acumuladas en total, para ver de
+  // un vistazo a quién ya le tocaría otra sin tener que sumar a mano.
+  const porEmpleado={};
+  playerasData.forEach(p=>{porEmpleado[p.empleado_id]=(porEmpleado[p.empleado_id]||0)+Number(p.cantidad||0);});
+  const resumen=Object.entries(porEmpleado)
+    .map(([id,total])=>({nombre:empById[id]?.nombre||'(empleado eliminado)',total}))
+    .sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  el.innerHTML=`
+    <div class="sec-lbl">Total acumulado por empleado</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">
+      ${resumen.map(r=>`<span class="corte-badge ok">${r.nombre}: ${r.total}</span>`).join('')}
+    </div>
+    <div class="sec-lbl">Historial de entregas</div>
+    <table class="corte-tbl">
+      <thead><tr><th>Empleado</th><th>Sucursal</th><th>Talla</th><th class="num">Cant.</th><th>Fecha</th><th>Notas</th><th></th></tr></thead>
+      <tbody>${filas}</tbody>
+    </table>`;
+}
+async function agregarPlayera(){
+  const empleado_id=document.getElementById('pl-empleado').value;
+  const talla=document.getElementById('pl-talla').value;
+  const cantidad=Number(document.getElementById('pl-cantidad').value)||1;
+  const fecha_entrega=document.getElementById('pl-fecha').value;
+  const notas=document.getElementById('pl-notas').value.trim()||null;
+  if(!empleado_id){toast('Selecciona un empleado',true);return;}
+  if(!fecha_entrega){toast('Indica la fecha de entrega',true);return;}
+  const e=empData.find(x=>x.id===empleado_id);
+  if(!e){toast('Empleado no encontrado',true);return;}
+  const{error}=await sb.from('playeras_entregadas').insert({
+    empleado_id,entidad:e.entidad,talla,cantidad,fecha_entrega,notas,creado_por:currentUser?.id||null,
+  });
+  if(error){toast('Error: '+error.message,true);return;}
+  document.getElementById('pl-notas').value='';
+  document.getElementById('pl-cantidad').value='1';
+  await loadPlayeras();renderPlayerasList();
+  toast('Playera registrada');
+}
+async function eliminarPlayera(id){
+  if(!confirm('¿Eliminar este registro de entrega?'))return;
+  const{error}=await sb.from('playeras_entregadas').delete().eq('id',id);
+  if(error){toast('Error: '+error.message,true);return;}
+  await loadPlayeras();renderPlayerasList();
+}
 
 function renderRhWidgets(){
   const activos=empData.filter(e=>e.activo);
