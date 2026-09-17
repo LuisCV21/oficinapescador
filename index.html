@@ -438,7 +438,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 /* ── BALANCE WIZARD ── */
 #m-balance .modal{max-width:640px}
 #m-balance-kat .modal{max-width:640px}
-#m-corte-detail .modal{max-width:640px}
+#m-corte-detail .modal{max-width:880px}
 .bal-steps{display:flex;gap:4px;margin-bottom:18px}
 .bal-step-pill{flex:1;text-align:center;padding:8px 2px;border-radius:var(--r);
   background:var(--surface2);border:1px solid var(--border);cursor:pointer;transition:all .2s}
@@ -572,6 +572,20 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .corte-iconbtn:hover{border-color:var(--copper);color:var(--copper);background:var(--copper-light)}
 .corte-iconbtn[disabled]{opacity:.35;cursor:default}
 .corte-iconbtn[disabled]:hover{border-color:var(--border2);color:var(--text3);background:var(--surface)}
+/* Pestañas y grid de 2 columnas del modal de detalle de corte (solo pantalla
+   -- imprimirCorteGenerado NO usa esto, sigue en 1 columna sin pestañas) */
+.corte-tabbar{display:flex;gap:2px;border-bottom:1.5px solid var(--border);margin:0 0 14px;overflow-x:auto}
+.corte-tab{padding:9px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1.5px;
+  white-space:nowrap;display:flex;align-items:center;gap:5px;transition:all .15s}
+.corte-tab:hover:not(.active){color:var(--text);background:var(--surface2)}
+.corte-tab.active{color:var(--copper);border-bottom-color:var(--copper)}
+.corte-tab-dot{width:7px;height:7px;border-radius:50%;background:var(--red);flex-shrink:0}
+.corte-tabpanel{display:none}
+.corte-tabpanel.active{display:block}
+.corte-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;align-items:start}
+.corte-grid>.corte-span2{grid-column:1/-1}
+@media (max-width:640px){.corte-grid{grid-template-columns:1fr}}
 
 /* ── REPO ── */
 .repo-path{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);margin-bottom:16px;flex-wrap:wrap}
@@ -11214,7 +11228,13 @@ function combinarCortesHotelDia(rows){
 // como la versión imprimible/PDF (imprimirCorteGenerado), para que una
 // corrección hecha aquí (ver openCorreccionAnteriorModal, guardarCorreccion*)
 // se refleje en AMBAS sin mantener el HTML por duplicado.
-function buildCorteDetailBodyHtml(c){
+// Arma las piezas del detalle de un corte por separado (en vez de un solo
+// HTML plano) para que buildCorteDetailBodyHtml (PDF/impresión, 1 columna
+// tal cual siempre) y buildCorteDetailScreenHtml (modal en pantalla, con
+// pestañas + 2 columnas) puedan acomodar las MISMAS piezas cada quien a su
+// manera, sin duplicar el cálculo de los datos (mapeo de resumen_recepcion,
+// filtros de gastos, filasFolios, etc.) en dos lados.
+function buildCorteDetailSections(c){
   const d=c.datos||{};
   const cu=d.cuadre||{};
   // El hotel manda su cuadre bajo resumen_recepcion (4 cuentas: vales_antonio/
@@ -11319,96 +11339,144 @@ function buildCorteDetailBodyHtml(c){
     return `<tr><td>${p.folio}</td><td>${formaPagoTexto(p)}${estado}</td><td class="num">${fmxn(p.monto)}</td><td style="text-align:center">${btn}</td></tr>`;
   }).join('');
 
-  return `
+  const header=`
     <div class="corte-hdr-info">
       <span>Apertura: <b>${fmtFechaHora(c.apertura)}</b></span>
       <span>Cierre: <b>${fmtFechaHora(c.cierre)}</b></span>
-    </div>
+    </div>`;
 
-    ${pdfSec('Ventas por forma de pago')}
-    ${(()=>{
-      const{vpf,valesMonto}=plegarValesEnEfectivo(d.ventas_por_forma);
-      return pdfCard('',
-        Object.entries(vpf).map(([k,v])=>pdfRow(
-          k==='efectivo'&&valesMonto?`efectivo <span style="color:var(--text3);font-weight:400">(incluye ${fmxn(valesMonto)} de vale)</span>`:k,
-          fmxn(v)
-        )).join('')+
-        pdfRow('Total',`<b>${fmxn(c.total_ventas)}</b>`,{sep:true})
-      );
-    })()}
+  const ventas=pdfSec('Ventas por forma de pago')+(()=>{
+    const{vpf,valesMonto}=plegarValesEnEfectivo(d.ventas_por_forma);
+    return pdfCard('',
+      Object.entries(vpf).map(([k,v])=>pdfRow(
+        k==='efectivo'&&valesMonto?`efectivo <span style="color:var(--text3);font-weight:400">(incluye ${fmxn(valesMonto)} de vale)</span>`:k,
+        fmxn(v)
+      )).join('')+
+      pdfRow('Total',`<b>${fmxn(c.total_ventas)}</b>`,{sep:true})
+    );
+  })();
 
-    ${pdfSec('Cuadre del corte')}
-    ${pdfCard('',
-      pdfRow('Bodega',fmxn(d.saldo_bodega))+
-      pdfRow('Baucher',fmxn(d.saldo_baucher))+
-      pdfRow('Monedas',fmxn(d.efectivo_monedas))+
-      pdfRow('Billetes',fmxn(d.efectivo_billetes))+
-      // El hotel lleva Vales Sr. Antonio y Vales del Personal como 2 cuentas
-      // independientes (ver corte_recepcion.py allá) -- antes esta tabla las
-      // sumaba en una sola línea "Vales" (d.saldo_vales), lo cual no deja
-      // comparar cada una contra su cuenta del papel por separado (pedido
-      // del dueño, 15-sept-2026, revisando el turno #7). Pescador POS solo
-      // tiene una cuenta de vales, esa sí se deja como antes.
-      (rr?
-        pdfRow('Vales Sr. Antonio',fmxn(rr.totales_cuentas.vales_antonio))+
-        pdfRow('Vales del Personal',fmxn(rr.totales_cuentas.vales_personal))
-      :
-        pdfRow('Vales',fmxn(d.saldo_vales))
-      )+
-      // Vales de ADO (Jalapa/Platino/GL/Norte/Veracruz/Puebla) -- el corte
-      // físico en papel los desglosa uno por uno debajo de "Vales" antes del
-      // TOTAL CAJA; aquí no se mostraban aunque sí iban sumados dentro de
-      // primer_total_caja, así que el total no se podía verificar a simple
-      // vista contra el papel. Solo Pescador POS manda saldo_ado (el hotel no).
-      (d.saldo_ado?ADO_ENTIDADES.map(e=>pdfRow(ADO_ETIQUETAS_MOV[e],fmxn(d.saldo_ado[e]||0))).join(''):'')+
-      pdfRow('TOTAL CAJA',fmxn(cu.primer_total_caja),{color:'var(--copper)',bold:true,sep:true})+
-      pdfRow('+ Gastos',fmxn(cu.gastos_totales),{color:'var(--red)'})+
-      pdfRow('TOTAL CAJA',fmxn(cu.segundo_total_caja),{bold:true,sep:true})
-    )}
-
-    ${pdfSec('Cuadre del día — anterior / tira')}
-    ${pdfCard('',
-      pdfRow('Anterior de caja',fmxn(cu.anterior_caja))+
-      pdfRow('+ Tira (venta total)',fmxn(cu.tira),{color:'var(--green)'})+
-      pdfRow('= Total esperado',fmxn(cu.esperado),{bold:true,sep:true})+
-      pdfRow('Total Caja (segundo)',fmxn(cu.segundo_total_caja))+
-      pdfRow('Diferencia',difTxtCuadre,{color:difColorCuadre,bold:true,sep:true})
-    )}
-
-    ${rr?`
-    ${pdfSec('Gastos del turno')}
-    ${tablaGastos(gastosHotel)}
-    ${gastosHotel.length?pdfCard('',pdfRow('Total',`<b>${fmxn(gastosHotel.reduce((s,m)=>s+Number(m.monto||0),0))}</b>`,{sep:true})):''}
-    `:`
-    ${pdfSec('Gastos de mercancía')}
-    ${tablaGastos(gastosMerc)}
-    ${gastosMerc.length?pdfCard('',pdfRow('Total',`<b>${fmxn(gastosMerc.reduce((s,m)=>s+Number(m.monto||0),0))}</b>`,{sep:true})):''}
-
-    ${pdfSec('Gastos diversos')}
-    ${tablaGastos(gastosDiv)}
-    ${gastosDiv.length?pdfCard('',pdfRow('Total',`<b>${fmxn(gastosDiv.reduce((s,m)=>s+Number(m.monto||0),0))}</b>`,{sep:true})):''}
-    `}
-
-    ${rr?
-      bloqueCuentaHotel('Vales Sr. Antonio','vales_antonio')+
-      bloqueCuentaHotel('Vales del Personal','vales_personal')+
-      bloqueCuentaHotel('Bodega','bodega')+
-      bloqueCuentaHotel('Baucher','baucher')
+  const cuadreCorte=pdfSec('Cuadre del corte')+pdfCard('',
+    pdfRow('Bodega',fmxn(d.saldo_bodega))+
+    pdfRow('Baucher',fmxn(d.saldo_baucher))+
+    pdfRow('Monedas',fmxn(d.efectivo_monedas))+
+    pdfRow('Billetes',fmxn(d.efectivo_billetes))+
+    // El hotel lleva Vales Sr. Antonio y Vales del Personal como 2 cuentas
+    // independientes (ver corte_recepcion.py allá) -- antes esta tabla las
+    // sumaba en una sola línea "Vales" (d.saldo_vales), lo cual no deja
+    // comparar cada una contra su cuenta del papel por separado (pedido
+    // del dueño, 15-sept-2026, revisando el turno #7). Pescador POS solo
+    // tiene una cuenta de vales, esa sí se deja como antes.
+    (rr?
+      pdfRow('Vales Sr. Antonio',fmxn(rr.totales_cuentas.vales_antonio))+
+      pdfRow('Vales del Personal',fmxn(rr.totales_cuentas.vales_personal))
     :
-      bloqueAnterior('Detalle de vales',detVales,cu.anterior_vales,d.saldo_vales)+
-      bloqueAnterior('Detalle de baucher',detBaucher,cu.anterior_baucher,d.saldo_baucher)+
-      bloqueAnterior('Detalle de bodega',detBodega,cu.anterior_bodega,d.saldo_bodega)
-    }
+      pdfRow('Vales',fmxn(d.saldo_vales))
+    )+
+    // Vales de ADO (Jalapa/Platino/GL/Norte/Veracruz/Puebla) -- el corte
+    // físico en papel los desglosa uno por uno debajo de "Vales" antes del
+    // TOTAL CAJA; aquí no se mostraban aunque sí iban sumados dentro de
+    // primer_total_caja, así que el total no se podía verificar a simple
+    // vista contra el papel. Solo Pescador POS manda saldo_ado (el hotel no).
+    (d.saldo_ado?ADO_ENTIDADES.map(e=>pdfRow(ADO_ETIQUETAS_MOV[e],fmxn(d.saldo_ado[e]||0))).join(''):'')+
+    pdfRow('TOTAL CAJA',fmxn(cu.primer_total_caja),{color:'var(--copper)',bold:true,sep:true})+
+    pdfRow('+ Gastos',fmxn(cu.gastos_totales),{color:'var(--red)'})+
+    pdfRow('TOTAL CAJA',fmxn(cu.segundo_total_caja),{bold:true,sep:true})
+  );
 
-    ${pdfSec('Folios de pago')}
-    ${pdfTabla(
-      [{label:'Folio'},{label:'Forma de pago'},{label:'Monto',num:true},{label:''}],
-      filasFolios,
-      'Sin detalle de folios en este corte',
-    )}
+  const cuadreDia=pdfSec('Cuadre del día — anterior / tira')+pdfCard('',
+    pdfRow('Anterior de caja',fmxn(cu.anterior_caja))+
+    pdfRow('+ Tira (venta total)',fmxn(cu.tira),{color:'var(--green)'})+
+    pdfRow('= Total esperado',fmxn(cu.esperado),{bold:true,sep:true})+
+    pdfRow('Total Caja (segundo)',fmxn(cu.segundo_total_caja))+
+    pdfRow('Diferencia',difTxtCuadre,{color:difColorCuadre,bold:true,sep:true})
+  );
 
-    ${buildIncidencias(d,c.id)}
+  const gastosChunks=rr?[
+    pdfSec('Gastos del turno')+tablaGastos(gastosHotel)+
+      (gastosHotel.length?pdfCard('',pdfRow('Total',`<b>${fmxn(gastosHotel.reduce((s,m)=>s+Number(m.monto||0),0))}</b>`,{sep:true})):''),
+  ]:[
+    pdfSec('Gastos de mercancía')+tablaGastos(gastosMerc)+
+      (gastosMerc.length?pdfCard('',pdfRow('Total',`<b>${fmxn(gastosMerc.reduce((s,m)=>s+Number(m.monto||0),0))}</b>`,{sep:true})):''),
+    pdfSec('Gastos diversos')+tablaGastos(gastosDiv)+
+      (gastosDiv.length?pdfCard('',pdfRow('Total',`<b>${fmxn(gastosDiv.reduce((s,m)=>s+Number(m.monto||0),0))}</b>`,{sep:true})):''),
+  ];
+
+  const cuentasChunks=rr?[
+    bloqueCuentaHotel('Vales Sr. Antonio','vales_antonio'),
+    bloqueCuentaHotel('Vales del Personal','vales_personal'),
+    bloqueCuentaHotel('Bodega','bodega'),
+    bloqueCuentaHotel('Baucher','baucher'),
+  ]:[
+    bloqueAnterior('Detalle de vales',detVales,cu.anterior_vales,d.saldo_vales),
+    bloqueAnterior('Detalle de baucher',detBaucher,cu.anterior_baucher,d.saldo_baucher),
+    bloqueAnterior('Detalle de bodega',detBodega,cu.anterior_bodega,d.saldo_bodega),
+  ];
+
+  const folios=pdfSec('Folios de pago')+pdfTabla(
+    [{label:'Folio'},{label:'Forma de pago'},{label:'Monto',num:true},{label:''}],
+    filasFolios,
+    'Sin detalle de folios en este corte',
+  );
+
+  const incidencias=buildIncidencias(d,c.id);
+
+  return{header,ventas,cuadreCorte,cuadreDia,gastosChunks,cuentasChunks,folios,incidencias};
+}
+
+// HTML plano de 1 columna, sin pestañas -- lo usa imprimirCorteGenerado
+// (ventana de PDF/impresión aparte, con su propio <style>) para que el
+// papel/PDF no cambie aunque el modal en pantalla se vea distinto.
+function buildCorteDetailBodyHtml(c){
+  const s=buildCorteDetailSections(c);
+  return `
+    ${s.header}
+    ${s.ventas}
+    ${s.cuadreCorte}
+    ${s.cuadreDia}
+    ${s.gastosChunks.join('')}
+    ${s.cuentasChunks.join('')}
+    ${s.folios}
+    ${s.incidencias}
   `;
+}
+
+// HTML con pestañas (General / Áreas / Auditoría) + grid de 2 columnas --
+// lo usa el modal en pantalla (openCorteDetail). Reusa las mismas piezas de
+// buildCorteDetailSections, solo las acomoda distinto.
+function buildCorteDetailScreenHtml(c){
+  const s=buildCorteDetailSections(c);
+  const tieneIncidencias=!!s.incidencias;
+  const areasHtml=s.gastosChunks.concat(s.cuentasChunks).map(chunk=>`<div>${chunk}</div>`).join('');
+  const auditoriaHtml=tieneIncidencias?s.incidencias
+    :'<p style="color:var(--text3);font-style:italic;text-align:center;padding:24px 0">Sin incidencias registradas en este turno.</p>';
+  return `
+    ${s.header}
+    <div class="corte-tabbar">
+      <div class="corte-tab active" data-corte-tab="gral" onclick="switchCorteTab('gral')">General</div>
+      <div class="corte-tab" data-corte-tab="areas" onclick="switchCorteTab('areas')">Áreas</div>
+      <div class="corte-tab" data-corte-tab="audit" onclick="switchCorteTab('audit')">Auditoría${tieneIncidencias?' <span class="corte-tab-dot"></span>':''}</div>
+    </div>
+    <div class="corte-tabpanel active" data-corte-panel="gral">
+      <div class="corte-grid">
+        <div>${s.ventas}</div>
+        <div>${s.cuadreCorte}</div>
+        <div class="corte-span2">${s.cuadreDia}</div>
+        <div class="corte-span2">${s.folios}</div>
+      </div>
+    </div>
+    <div class="corte-tabpanel" data-corte-panel="areas">
+      <div class="corte-grid">${areasHtml}</div>
+    </div>
+    <div class="corte-tabpanel" data-corte-panel="audit">
+      ${auditoriaHtml}
+    </div>
+  `;
+}
+function switchCorteTab(tab){
+  const body=document.getElementById('m-corte-detail-body');
+  body.querySelectorAll('.corte-tab').forEach(t=>t.classList.toggle('active',t.dataset.corteTab===tab));
+  body.querySelectorAll('.corte-tabpanel').forEach(p=>p.classList.toggle('active',p.dataset.cortePanel===tab));
 }
 
 // Resuelve el/los corte(s) por id (combinando si es el caso del hotel) --
@@ -11425,7 +11493,7 @@ function openCorteDetail(idOrIds){
   const c=resolverCorte(idOrIds);
   if(!c)return;
   document.getElementById('m-corte-detail-title').textContent=`Corte ${c.sucursal||''} · Turno #${c.turno_id}`;
-  document.getElementById('m-corte-detail-body').innerHTML=buildCorteDetailBodyHtml(c);
+  document.getElementById('m-corte-detail-body').innerHTML=buildCorteDetailScreenHtml(c);
   // Combinado: cada turno del día puede traer su propio PDF por separado
   // (cada uno genera el suyo al cerrar) -- se ofrecen los dos si existen,
   // en vez de un solo botón como en un corte normal.
