@@ -1072,6 +1072,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
           <div style="font-size:18px;font-weight:500">Recursos humanos</div>
           <div style="display:flex;gap:8px">
             <button class="btn" onclick="openPlayerasModal()">🎽 Uniformes</button>
+            <button class="btn" onclick="openSolicitudesRhModal()">🕐 Solicitudes<span id="sol-rh-badge" class="tab-badge" style="display:none"></span></button>
             <button class="btn btn-filled" onclick="openEmpModal()">+ Nuevo empleado</button>
           </div>
         </div>
@@ -2053,6 +2054,40 @@ mismo blob ya cargado, sin volver a pedirlo. -->
 </div>
 </div>
 
+<!-- MODAL SOLICITAR VACACIONES/FINIQUITO (perfil oficina, sin admin) -->
+<div class="modal-overlay" id="m-solicitar-rh">
+<div class="modal">
+  <div class="modal-hdr"><div class="modal-title" id="m-solicitar-rh-title">Solicitar</div><button class="btn-icon" onclick="closeModal('m-solicitar-rh')">✕</button></div>
+  <div class="modal-body">
+    <div id="sol-rh-emp-ref" style="font-size:12px;color:var(--text2);padding:9px 12px;background:var(--surface2);border-radius:var(--r);margin-bottom:12px;border-left:3px solid var(--blue)"></div>
+    <div class="f-row"><label id="sol-rh-fecha-lbl">Fecha</label><input type="date" id="sol-rh-fecha"/></div>
+    <div id="sol-rh-campos-vac">
+      <div class="f-row"><label>Días de vacaciones (déjalo vacío para que se calculen solos por tabla LFT)</label><input type="number" step="0.5" id="sol-rh-dias" placeholder="Automático"/></div>
+    </div>
+    <div id="sol-rh-campos-fin" style="display:none">
+      <div class="f-row"><label>Días de salario pendientes de pago</label><input type="number" step="0.5" id="sol-rh-dias-pend" value="0"/></div>
+      <div class="f-row"><label>Días de vacaciones ya gozados en el periodo</label><input type="number" step="0.5" id="sol-rh-vac-tomadas" value="0"/></div>
+    </div>
+    <div class="f-row"><label>Notas para quien lo autorice (opcional)</label><textarea id="sol-rh-notas" placeholder="Contexto para el admin, ej. por qué se solicita, acuerdo con el empleado..."></textarea></div>
+  </div>
+  <div class="modal-ftr">
+    <button class="btn" onclick="closeModal('m-solicitar-rh')">Cancelar</button>
+    <button class="btn btn-filled" id="sol-rh-save-btn" onclick="guardarSolicitudRh()">Solicitar</button>
+  </div>
+</div>
+</div>
+
+<!-- MODAL LISTA DE SOLICITUDES RH -->
+<div class="modal-overlay" id="m-solicitudes-rh">
+<div class="modal" style="max-width:760px">
+  <div class="modal-hdr"><div class="modal-title">Solicitudes de vacaciones y finiquitos</div><button class="btn-icon" onclick="closeModal('m-solicitudes-rh')">✕</button></div>
+  <div class="modal-body">
+    <div id="solicitudes-rh-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+  <div class="modal-ftr"><button class="btn" onclick="closeModal('m-solicitudes-rh')">Cerrar</button></div>
+</div>
+</div>
+
 <!-- MODAL ACCESOS -->
 <div class="modal-overlay" id="m-acc">
 <div class="modal">
@@ -2850,7 +2885,7 @@ function isAdmin(){return currentPerfil&&currentPerfil.rol==='admin';}
 function puedeTimbrarNomina(){return currentPerfil&&(currentPerfil.rol==='admin'||currentPerfil.rol==='oficinista');}
 function canDelete(){return isAdmin();}
 function showIfAdmin(html){return isAdmin()?html:'';}
-let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[],cortesData=[],correccionesData=[],correccionesAnteriorData=[],accionesVentaData=[],accionesPosData=[],entidadesFiscalesData=[],cancelacionesCfdiData=[];
+let oblData=[],empData=[],accData=[],pagosData=[],archivosData=[],balancesData=[],cortesData=[],correccionesData=[],correccionesAnteriorData=[],accionesVentaData=[],accionesPosData=[],entidadesFiscalesData=[],cancelacionesCfdiData=[],solicitudesRhData=[];
 let currentEnt=localStorage.getItem('ep_obl_ent')||null,currentRhEnt=null;
 let editOblId=null,payOblId=null,editAccId=null,editEmpId=null,bajaEmpId=null,editCatId=null,editCuentaId=null,editPuestoId=null,editUsuarioId=null;
 let cuentasPagoData=[],puestosData=[],usuariosData=[];
@@ -2946,7 +2981,7 @@ async function initApp(user){
 
 // ─── LOAD DATA ────────────────────────────────────────────────
 async function loadAll(){
-  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadUsuarios(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger(),loadCortes(),loadCorrecciones(),loadCorreccionesAnterior(),loadAccionesVenta(),loadAccionesPos(),loadEntidadesFiscales(),loadCancelacionesCfdi()]);
+  await Promise.all([loadObligaciones(),loadOblCategorias(),loadCuentasPago(),loadPuestos(),loadUsuarios(),loadPagos(),loadArchivos(),loadEmpleados(),loadAccesos(),loadVehiculos(),loadCargas(),loadBitacora(),loadDirectorio(),loadBalances(),loadBalancesKat(),loadNominaLedger(),loadAdoLedger(),loadCortes(),loadCorrecciones(),loadCorreccionesAnterior(),loadAccionesVenta(),loadAccionesPos(),loadEntidadesFiscales(),loadCancelacionesCfdi(),loadSolicitudesRh()]);
   renderAll();
 }
 async function loadEntidadesFiscales(){
@@ -2960,6 +2995,10 @@ async function loadCortes(){
 async function loadCancelacionesCfdi(){
   const {data}=await sb.from('cfdi_cancelaciones').select('*').order('cancelado_at',{ascending:false});
   cancelacionesCfdiData=data||[];
+}
+async function loadSolicitudesRh(){
+  const {data}=await sb.from('solicitudes_rh').select('*').order('solicitado_at',{ascending:false});
+  solicitudesRhData=data||[];
 }
 async function loadCorrecciones(){
   const {data}=await sb.from('correcciones_pago_pendientes').select('*').order('creada_at',{ascending:false});
@@ -3112,6 +3151,7 @@ function renderAll(){
   renderBranchSummary();
   renderVencimientos();
   renderNominaStatusWidget();
+  renderSolicitudesRhBadge();
   renderNota();
   // renderSupervisionWidget(); // PAUSADO (Luis pidió pausar el módulo de tareas) — descomenta para reactivar
   renderMissingDocs();
@@ -4147,9 +4187,9 @@ async function openEmpDetail(id){
   document.getElementById('m-emp-detail-body').innerHTML=html;
   const ftr=document.getElementById('m-emp-detail-ftr');
   ftr.innerHTML=`<button class="btn" onclick="closeModal('m-emp-detail')">Cerrar</button>
-    <button class="btn" onclick="closeModal('m-emp-detail');openFiniquitoModal('${e.id}')">🧮 Finiquito</button>
+    <button class="btn" onclick="closeModal('m-emp-detail');abrirVacacionesOFiniquito('${e.id}','finiquito')">🧮 Finiquito</button>
     ${e.activo?`
-    <button class="btn" onclick="closeModal('m-emp-detail');openVacacionesModal('${e.id}')">🏖️ Vacaciones</button>
+    <button class="btn" onclick="closeModal('m-emp-detail');abrirVacacionesOFiniquito('${e.id}','vacaciones')">🏖️ Vacaciones</button>
     <button class="btn" onclick="closeModal('m-emp-detail');openFestivoModal('${e.id}')">🎉 Día festivo</button>
     <button class="btn" onclick="openUniformeModal('${e.id}')">👕 Uniforme</button>
     <button class="btn" onclick="imprimirUniforme('${e.id}')">🖨 Imprimir uniformes</button>
@@ -4480,6 +4520,162 @@ function numeroALetras(monto){
   let txt=entero(entPart);
   txt=txt.charAt(0).toUpperCase()+txt.slice(1);
   return`${txt} pesos ${String(centavos).padStart(2,'0')}/100 M.N.`;
+}
+
+// ─── SOLICITUDES RH (vacaciones/finiquito, perfil oficina) ─────
+// Admin sigue teniendo acceso directo a calcular/imprimir (como siempre);
+// un perfil oficina (no admin) tiene que solicitarlo primero y esperar a
+// que un admin lo acepte desde aquí -- el candado real vive en la RLS de
+// solicitudes_rh (solo admin puede hacer update), esto es nomás la UI.
+// Pedido del dueño, 18-sept-2026.
+let solRhEmpId=null,solRhTipo='vacaciones';
+function abrirVacacionesOFiniquito(empId,tipo){
+  if(isAdmin()){
+    if(tipo==='vacaciones')openVacacionesModal(empId);
+    else openFiniquitoModal(empId);
+    return;
+  }
+  const propias=solicitudesRhData.filter(s=>s.empleado_id===empId&&s.tipo===tipo)
+    .sort((a,b)=>(b.solicitado_at||'').localeCompare(a.solicitado_at||''));
+  const ultima=propias[0];
+  if(ultima&&ultima.estado==='pendiente'){
+    toast('Ya hay una solicitud pendiente de aprobación, enviada el '+fmtFechaHora(ultima.solicitado_at));
+    return;
+  }
+  if(ultima&&ultima.estado==='aceptada'){
+    abrirDesdeSolicitud(ultima.id);
+    return;
+  }
+  openSolicitarRhModal(empId,tipo);
+}
+function openSolicitarRhModal(empId,tipo){
+  solRhEmpId=empId;solRhTipo=tipo;
+  const e=empData.find(x=>x.id===empId);if(!e)return;
+  document.getElementById('m-solicitar-rh-title').textContent=tipo==='vacaciones'?'Solicitar vacaciones':'Solicitar finiquito';
+  document.getElementById('sol-rh-emp-ref').textContent='👤 '+e.nombre+' — '+((ENTS[e.entidad]||{label:e.entidad}).label);
+  document.getElementById('sol-rh-fecha-lbl').textContent=tipo==='vacaciones'?'Fecha de inicio de vacaciones':'Fecha de baja / cálculo';
+  document.getElementById('sol-rh-fecha').value=new Date().toISOString().slice(0,10);
+  document.getElementById('sol-rh-dias').value='';
+  document.getElementById('sol-rh-dias-pend').value='0';
+  document.getElementById('sol-rh-vac-tomadas').value='0';
+  document.getElementById('sol-rh-notas').value='';
+  document.getElementById('sol-rh-campos-vac').style.display=tipo==='vacaciones'?'block':'none';
+  document.getElementById('sol-rh-campos-fin').style.display=tipo==='finiquito'?'block':'none';
+  openModal('m-solicitar-rh');
+}
+async function guardarSolicitudRh(){
+  const e=empData.find(x=>x.id===solRhEmpId);if(!e)return;
+  const fecha=document.getElementById('sol-rh-fecha').value;
+  if(!fecha){toast('Indica la fecha',true);return;}
+  const datos={fecha};
+  if(solRhTipo==='vacaciones'){
+    const dias=document.getElementById('sol-rh-dias').value;
+    if(dias!=='')datos.dias=Number(dias);
+  }else{
+    datos.dias_pend=Number(document.getElementById('sol-rh-dias-pend').value)||0;
+    datos.vac_tomadas=Number(document.getElementById('sol-rh-vac-tomadas').value)||0;
+  }
+  const notas=document.getElementById('sol-rh-notas').value.trim()||null;
+  const nombre=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina';
+  const btn=document.getElementById('sol-rh-save-btn');btn.disabled=true;
+  const{error}=await sb.from('solicitudes_rh').insert({
+    tipo:solRhTipo,empleado_id:solRhEmpId,entidad:e.entidad,datos,notas,
+    solicitado_por:currentUser?.id||null,solicitado_por_nombre:nombre,
+  });
+  btn.disabled=false;
+  if(error){toast('Error: '+error.message,true);return;}
+  toast('Solicitud enviada -- un admin tiene que aceptarla antes de poder imprimirla');
+  closeModal('m-solicitar-rh');
+  await loadSolicitudesRh();
+  renderSolicitudesRhBadge();
+}
+function renderSolicitudesRhBadge(){
+  const badge=document.getElementById('sol-rh-badge');
+  if(!badge)return;
+  const n=solicitudesRhData.filter(s=>s.estado==='pendiente').length;
+  badge.style.display=n?'inline-block':'none';
+  badge.textContent=n;
+}
+async function openSolicitudesRhModal(){
+  openModal('m-solicitudes-rh');
+  document.getElementById('solicitudes-rh-list').innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  await loadSolicitudesRh();
+  renderSolicitudesRhList();
+  renderSolicitudesRhBadge();
+}
+const SOL_RH_ESTADO_BADGE={
+  pendiente:'<span class="corte-badge pend">⏳ Pendiente</span>',
+  aceptada:'<span class="corte-badge ok">✓ Aceptada</span>',
+  rechazada:'<span class="corte-badge" style="background:var(--surface2);color:var(--text3)">✕ Rechazada</span>',
+};
+function renderSolicitudesRhList(){
+  const el=document.getElementById('solicitudes-rh-list');
+  if(!el)return;
+  if(!solicitudesRhData.length){
+    el.innerHTML='<div class="empty" style="padding:16px">Ninguna solicitud todavía.</div>';
+    return;
+  }
+  const empById={};empData.forEach(e=>{empById[e.id]=e;});
+  const filas=solicitudesRhData.map(s=>{
+    const e=empById[s.empleado_id];
+    const d=s.datos||{};
+    let acciones='';
+    if(s.estado==='pendiente'&&isAdmin()){
+      acciones=`<button class="btn btn-sm btn-filled" onclick="aceptarSolicitudRh('${s.id}')">✓ Aceptar</button>`+
+        `<button class="btn btn-sm" style="color:var(--red)" onclick="rechazarSolicitudRh('${s.id}')">✕ Rechazar</button>`;
+    }else if(s.estado==='aceptada'){
+      acciones=`<button class="btn btn-sm btn-filled" onclick="abrirDesdeSolicitud('${s.id}')">🖨 Ver e imprimir</button>`;
+    }
+    return `<div class="hist-item">
+      <div class="hist-title">${s.tipo==='vacaciones'?'🏖️ Vacaciones':'🧮 Finiquito'} — ${e?e.nombre:'(empleado eliminado)'} <span style="font-weight:400;color:var(--text3)">· ${ENTS[s.entidad]?.label||s.entidad}</span></div>
+      <div class="hist-meta">Fecha solicitada: ${fmt(d.fecha)} · Pedida por ${s.solicitado_por_nombre||'?'} el ${fmtFechaHora(s.solicitado_at)}</div>
+      ${s.notas?`<div style="font-size:11px;color:var(--text2);margin-top:3px">"${s.notas}"</div>`:''}
+      ${s.estado==='rechazada'&&s.motivo_rechazo?`<div style="font-size:11px;color:var(--red);margin-top:3px">Motivo: ${s.motivo_rechazo}</div>`:''}
+      ${s.estado!=='pendiente'&&s.revisado_por_nombre?`<div style="font-size:10px;color:var(--text3);margin-top:2px">Revisada por ${s.revisado_por_nombre} el ${fmtFechaHora(s.revisado_at)}</div>`:''}
+      <div style="margin-top:8px">${SOL_RH_ESTADO_BADGE[s.estado]||''}</div>
+      ${acciones?`<div style="margin-top:8px;display:flex;gap:6px">${acciones}</div>`:''}
+    </div>`;
+  }).join('');
+  el.innerHTML=filas;
+}
+async function aceptarSolicitudRh(id){
+  const nombre=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Admin';
+  const{error}=await sb.from('solicitudes_rh').update({
+    estado:'aceptada',revisado_por:currentUser?.id||null,revisado_por_nombre:nombre,revisado_at:new Date().toISOString(),
+  }).eq('id',id);
+  if(error){toast('Error: '+error.message,true);return;}
+  toast('Solicitud aceptada');
+  await loadSolicitudesRh();renderSolicitudesRhList();renderSolicitudesRhBadge();
+}
+async function rechazarSolicitudRh(id){
+  const motivo=prompt('Motivo del rechazo (opcional):')||null;
+  const nombre=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Admin';
+  const{error}=await sb.from('solicitudes_rh').update({
+    estado:'rechazada',motivo_rechazo:motivo,revisado_por:currentUser?.id||null,revisado_por_nombre:nombre,revisado_at:new Date().toISOString(),
+  }).eq('id',id);
+  if(error){toast('Error: '+error.message,true);return;}
+  toast('Solicitud rechazada');
+  await loadSolicitudesRh();renderSolicitudesRhList();renderSolicitudesRhBadge();
+}
+// Abre el modal real de cálculo (el mismo que ya usa admin), prellenado con
+// lo que se pidió en la solicitud -- ya aceptada, así que aquí sí se puede
+// calcular/imprimir sin restricción.
+function abrirDesdeSolicitud(id){
+  const sol=solicitudesRhData.find(s=>s.id===id);
+  if(!sol)return;
+  closeModal('m-solicitudes-rh');
+  const d=sol.datos||{};
+  if(sol.tipo==='vacaciones'){
+    openVacacionesModal(sol.empleado_id);
+    if(d.fecha)document.getElementById('vc-fecha').value=d.fecha;
+    if(d.dias!=null){vcDiasManual=true;document.getElementById('vc-dias').value=d.dias;}
+    calcVacaciones();
+  }else{
+    openFiniquitoModal(sol.empleado_id,d.fecha);
+    if(d.dias_pend!=null)document.getElementById('fq-dias-pend').value=d.dias_pend;
+    if(d.vac_tomadas!=null)document.getElementById('fq-vac-tomadas').value=d.vac_tomadas;
+    calcFiniquito();
+  }
 }
 
 // ─── VACACIONES ──────────────────────────────────────────────
@@ -14329,6 +14525,7 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'acciones_venta_pendientes'},async()=>{await loadAccionesVenta();if(document.getElementById('page-cortes').classList.contains('active')){renderCortes();renderVentasMes();}})
     .on('postgres_changes',{event:'*',schema:'public',table:'acciones_pos_directas'},async()=>{await loadAccionesPos();})
     .on('postgres_changes',{event:'*',schema:'public',table:'cfdi_cancelaciones'},async()=>{await loadCancelacionesCfdi();if(document.getElementById('page-cortes').classList.contains('active')){renderCortes();renderVentasMes();}})
+    .on('postgres_changes',{event:'*',schema:'public',table:'solicitudes_rh'},async()=>{await loadSolicitudesRh();renderSolicitudesRhBadge();if(document.getElementById('m-solicitudes-rh').classList.contains('open'))renderSolicitudesRhList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'entidades_fiscales'},async()=>{await loadEntidadesFiscales();})
     .on('postgres_changes',{event:'*',schema:'public',table:'balances_mensuales'},async()=>{await loadBalances();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='luis')renderBalanceList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'balances_kateryn'},async()=>{await loadBalancesKat();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='kat')renderBalanceKatList();})
