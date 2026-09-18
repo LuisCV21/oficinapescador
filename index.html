@@ -2045,6 +2045,11 @@ mismo blob ya cargado, sin volver a pedirlo. -->
       <div class="f-row" style="min-width:160px;flex:1;margin:0"><label>Notas (opcional)</label><input type="text" id="pl-notas" placeholder="Ej: talla cambiada, reposición..."/></div>
       <button class="btn btn-filled" onclick="agregarPlayera()">+ Registrar</button>
     </div>
+    <div class="ledger-subtabs" id="pl-filter-tabs" style="margin-bottom:12px">
+      <div class="ledger-subtab active" data-f="todos" onclick="switchPlayerasFiltro('todos')">Todos</div>
+      <div class="ledger-subtab" data-f="con" onclick="switchPlayerasFiltro('con')">✓ Con uniforme</div>
+      <div class="ledger-subtab" data-f="sin" onclick="switchPlayerasFiltro('sin')">⚠ Sin uniforme</div>
+    </div>
     <div id="playeras-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
   </div>
   <div class="modal-ftr"><button class="btn" onclick="closeModal('m-playeras')">Cerrar</button></div>
@@ -3905,12 +3910,20 @@ function switchRhEnt(ek){currentRhEnt=ek;renderEmps();}
 // vez que se le dio playera a alguien, para poder ver cuándo fue la
 // última y si ya le tocaba otra. Pedido del dueño, 17-sept-2026.
 let playerasData=[];
+let playerasFiltro='todos';
 async function openPlayerasModal(){
   openModal('m-playeras');
   populatePlayerasEmpleadoSelect();
   if(!document.getElementById('pl-fecha').value)document.getElementById('pl-fecha').value=new Date().toISOString().slice(0,10);
+  playerasFiltro='todos';
+  document.querySelectorAll('#pl-filter-tabs .ledger-subtab').forEach(t=>t.classList.toggle('active',t.dataset.f==='todos'));
   document.getElementById('playeras-list').innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
   await loadPlayeras();
+  renderPlayerasList();
+}
+function switchPlayerasFiltro(f){
+  playerasFiltro=f;
+  document.querySelectorAll('#pl-filter-tabs .ledger-subtab').forEach(t=>t.classList.toggle('active',t.dataset.f===f));
   renderPlayerasList();
 }
 function populatePlayerasEmpleadoSelect(){
@@ -3928,11 +3941,35 @@ async function loadPlayeras(){
 function renderPlayerasList(){
   const el=document.getElementById('playeras-list');
   if(!el)return;
-  if(!playerasData.length){
-    el.innerHTML='<div class="empty" style="padding:16px">Ninguna playera registrada todavía.</div>';
-    return;
-  }
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
+  // Resumen por empleado -- cuántas lleva acumuladas, talla y fecha de la
+  // última entrega, para ver de un vistazo a quién ya le tocaría otra sin
+  // tener que sumar a mano.
+  const porEmpleado={};
+  playerasData.forEach(p=>{
+    const acc=porEmpleado[p.empleado_id]=porEmpleado[p.empleado_id]||{total:0,ultimaFecha:null,ultimaTalla:null};
+    acc.total+=Number(p.cantidad||0);
+    if(!acc.ultimaFecha||p.fecha_entrega>acc.ultimaFecha){acc.ultimaFecha=p.fecha_entrega;acc.ultimaTalla=p.talla;}
+  });
+  // Roster de TODOS los activos (no solo quien ya tiene registro) -- antes
+  // había que comparar a mano contra la lista completa de RH para ver a
+  // quién le faltaba; ahora el filtro Con/Sin uniforme lo hace directo
+  // (pedido del dueño, 18-sept-2026).
+  const activos=[...empData].filter(e=>e.activo!==false).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  const roster=activos.map(e=>({e,info:porEmpleado[e.id]||null}));
+  const rosterFiltrado=roster.filter(r=>playerasFiltro==='con'?!!r.info:playerasFiltro==='sin'?!r.info:true);
+  const rosterHtml=rosterFiltrado.length?`<table class="corte-tbl">
+      <thead><tr><th>Empleado</th><th>Sucursal</th><th class="num">Total</th><th>Talla más reciente</th><th>Última entrega</th><th>Estado</th></tr></thead>
+      <tbody>${rosterFiltrado.map(({e,info})=>`<tr>
+        <td>${e.nombre}</td>
+        <td><span class="ent-dot" style="background:${ENTS[e.entidad]?.color||'#999'}"></span>${ENTS[e.entidad]?.label||e.entidad}</td>
+        <td class="num">${info?info.total:0}</td>
+        <td>${info?info.ultimaTalla||'—':'—'}</td>
+        <td>${info?fmt(info.ultimaFecha):'—'}</td>
+        <td>${info?'<span class="corte-badge ok">✓ Tiene</span>':'<span class="corte-badge pend">⚠ Sin uniforme</span>'}</td>
+      </tr>`).join('')}</tbody>
+    </table>`:`<div class="empty" style="padding:16px">Nadie en este filtro.</div>`;
+
   const filas=playerasData.map(p=>{
     const e=empById[p.empleado_id];
     return `<tr>
@@ -3945,23 +3982,15 @@ function renderPlayerasList(){
       <td><button class="btn-text" style="color:var(--red)" onclick="eliminarPlayera('${p.id}')">Eliminar</button></td>
     </tr>`;
   }).join('');
-  // Resumen por empleado -- cuántas lleva acumuladas en total, para ver de
-  // un vistazo a quién ya le tocaría otra sin tener que sumar a mano.
-  const porEmpleado={};
-  playerasData.forEach(p=>{porEmpleado[p.empleado_id]=(porEmpleado[p.empleado_id]||0)+Number(p.cantidad||0);});
-  const resumen=Object.entries(porEmpleado)
-    .map(([id,total])=>({nombre:empById[id]?.nombre||'(empleado eliminado)',total}))
-    .sort((a,b)=>a.nombre.localeCompare(b.nombre));
+
   el.innerHTML=`
-    <div class="sec-lbl">Total acumulado por empleado</div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">
-      ${resumen.map(r=>`<span class="corte-badge ok">${r.nombre}: ${r.total}</span>`).join('')}
-    </div>
+    <div class="sec-lbl">Por empleado (${rosterFiltrado.length})</div>
+    <div style="margin-bottom:16px">${rosterHtml}</div>
     <div class="sec-lbl">Historial de entregas</div>
-    <table class="corte-tbl">
+    ${playerasData.length?`<table class="corte-tbl">
       <thead><tr><th>Empleado</th><th>Sucursal</th><th>Talla</th><th class="num">Cant.</th><th>Fecha</th><th>Notas</th><th></th></tr></thead>
       <tbody>${filas}</tbody>
-    </table>`;
+    </table>`:'<div class="empty" style="padding:16px">Ninguna playera registrada todavía.</div>'}`;
 }
 async function agregarPlayera(){
   const empleado_id=document.getElementById('pl-empleado').value;
