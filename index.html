@@ -1105,7 +1105,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
           <div class="tab" data-ent="HOT" onclick="switchModuloEnt('HOT')">Hotel</div>
           <div class="tab" data-ent="FLO" onclick="switchModuloEnt('FLO')">Florida</div>
         </div>
-        <div class="page-hdr" style="margin-top:10px;margin-bottom:10px;align-items:center">
+        <div class="page-hdr" id="modulo-week-hdr" style="margin-top:10px;margin-bottom:10px;align-items:center">
           <div class="page-sub" id="modulo-week-label"></div>
           <div style="display:flex;gap:8px;align-items:center">
             <button class="btn-icon" onclick="goModuloWeek(-1)" title="Semana anterior">◀</button>
@@ -1117,6 +1117,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
           <div class="tab active" data-sub="asistencia" onclick="switchModuloTab('asistencia')">📅 Asistencia</div>
           <div class="tab" data-sub="horasextra" onclick="switchModuloTab('horasextra')">⏱️ Horas extra</div>
           <div class="tab" data-sub="nomina" onclick="switchModuloTab('nomina')">💵 Nómina</div>
+          <div class="tab" data-sub="bitacora" onclick="switchModuloTab('bitacora')">📋 Bitácora</div>
         </div>
 
         <div class="modulo-sub" id="sub-asistencia">
@@ -1147,6 +1148,31 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             <button class="btn btn-sm" style="color:var(--red);display:none" onclick="borrarNomina()" id="nomina-del-btn">🔄 Recalcular desde cero</button>
           </div>
           <div id="nomina-content" style="margin:14px 0"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+        </div>
+
+        <div class="modulo-sub" id="sub-bitacora" style="display:none">
+          <div class="ledger-subtabs" id="nom-subtabs">
+            <div class="ledger-subtab active" onclick="switchNominaEnt('FLO')">Florida</div>
+            <div class="ledger-subtab" onclick="switchNominaEnt('PUE')">Puebla</div>
+            <div class="ledger-subtab" onclick="switchNominaEnt('HOT')">Hotel</div>
+          </div>
+          <div class="ledger-add-form">
+            <div class="f-row" style="min-width:230px">
+              <label>Periodo (Nómina y Asistencia)</label>
+              <select id="nom-add-periodo" onchange="onNomPeriodoSelect()"><option value="">Selecciona un periodo…</option></select>
+            </div>
+            <button class="btn" id="nom-preview-btn" onclick="abrirVistaPreviaGravable()" disabled>👁 Vista previa</button>
+            <div class="f-row"><label>Fecha</label><input type="date" id="nom-add-fecha"/></div>
+            <div class="f-row"><label>Efectivo</label><input type="number" step="0.01" id="nom-add-monto" placeholder="0.00"/></div>
+            <div class="f-row"><label>Gravable</label><input type="number" step="0.01" id="nom-add-gravable" placeholder="0.00"/></div>
+            <button class="btn btn-filled" id="nom-add-btn" onclick="addNominaLedgerEntry()">+ Agregar</button>
+            <button class="btn" id="nom-cancel-edit-btn" onclick="cancelEditNominaLedger()" style="display:none">Cancelar</button>
+          </div>
+          <div class="ledger-add-form" style="margin-top:2px">
+            <div class="f-row" style="min-width:160px"><label>Histórico mensual (como Aspel)</label><input type="month" id="nom-hist-mes"/></div>
+            <button class="btn btn-filled" onclick="abrirHistoricoNominaMensual()">📜 Ver histórico del mes</button>
+          </div>
+          <div id="nomina-ledger-list"></div>
         </div>
       </div>
 
@@ -1383,7 +1409,6 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <div class="bal-tabs">
           <div class="bal-tab active" id="bal-tab-luis" onclick="switchBalTab('luis')">👤 Balance Luis</div>
           <div class="bal-tab" id="bal-tab-kat" onclick="switchBalTab('kat')">👤 Balance Kateryn</div>
-          <div class="bal-tab" id="bal-tab-nomina" onclick="switchBalTab('nomina')">📋 Bitácora Nómina</div>
           <div class="bal-tab" id="bal-tab-ado" onclick="switchBalTab('ado')">🚌 Bitácora ADO</div>
           <div class="bal-tab" id="bal-tab-mio" onclick="switchBalTab('mio')" style="display:none">🔒 Mi Balance</div>
         </div>
@@ -1396,31 +1421,6 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
             <button class="btn btn-filled" onclick="imprimirMiBalance()">🖨 Descargar</button>
           </div>
           <div id="mi-balance-list"></div>
-        </div>
-
-        <div id="nomina-ledger-view" style="display:none">
-          <div class="ledger-subtabs" id="nom-subtabs">
-            <div class="ledger-subtab active" onclick="switchNominaEnt('FLO')">Florida</div>
-            <div class="ledger-subtab" onclick="switchNominaEnt('PUE')">Puebla</div>
-            <div class="ledger-subtab" onclick="switchNominaEnt('HOT')">Hotel</div>
-          </div>
-          <div class="ledger-add-form">
-            <div class="f-row" style="min-width:230px">
-              <label>Periodo (Nómina y Asistencia)</label>
-              <select id="nom-add-periodo" onchange="onNomPeriodoSelect()"><option value="">Selecciona un periodo…</option></select>
-            </div>
-            <button class="btn" id="nom-preview-btn" onclick="abrirVistaPreviaGravable()" disabled>👁 Vista previa</button>
-            <div class="f-row"><label>Fecha</label><input type="date" id="nom-add-fecha"/></div>
-            <div class="f-row"><label>Efectivo</label><input type="number" step="0.01" id="nom-add-monto" placeholder="0.00"/></div>
-            <div class="f-row"><label>Gravable</label><input type="number" step="0.01" id="nom-add-gravable" placeholder="0.00"/></div>
-            <button class="btn btn-filled" id="nom-add-btn" onclick="addNominaLedgerEntry()">+ Agregar</button>
-            <button class="btn" id="nom-cancel-edit-btn" onclick="cancelEditNominaLedger()" style="display:none">Cancelar</button>
-          </div>
-          <div class="ledger-add-form" style="margin-top:2px">
-            <div class="f-row" style="min-width:160px"><label>Histórico mensual (como Aspel)</label><input type="month" id="nom-hist-mes"/></div>
-            <button class="btn btn-filled" onclick="abrirHistoricoNominaMensual()">📜 Ver histórico del mes</button>
-          </div>
-          <div id="nomina-ledger-list"></div>
         </div>
 
         <div id="ado-ledger-view" style="display:none">
@@ -4771,6 +4771,13 @@ function switchModuloTab(tab){
   moduloActivoTab=tab;
   document.querySelectorAll('#nya-sub-tabs .tab').forEach(t=>t.classList.toggle('active',t.dataset.sub===tab));
   document.querySelectorAll('.modulo-sub').forEach(el=>{el.style.display=el.id==='sub-'+tab?'block':'none';});
+  // Bitácora no es por semana ni usa las pestañas Puebla/Hotel/Florida de
+  // arriba (tiene sus propias, Florida/Puebla/Hotel, ligadas a nomActiveEnt)
+  // -- se ocultan esos controles para no mostrar algo que ahí no hace nada.
+  const esBitacora=tab==='bitacora';
+  document.getElementById('nya-ent-tabs').style.display=esBitacora?'none':'flex';
+  document.getElementById('modulo-week-hdr').style.display=esBitacora?'none':'flex';
+  if(esBitacora){loadNomPeriodosParaLedger();renderNominaLedgerList();return;}
   reloadModuloActivo();
 }
 // Semana compartida por las 3 pestañas (Asistencia, Horas Extra, Nómina):
@@ -7795,14 +7802,12 @@ function switchBalTab(tab){
   document.getElementById('balance-list').style.display=tab==='luis'?'block':'none';
   document.getElementById('balance-preview-kat').style.display=tab==='kat'?'block':'none';
   document.getElementById('balance-kat-list').style.display=tab==='kat'?'block':'none';
-  document.getElementById('nomina-ledger-view').style.display=tab==='nomina'?'block':'none';
   document.getElementById('ado-ledger-view').style.display=tab==='ado'?'block':'none';
   document.getElementById('mi-balance-view').style.display=tab==='mio'?'block':'none';
   const newBtn=document.getElementById('balance-new-btn');
   const sub=document.getElementById('balance-page-sub');
   if(tab==='luis'){newBtn.style.display='inline-flex';newBtn.textContent='+ Nuevo balance';newBtn.onclick=openBalanceModal;sub.textContent='Ingresos, egresos, ISR e IVA — Luis Antonio Clemente Vaquier (Florida)';renderBalanceList();renderBalancePreviewLuis();}
   else if(tab==='kat'){newBtn.style.display='inline-flex';newBtn.textContent='+ Nuevo balance';newBtn.onclick=openBalanceKatModal;sub.textContent='Ingresos, egresos, ISR e IVA — Ana Kateryn Clemente Vaquier (Puebla + Hotel)';renderBalanceKatList();renderBalancePreviewKat();}
-  else if(tab==='nomina'){newBtn.style.display='none';sub.textContent='Registra cada semana pagada — el balance la jala sola y la marca como usada';loadNomPeriodosParaLedger();renderNominaLedgerList();}
   else if(tab==='ado'){newBtn.style.display='none';sub.textContent='Registra cada vale de ADO (pagado o de crédito) — el balance de Kateryn los jala solo';renderAdoLedgerList();}
   else if(tab==='mio'){newBtn.style.display='none';sub.textContent='Privado — comparativo de ingresos vs egresos sin IVA de todos los balances';renderMiBalance();}
 }
@@ -14273,7 +14278,7 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'entidades_fiscales'},async()=>{await loadEntidadesFiscales();})
     .on('postgres_changes',{event:'*',schema:'public',table:'balances_mensuales'},async()=>{await loadBalances();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='luis')renderBalanceList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'balances_kateryn'},async()=>{await loadBalancesKat();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='kat')renderBalanceKatList();})
-    .on('postgres_changes',{event:'*',schema:'public',table:'nomina_ledger'},async()=>{await loadNominaLedger();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='nomina')renderNominaLedgerList();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'nomina_ledger'},async()=>{await loadNominaLedger();if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='bitacora')renderNominaLedgerList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'ado_ledger'},async()=>{await loadAdoLedger();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='ado')renderAdoLedgerList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'bitacora_tareas'},async()=>{await loadBitacora();if(document.getElementById('page-bitacora').classList.contains('active'))renderBitacora();})
     .on('postgres_changes',{event:'*',schema:'public',table:'bitacora_registros'},async()=>{const hoy=new Date().toISOString().slice(0,10);const{data:regs}=await sb.from('bitacora_registros').select('*').eq('fecha',hoy);bitRegistros=regs||[];if(document.getElementById('page-bitacora').classList.contains('active'))renderBitacora();})
