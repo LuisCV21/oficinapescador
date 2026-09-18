@@ -11650,8 +11650,17 @@ function buildCorteDetailSections(c){
   const cuadreCorte=pdfSec('Cuadre del corte')+pdfCard('',
     pdfRow('Bodega',fmxn(d.saldo_bodega))+
     pdfRow('Baucher',fmxn(d.saldo_baucher))+
-    pdfRow('Monedas',fmxn(d.efectivo_monedas))+
-    pdfRow('Billetes',fmxn(d.efectivo_billetes))+
+    // El hotel cuenta el efectivo como un solo total (nunca separa monedas
+    // de billetes -- ver widget_caja.py allá, que manda todo bajo "monedas"
+    // y fuerza billetes=0), así que mostrarlo partido en 2 líneas aquí
+    // confundía ("Monedas: $X / Billetes: $0.00" cuando solo contaron una
+    // cosa). Pescador POS sí separa los dos conteos físicos reales.
+    (rr?
+      pdfRow('Efectivo',fmxn(d.efectivo_monedas))
+    :
+      pdfRow('Monedas',fmxn(d.efectivo_monedas))+
+      pdfRow('Billetes',fmxn(d.efectivo_billetes))
+    )+
     // El hotel lleva Vales Sr. Antonio y Vales del Personal como 2 cuentas
     // independientes (ver corte_recepcion.py allá) -- antes esta tabla las
     // sumaba en una sola línea "Vales" (d.saldo_vales), lo cual no deja
@@ -12641,8 +12650,7 @@ function renderEditarCorteModalHotel(){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div>
         <div class="corte-sec" style="border:none;margin:0 0 6px">Efectivo contado${combinado?' (turno noche)':''}</div>
-        <div class="f-row"><label>Monedas</label><input type="number" step="0.01" id="emh-monedas" value="${rr.monedas||0}" onchange="renderEditarCortePreviewHotel()"/></div>
-        <div class="f-row"><label>Billetes</label><input type="number" step="0.01" id="emh-billetes" value="${rr.billetes||0}" onchange="renderEditarCortePreviewHotel()"/></div>
+        <div class="f-row"><label>Efectivo</label><input type="number" step="0.01" id="emh-efectivo" value="${rr.monedas||0}" onchange="renderEditarCortePreviewHotel()"/></div>
 
         <div class="corte-sec" style="border:none;margin:14px 0 6px">Anteriores${combinado?' (con qué abrió el turno de día)':' (con qué abrió este turno)'}</div>
         <div class="f-row"><label>Anterior de bodega</label><input type="number" step="0.01" id="emh-ant-bodega" value="${rr.anterior_bodega||0}" onchange="renderEditarCortePreviewHotel()"/></div>
@@ -12977,8 +12985,8 @@ function leerFormEditarCorteHotel(){
   const d=JSON.parse(JSON.stringify(c.datos||{}));
   d.resumen_recepcion=d.resumen_recepcion||{};
   const rr=d.resumen_recepcion;
-  rr.monedas=parseFloat(document.getElementById('emh-monedas').value)||0;
-  rr.billetes=parseFloat(document.getElementById('emh-billetes').value)||0;
+  rr.monedas=parseFloat(document.getElementById('emh-efectivo').value)||0;
+  rr.billetes=0;
   rr.anterior=parseFloat(document.getElementById('emh-ant-check').value)||0;
   rr.anterior_bodega=parseFloat(document.getElementById('emh-ant-bodega').value)||0;
   rr.anterior_baucher=parseFloat(document.getElementById('emh-ant-baucher').value)||0;
