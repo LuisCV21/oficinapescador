@@ -182,7 +182,8 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
   display:flex;align-items:center;gap:6px;margin-bottom:8px}
 .branch-card-emp{font-size:22px;font-weight:600;color:var(--text);line-height:1}
 .branch-card-emp-lbl{font-size:10px;color:var(--text3);margin-top:2px}
-.branch-card-obl{display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.branch-card-obl-lbl{font-size:10px;color:var(--text3);margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.branch-card-obl{display:flex;gap:8px;margin-top:4px}
 .branch-card-obl span{font-size:11px;font-weight:600}
 
 /* ── INICIO: dos columnas (vencimientos / nomina) ── */
@@ -14149,6 +14150,7 @@ function renderBranchSummary(){
       <div class="branch-card-label"><span class="ent-dot" style="background:${e.color}"></span>${e.label}</div>
       <div class="branch-card-emp">${cnt}</div>
       <div class="branch-card-emp-lbl">empleado${cnt!==1?'s':''} activo${cnt!==1?'s':''}</div>
+      <div class="branch-card-obl-lbl">📋 Obligaciones</div>
       <div class="branch-card-obl">${oblHtml}</div>
     </div>`;
   }).join('');
