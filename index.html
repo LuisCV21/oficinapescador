@@ -1071,7 +1071,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
           <div style="font-size:18px;font-weight:500">Recursos humanos</div>
           <div style="display:flex;gap:8px">
-            <button class="btn" onclick="openPlayerasModal()">🎽 Playeras</button>
+            <button class="btn" onclick="openPlayerasModal()">🎽 Uniformes</button>
             <button class="btn btn-filled" onclick="openEmpModal()">+ Nuevo empleado</button>
           </div>
         </div>
@@ -2032,13 +2032,16 @@ mismo blob ya cargado, sin volver a pedirlo. -->
 
 <!-- MODAL PLAYERAS ENTREGADAS -->
 <div class="modal-overlay" id="m-playeras">
-<div class="modal" style="max-width:720px">
-  <div class="modal-hdr"><div class="modal-title">Playeras entregadas</div><button class="btn-icon" onclick="closeModal('m-playeras')">✕</button></div>
+<div class="modal" style="max-width:760px">
+  <div class="modal-hdr"><div class="modal-title">Uniformes entregados</div><button class="btn-icon" onclick="closeModal('m-playeras')">✕</button></div>
   <div class="modal-body">
     <div class="df-add-form" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:14px">
       <div class="f-row" style="min-width:200px;margin:0"><label>Empleado</label><select id="pl-empleado"></select></div>
+      <div class="f-row" style="min-width:100px;margin:0"><label>Tipo</label>
+        <select id="pl-tipo"><option value="playera">Playera</option><option value="mandil">Mandil</option></select>
+      </div>
       <div class="f-row" style="min-width:110px;margin:0"><label>Talla</label>
-        <select id="pl-talla"><option value="CH">CH</option><option value="M" selected>M</option><option value="G">G</option><option value="EG">EG</option><option value="XG">XG</option></select>
+        <select id="pl-talla"><option value="CH">CH</option><option value="M" selected>M</option><option value="G">G</option><option value="XG">XG</option><option value="XXG">XXG</option></select>
       </div>
       <div class="f-row" style="width:80px;margin:0"><label>Cantidad</label><input type="number" id="pl-cantidad" value="1" min="1"/></div>
       <div class="f-row" style="margin:0"><label>Fecha</label><input type="date" id="pl-fecha"/></div>
@@ -3905,10 +3908,17 @@ function renderRhTabs(){
 }
 function switchRhEnt(ek){currentRhEnt=ek;renderEmps();}
 
-// ─── PLAYERAS ENTREGADAS ──────────────────────────────────────────
-// Historial de entregas (no un contador editable) -- una fila por cada
-// vez que se le dio playera a alguien, para poder ver cuándo fue la
-// última y si ya le tocaba otra. Pedido del dueño, 17-sept-2026.
+// ─── UNIFORMES ENTREGADOS (vista general de RH) ────────────────────
+// Ojo: esto lee de la MISMA tabla `uniformes` que ya usa el botón
+// "👕 Uniforme" del expediente de cada empleado (ver openUniformeModal/
+// saveUniforme más abajo) -- NO es una tabla aparte. La primera versión
+// de esta pantalla (17-sept-2026) sí creó su propia tabla
+// playeras_entregadas, separada de `uniformes`, así que el registro que
+// ya existía por empleado no aparecía aquí (la tabla nueva estaba
+// vacía) -- confundía, "sí hay algunas que ya tienen registrado
+// uniforme... ahí dice que no hay nadie" (18-sept-2026). Se corrigió
+// para leer `uniformes` directamente; la tabla playeras_entregadas se
+// eliminó (ver migración de limpieza).
 let playerasData=[];
 let playerasFiltro='todos';
 async function openPlayerasModal(){
@@ -3935,21 +3945,24 @@ function populatePlayerasEmpleadoSelect(){
   if([...sel.options].some(o=>o.value===prev))sel.value=prev;
 }
 async function loadPlayeras(){
-  const{data}=await sb.from('playeras_entregadas').select('*').order('fecha_entrega',{ascending:false});
+  const{data}=await sb.from('uniformes').select('*').order('fecha_entrega',{ascending:false});
   playerasData=data||[];
 }
+const UNI_TIPO_ICO={playera:'👕',mandil:'🧥'};
 function renderPlayerasList(){
   const el=document.getElementById('playeras-list');
   if(!el)return;
   const empById={};empData.forEach(e=>{empById[e.id]=e;});
-  // Resumen por empleado -- cuántas lleva acumuladas, talla y fecha de la
-  // última entrega, para ver de un vistazo a quién ya le tocaría otra sin
-  // tener que sumar a mano.
+  // Resumen por empleado -- solo cuenta lo que TIENE hoy (excluye lo ya
+  // devuelto, ver registrarDevolucion): total de prendas en su poder,
+  // tipo/talla y fecha de la última entrega, para ver de un vistazo a
+  // quién ya le tocaría otra sin tener que sumar a mano.
   const porEmpleado={};
   playerasData.forEach(p=>{
-    const acc=porEmpleado[p.empleado_id]=porEmpleado[p.empleado_id]||{total:0,ultimaFecha:null,ultimaTalla:null};
+    if(p.devuelto)return;
+    const acc=porEmpleado[p.empleado_id]=porEmpleado[p.empleado_id]||{total:0,ultimaFecha:null,ultimaTalla:null,ultimoTipo:null};
     acc.total+=Number(p.cantidad||0);
-    if(!acc.ultimaFecha||p.fecha_entrega>acc.ultimaFecha){acc.ultimaFecha=p.fecha_entrega;acc.ultimaTalla=p.talla;}
+    if(!acc.ultimaFecha||p.fecha_entrega>acc.ultimaFecha){acc.ultimaFecha=p.fecha_entrega;acc.ultimaTalla=p.talla;acc.ultimoTipo=p.tipo;}
   });
   // Roster de TODOS los activos (no solo quien ya tiene registro) -- antes
   // había que comparar a mano contra la lista completa de RH para ver a
@@ -3959,12 +3972,12 @@ function renderPlayerasList(){
   const roster=activos.map(e=>({e,info:porEmpleado[e.id]||null}));
   const rosterFiltrado=roster.filter(r=>playerasFiltro==='con'?!!r.info:playerasFiltro==='sin'?!r.info:true);
   const rosterHtml=rosterFiltrado.length?`<table class="corte-tbl">
-      <thead><tr><th>Empleado</th><th>Sucursal</th><th class="num">Total</th><th>Talla más reciente</th><th>Última entrega</th><th>Estado</th></tr></thead>
+      <thead><tr><th>Empleado</th><th>Sucursal</th><th class="num">Total</th><th>Última prenda</th><th>Última entrega</th><th>Estado</th></tr></thead>
       <tbody>${rosterFiltrado.map(({e,info})=>`<tr>
         <td>${e.nombre}</td>
         <td><span class="ent-dot" style="background:${ENTS[e.entidad]?.color||'#999'}"></span>${ENTS[e.entidad]?.label||e.entidad}</td>
         <td class="num">${info?info.total:0}</td>
-        <td>${info?info.ultimaTalla||'—':'—'}</td>
+        <td>${info?(UNI_TIPO_ICO[info.ultimoTipo]||'')+' '+info.ultimaTalla:'—'}</td>
         <td>${info?fmt(info.ultimaFecha):'—'}</td>
         <td>${info?'<span class="corte-badge ok">✓ Tiene</span>':'<span class="corte-badge pend">⚠ Sin uniforme</span>'}</td>
       </tr>`).join('')}</tbody>
@@ -3974,12 +3987,12 @@ function renderPlayerasList(){
     const e=empById[p.empleado_id];
     return `<tr>
       <td>${e?e.nombre:'(empleado eliminado)'}</td>
-      <td><span class="ent-dot" style="background:${ENTS[p.entidad]?.color||'#999'}"></span>${ENTS[p.entidad]?.label||p.entidad}</td>
+      <td>${e?`<span class="ent-dot" style="background:${ENTS[e.entidad]?.color||'#999'}"></span>${ENTS[e.entidad]?.label||e.entidad}`:'—'}</td>
+      <td>${UNI_TIPO_ICO[p.tipo]||''} ${p.tipo||'—'}</td>
       <td>${p.talla||'—'}</td>
       <td class="num">${p.cantidad}</td>
-      <td>${fmt(p.fecha_entrega)}</td>
-      <td>${p.notas||''}</td>
-      <td><button class="btn-text" style="color:var(--red)" onclick="eliminarPlayera('${p.id}')">Eliminar</button></td>
+      <td>${fmt(p.fecha_entrega)}${p.devuelto?` · <span style="color:var(--text3)">Devuelto ${fmt(p.fecha_devolucion)}</span>`:''}</td>
+      <td>${p.observaciones||''}</td>
     </tr>`;
   }).join('');
 
@@ -3987,37 +4000,33 @@ function renderPlayerasList(){
     <div class="sec-lbl">Por empleado (${rosterFiltrado.length})</div>
     <div style="margin-bottom:16px">${rosterHtml}</div>
     <div class="sec-lbl">Historial de entregas</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Para eliminar o registrar una devolución, entra al expediente del empleado (botón 👕 Uniforme).</div>
     ${playerasData.length?`<table class="corte-tbl">
-      <thead><tr><th>Empleado</th><th>Sucursal</th><th>Talla</th><th class="num">Cant.</th><th>Fecha</th><th>Notas</th><th></th></tr></thead>
+      <thead><tr><th>Empleado</th><th>Sucursal</th><th>Tipo</th><th>Talla</th><th class="num">Cant.</th><th>Fecha</th><th>Notas</th></tr></thead>
       <tbody>${filas}</tbody>
-    </table>`:'<div class="empty" style="padding:16px">Ninguna playera registrada todavía.</div>'}`;
+    </table>`:'<div class="empty" style="padding:16px">Ningún uniforme registrado todavía.</div>'}`;
 }
 async function agregarPlayera(){
   const empleado_id=document.getElementById('pl-empleado').value;
+  const tipo=document.getElementById('pl-tipo').value;
   const talla=document.getElementById('pl-talla').value;
   const cantidad=Number(document.getElementById('pl-cantidad').value)||1;
   const fecha_entrega=document.getElementById('pl-fecha').value;
-  const notas=document.getElementById('pl-notas').value.trim()||null;
+  const observaciones=document.getElementById('pl-notas').value.trim()||null;
   if(!empleado_id){toast('Selecciona un empleado',true);return;}
   if(!fecha_entrega){toast('Indica la fecha de entrega',true);return;}
   const e=empData.find(x=>x.id===empleado_id);
   if(!e){toast('Empleado no encontrado',true);return;}
-  const{error}=await sb.from('playeras_entregadas').insert({
-    empleado_id,entidad:e.entidad,talla,cantidad,fecha_entrega,notas,creado_por:currentUser?.id||null,
+  const{error}=await sb.from('uniformes').insert({
+    empleado_id,tipo,talla,cantidad,fecha_entrega,observaciones,registrado_por:currentUser?.id||null,
   });
   if(error){toast('Error: '+error.message,true);return;}
   document.getElementById('pl-notas').value='';
   document.getElementById('pl-cantidad').value='1';
+  delete uniformesData[empleado_id]; // invalida el caché del expediente para que salga fresco si lo abren
   await loadPlayeras();renderPlayerasList();
-  toast('Playera registrada');
+  toast('Uniforme registrado');
 }
-async function eliminarPlayera(id){
-  if(!confirm('¿Eliminar este registro de entrega?'))return;
-  const{error}=await sb.from('playeras_entregadas').delete().eq('id',id);
-  if(error){toast('Error: '+error.message,true);return;}
-  await loadPlayeras();renderPlayerasList();
-}
-
 function renderRhWidgets(){
   const activos=empData.filter(e=>e.activo);
   const prueba=activos.filter(e=>e.activo&&e.tipo_contrato==='prueba');

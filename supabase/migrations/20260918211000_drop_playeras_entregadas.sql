@@ -1,0 +1,12 @@
+-- Limpieza: playeras_entregadas se creó el 17-sept-2026 para la vista
+-- general de "quién tiene uniforme" en Recursos Humanos, pero duplicó
+-- de forma involuntaria la tabla `uniformes` que YA existía y que usa
+-- el botón "👕 Uniforme" del expediente de cada empleado desde antes.
+-- Como las dos tablas nunca se sincronizaron, la vista general (que leía
+-- playeras_entregadas, vacía) no mostraba las entregas que ya estaban
+-- registradas por empleado en `uniformes` -- confundía (dueño,
+-- 18-sept-2026: "sí hay algunas que ya tienen registrado uniforme...
+-- ahí dice que no hay nadie"). La vista general ahora lee `uniformes`
+-- directamente (ver index.html, renderPlayerasList), así que esta tabla
+-- queda sin uso -- nunca llegó a tener datos reales (0 filas).
+drop table if exists public.playeras_entregadas;
