@@ -5353,10 +5353,23 @@ function abrirPreviewNomina(){
     if(!e.fecha_ingreso)faltan.push('fecha de ingreso');
     if(Number(l.dias_pagados)<=0)faltan.push('días pagados en 0');
     const yaEnviada=!!l.facturacom_nomina_uid; // ya se mando un timbrado (con el estatus que sea) -- no reenviar a ciegas, primero verificar
-    return{e,l,c,faltan,yaEnviada};
+    // Aviso de subsidio con periodo incompleto -- calcularSubsidioSemanal
+    // (igual que timbrar-nomina/index.ts allá) da SIEMPRE el subsidio de una
+    // semana completa según el salario diario, sin bajarlo si dias_pagados
+    // es menor a 7 (a diferencia del ISR/IMSS, que sí se prorratean). Caso
+    // real, 18-sept-2026 (Isabel Santes Jiménez, 1 día pagado): la
+    // contadora confirmó que en periodos así de cortos NO se debe dar
+    // subsidio -- pero como no siempre es tan tajante, en vez de
+    // corregirlo solo (silencioso), se avisa aquí y se deja SIN marcar por
+    // default, para que alguien lo revise con la contadora antes de
+    // timbrar en vez de que se cuele otra vez sin que nadie se entere.
+    const diasIncompletos=Number(l.dias_pagados)>0&&Number(l.dias_pagados)<7;
+    const subsidioEstimado=calcularSubsidioSemanal(l.salario_diario);
+    const avisoSubsidio=diasIncompletos&&subsidioEstimado>0;
+    return{e,l,c,faltan,yaEnviada,avisoSubsidio,subsidioEstimado};
   }).filter(Boolean).sort((a,b)=>a.e.nombre.localeCompare(b.e.nombre));
   nominaPreviewFilas=filas;
-  nominaPreviewSel=new Set(filas.filter(f=>!f.faltan.length&&!f.yaEnviada).map(f=>f.l.id));
+  nominaPreviewSel=new Set(filas.filter(f=>!f.faltan.length&&!f.yaEnviada&&!f.avisoSubsidio).map(f=>f.l.id));
   renderNominaPreviewModal();
   openModal('m-nomina-preview');
 }
@@ -5396,7 +5409,7 @@ function renderNominaPreviewModal(){
         <td>${fmxn(f.l.retencion_isr)}</td>
         <td>${fmxn(f.l.retencion_imss)}</td>
         <td><b>${fmxn(f.c.total)}</b></td>
-        <td>${f.yaEnviada?(f.l.facturacom_status==='timbrada'?`<span style="color:var(--green);font-size:11px">✅ Ya timbrada</span>`:f.l.facturacom_status==='error'?`<span style="color:var(--red);font-size:11px;cursor:help" title="${(f.l.facturacom_mensaje||'').replace(/"/g,'')}">❌ Sin confirmar (revisa antes de reenviar)</span>`:`<span style="color:var(--amber);font-size:11px;cursor:help" title="${(f.l.facturacom_mensaje||'').replace(/"/g,'')}">⏳ Pendiente en factura.com</span>`):f.faltan.length?`<span style="color:var(--amber);font-size:11px" title="Falta: ${f.faltan.join(', ')}">⚠️ Falta: ${f.faltan.join(', ')}</span>`:`<span style="color:var(--green);font-size:11px">✅ Listo</span>`}</td>
+        <td>${f.yaEnviada?(f.l.facturacom_status==='timbrada'?`<span style="color:var(--green);font-size:11px">✅ Ya timbrada</span>`:f.l.facturacom_status==='error'?`<span style="color:var(--red);font-size:11px;cursor:help" title="${(f.l.facturacom_mensaje||'').replace(/"/g,'')}">❌ Sin confirmar (revisa antes de reenviar)</span>`:`<span style="color:var(--amber);font-size:11px;cursor:help" title="${(f.l.facturacom_mensaje||'').replace(/"/g,'')}">⏳ Pendiente en factura.com</span>`):f.faltan.length?`<span style="color:var(--amber);font-size:11px" title="Falta: ${f.faltan.join(', ')}">⚠️ Falta: ${f.faltan.join(', ')}</span>`:f.avisoSubsidio?`<span style="color:var(--red);font-size:11px;cursor:help" title="Días pagados: ${f.l.dias_pagados} de 7 -- se aplicaría ${fmxn(f.subsidioEstimado)} de subsidio al empleo como si fuera semana completa. Confirma con la contadora si de verdad aplica antes de marcarla.">⚠️ Revisar subsidio (periodo de ${f.l.dias_pagados} día${Number(f.l.dias_pagados)===1?'':'s'})</span>`:`<span style="color:var(--green);font-size:11px">✅ Listo</span>`}</td>
         <td>${f.yaEnviada?(isAdmin()&&f.l.facturacom_status==='timbrada'?`<button class="btn-text red" style="font-size:10px" onclick="sustituirLineaTimbrada('${f.l.id}',this)" title="Cancela este CFDI y timbra uno nuevo con los datos actuales de esta línea">🛠️ Cancelar y corregir</button>`:''):f.faltan.length?'':`<button class="btn-text" style="font-size:10px" onclick="nominaPreviewSoloEsta('${f.l.id}')">Solo esta</button>`}</td>
       </tr>`).join('')}</tbody>
     </table>
