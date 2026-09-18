@@ -3831,8 +3831,11 @@ async function openHist(oblId){
     let archHtml='';
     archs.forEach(function(a){
       const icon=FILE_ICONS[a.tipo]||'📄';
-      const onclick="viewFile("+JSON.stringify(a.storage_path)+","+JSON.stringify(a.nombre_archivo)+",'pagos')";
-      archHtml+='<div class="hist-file" onclick="'+onclick+'">'+icon+' '+a.nombre_archivo+'</div>';
+      // viewFile() se llama con los args en comillas simples (igual que ya
+      // hace el visor de Archivos en renderRepo) -- con JSON.stringify (que
+      // usa comillas dobles) el onclick, que también va entre comillas
+      // dobles, se cortaba a medias y el click no abría nada.
+      archHtml+='<div class="hist-file" onclick="viewFile(\''+a.storage_path+'\',\''+a.nombre_archivo+'\',\'pagos\')">'+icon+' '+a.nombre_archivo+'</div>';
     });
     let faltaFac='';
     if(!hasFac){
