@@ -14181,22 +14181,35 @@ function renderVencimientos(){
   el.innerHTML=`<div class="home-card"><div class="home-card-title">📅 Próximos vencimientos<button class="btn-text" onclick="showPage('obligaciones')">Ver todas</button></div>${items}</div>`;
 }
 
-// ─── INICIO: ESTADO DE NÓMINA DE LA SEMANA ─────────────────────
+// ─── INICIO: ESTADO DE ASISTENCIA DE LA SEMANA ─────────────────
+// Antes esto revisaba si ya existía un `nomina_periodos` (lo cual pasa
+// nada más con ABRIR la pestaña de Nómina de esa semana, no con haberla
+// timbrado) -- decía "✓ Generada" aunque nadie hubiera capturado ni
+// timbrado nada, lo cual confundía (pedido del dueño, 18-sept-2026: "no
+// se a que se refiere con generada"). Ahora revisa asistencia real:
+// ¿hay un registro por cada empleado activo en cada día que ya pasó de
+// esta semana (domingo a hoy, sin contar los días que faltan por venir)?
 async function renderNominaStatusWidget(){
   const el=document.getElementById('nomina-status-container');
   if(!el)return;
   const weekStart=asistDefaultSunday();
-  const{data:periodos}=await sb.from('nomina_periodos').select('entidad').eq('semana_inicio',weekStart).in('entidad',['PUE','HOT','FLO']);
-  const done=new Set((periodos||[]).map(p=>p.entidad));
+  const hoy=dateToISO(new Date());
+  const diasTranscurridos=asistWeekDays(weekStart).filter(d=>d<=hoy);
+  const{data:asist}=await sb.from('asistencia').select('empleado_id,fecha,entidad').in('entidad',['PUE','HOT','FLO']).gte('fecha',weekStart).lte('fecha',hoy);
+  const capturado=new Set((asist||[]).map(a=>a.entidad+'_'+a.empleado_id+'_'+a.fecha));
   const rows=['PUE','HOT','FLO'].filter(ek=>ENTS[ek]).map(ek=>{
     const e=ENTS[ek];
-    const ok=done.has(ek);
+    const activos=empData.filter(x=>x.entidad===ek&&x.activo);
+    let faltantes=0;
+    activos.forEach(emp=>diasTranscurridos.forEach(fecha=>{if(!capturado.has(ek+'_'+emp.id+'_'+fecha))faltantes++;}));
+    const ok=faltantes===0;
+    const label=ok?'✓ Al corriente':`⚠ Faltan ${faltantes}`;
     return`<div class="nomsem-row">
       <div style="display:flex;align-items:center;gap:8px"><span class="ent-dot" style="background:${e.color}"></span><span style="font-size:12.5px;font-weight:600">${e.label}</span></div>
-      <div class="nomsem-badge ${ok?'ok':'pend'}" style="cursor:pointer" onclick="showPage('nominayasist');switchModuloTab('nomina');switchModuloEnt('${ek}')">${ok?'✓ Generada':'Pendiente'}</div>
+      <div class="nomsem-badge ${ok?'ok':'pend'}" style="cursor:pointer" title="Asistencias registradas del domingo a hoy, por empleado activo" onclick="showPage('nominayasist');switchModuloTab('asistencia');switchModuloEnt('${ek}')">${label}</div>
     </div>`;
   }).join('');
-  el.innerHTML=`<div class="home-card"><div class="home-card-title">💵 Nómina de esta semana<button class="btn-text" onclick="showPage('nominayasist');switchModuloTab('nomina')">Ir</button></div>${rows}</div>`;
+  el.innerHTML=`<div class="home-card"><div class="home-card-title">📅 Asistencia de esta semana<button class="btn-text" onclick="showPage('nominayasist');switchModuloTab('asistencia')">Ir</button></div>${rows}</div>`;
 }
 
 // ─── NOTA RÁPIDA ──────────────────────────────────────────────
@@ -14300,6 +14313,7 @@ function setupRealtime(){
         if(moduloActivoTab==='asistencia')await loadAsistencia().then(renderAsistGrid);
         else if(moduloActivoTab==='nomina')await loadNomina().then(renderNomina);
       }
+      renderNominaStatusWidget();
     })
     .on('postgres_changes',{event:'*',schema:'public',table:'nomina_periodos'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='nomina')await loadNomina().then(renderNomina);})
     .on('postgres_changes',{event:'*',schema:'public',table:'nomina_lineas'},async()=>{if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='nomina')await loadNomina().then(renderNomina);})
