@@ -1319,19 +1319,13 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
         </div>
         <div class="tabs-wrap">
           <div class="tabs-bar" id="af-tabs-bar"></div>
-          <div style="padding:14px 16px 0">
-            <div class="ledger-subtabs" id="af-estado-tabs">
-              <div class="ledger-subtab active" onclick="switchAFEstado('pendiente')">⏳ Pendientes</div>
-              <div class="ledger-subtab" onclick="switchAFEstado('facturada')">✓ Facturadas</div>
-            </div>
-          </div>
           <div class="toolbar">
             <div class="toolbar-l" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-              <!-- Solo tiene sentido en "Facturadas" -- el reporte lista folios
-              ya timbrados, un pendiente no aparecería ahí (renderAutofacturas
-              lo muestra/oculta según currentAFEstado). Se movió aquí desde
-              Ventas del mes (pedido del dueño, 17-sept-2026) para no repetir
-              lo de facturación en dos módulos distintos. -->
+              <!-- Solo tiene sentido si hay al menos una ya facturada en la
+              lista (renderAutofacturas la muestra/oculta según eso) -- el
+              reporte lista folios ya timbrados. Se movió aquí desde Ventas
+              del mes (pedido del dueño, 17-sept-2026) para no repetir lo de
+              facturación en dos módulos distintos. -->
               <button class="btn btn-sm" id="af-reporte-btn" onclick="openReporteFacturacion()" style="display:none">📋 Reporte de facturación</button>
             </div>
             <div class="toolbar-r" style="display:flex;gap:8px">
@@ -9830,13 +9824,6 @@ function gpRenderResultado(){
 // tab_autofacturas.py) y reescribe el corte correspondiente si cambió --
 // no depende de que la sucursal corra su propio botón y reenvíe el corte.
 let currentAFSuc='';
-let currentAFEstado='pendiente'; // 'pendiente' | 'facturada'
-function switchAFEstado(estado){
-  currentAFEstado=estado;
-  document.querySelectorAll('#af-estado-tabs .ledger-subtab').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('#af-estado-tabs .ledger-subtab')[estado==='pendiente'?0:1].classList.add('active');
-  renderAutofacturas();
-}
 
 function renderAFTabs(){
   const bar=document.getElementById('af-tabs-bar');
@@ -9906,16 +9893,19 @@ function renderAutofacturas(){
   const el=document.getElementById('af-content');
   if(!el)return;
   renderAFTabs();
-  const btnReporte=document.getElementById('af-reporte-btn');
-  if(btnReporte)btnReporte.style.display=currentAFEstado==='facturada'?'inline-flex':'none';
   if(!currentAFSuc){
     el.innerHTML=`<div class="empty"><div class="empty-ico">🔎</div>Ninguna sucursal ha mandado autofacturas todavía.</div>`;
     return;
   }
-  const esPendiente=currentAFEstado==='pendiente';
-  let filas=afFilasSucursalActual().filter(f=>esPendiente?!f.facturado:!!f.facturado);
+  // Antes esto se veía partido en 2 pestañas (Pendientes/Facturadas) --
+  // ahora salen juntas en una sola lista, cada una con su propio badge de
+  // estado (pedido del dueño, 18-sept-2026: "con una basta y que ahí
+  // salgan las dos").
+  const filas=afFilasSucursalActual();
+  const btnReporte=document.getElementById('af-reporte-btn');
+  if(btnReporte)btnReporte.style.display=filas.some(f=>f.facturado)?'inline-flex':'none';
   if(!filas.length){
-    el.innerHTML=`<div class="empty"><div class="empty-ico">✅</div>${esPendiente?'No hay autofacturas pendientes':'No hay autofacturas ya facturadas'} en ${corteSucLabel(currentAFSuc)}.</div>`;
+    el.innerHTML=`<div class="empty"><div class="empty-ico">✅</div>No hay autofacturas registradas en ${corteSucLabel(currentAFSuc)}.</div>`;
     return;
   }
   const filasTbl=filas.map(f=>{
