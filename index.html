@@ -1990,6 +1990,7 @@ mismo blob ya cargado, sin volver a pedirlo. -->
   </div>
   <div class="modal-ftr">
     <button class="btn" onclick="closeModal('m-finiquito')">Cerrar</button>
+    <button class="btn" onclick="imprimirRenuncia()">📄 Carta de renuncia</button>
     <button class="btn btn-filled" onclick="imprimirFiniquito()">🖨 Imprimir finiquito</button>
   </div>
 </div>
@@ -4435,6 +4436,79 @@ function calcFiniquito(){
   `;
   return{e,fCalcStr,salario,añosCompletos,añoServicioActual,diasTablaVac,diasPeriodoVac,vacProporcionalDias,vacProporcionalMonto,primaVacMonto,diasAñoCal,aguinaldoMonto,diasPendientes,salariosPendMonto,otroLabel,otroMonto,subtotal,antiguedadTxt};
 }
+// Carta de renuncia voluntaria -- documento APARTE del recibo de finiquito
+// (pedido del dueño, 19-sept-2026): la renuncia la firma el trabajador el día
+// que renuncia y no lleva cantidades; el finiquito con desglose se firma
+// después, al pagarle. No renuncia a prestaciones: al contrario, pide que se
+// le cubran (art. 33 LFT: es nula la renuncia a derechos irrenunciables).
+function imprimirRenuncia(){
+  const e=empData.find(x=>x.id===fqEmpId);if(!e)return;
+  const fCalcStr=document.getElementById('fq-fecha').value;
+  if(!fCalcStr){toast('Indica la fecha de baja',true);return;}
+  const entLabel=(ENTS[e.entidad]||{label:e.entidad}).label;
+  const puesto=puestoNombre(e.puesto_id)||'';
+  const fiscal=entidadesFiscalesData.find(x=>x.entidad===e.entidad);
+  const patronNombre=fiscal?fiscal.razon_social:entLabel;
+  const ciudad=NOMINA_EMPRESA[e.entidad]?.ciudad||'POZA RICA, VER.';
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Renuncia — ${e.nombre}</title>
+<style>
+@page{size:8.5in 11in;margin:1.2cm}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+html,body{width:100%}
+body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#16323c;background:#eaf4f5}
+.fq-wrap{max-width:720px;margin:0 auto}
+.fq-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:16px 22px;border-radius:8px 8px 0 0}
+.fq-hdr img{height:42px;width:42px;object-fit:contain;flex-shrink:0}
+.fq-hdr-text{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;letter-spacing:.02em}
+.fq-hdr-sub{font-size:11px;opacity:.85;margin-top:2px}
+.fq-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:26px 34px}
+.fq-letterhead{text-align:center;margin-bottom:22px;padding-bottom:16px;border-bottom:1px solid #e2eef0}
+.fq-letterhead .razon{font-size:15px;font-weight:700;color:#0f3d52;letter-spacing:.01em}
+.fq-letterhead .datos{font-size:11px;color:#3a5a63;margin-top:5px;line-height:1.6}
+.fq-fecha{text-align:right;font-size:13px;margin-bottom:22px}
+.fq-dest{font-size:13.5px;font-weight:700;color:#0f3d52;line-height:1.6;margin-bottom:22px}
+.fq-parrafo{font-size:13.5px;line-height:1.9;text-align:justify;margin-bottom:16px}
+.fq-parrafo b{color:#0f3d52}
+.fq-atte{text-align:center;font-size:13px;margin-top:26px;font-weight:700;color:#0f3d52;letter-spacing:.08em}
+.fq-firmas{display:flex;justify-content:space-between;gap:36px;margin-top:80px;page-break-inside:avoid}
+.fq-firma{flex:1;text-align:center;font-size:12px;color:#3a5a63}
+.fq-firma-line{border-top:1px solid #16323c;margin-bottom:6px;padding-top:6px;font-weight:700;color:#16323c;font-size:12.5px}
+.print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+@media print{
+  .print-btn{display:none}
+  body{padding:0;background:#fff}
+  .fq-wrap{max-width:100%}
+  .fq-hdr{border-radius:0}
+  .fq-body{border:none;border-radius:0;padding:8px 6px 0}
+}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
+<div class="fq-wrap">
+  <div class="fq-hdr"><img src="${PA_LOGO}" alt="El Pescador"><div><div class="fq-hdr-text">CARTA DE RENUNCIA VOLUNTARIA</div><div class="fq-hdr-sub">${entLabel} — El Pescador</div></div></div>
+  <div class="fq-body">
+    <div class="fq-letterhead">
+      <div class="razon">${patronNombre}</div>
+      ${fiscal?`<div class="datos">RFC: ${fiscal.rfc}<br>${fiscal.domicilio_fiscal||''}${fiscal.cp?' · CP. '+fiscal.cp:''}</div>`:''}
+    </div>
+    <div class="fq-fecha">${ciudad}, a ${fmtFechaLarga(fCalcStr)}.</div>
+    <div class="fq-dest">${patronNombre}<br>P R E S E N T E.</div>
+    <div class="fq-parrafo">Por medio de la presente, yo, <b>${e.nombre}</b>, quien me he desempeñado en el puesto de <b>${puesto||'—'}</b> desde el <b>${fmtFechaLarga(e.fecha_ingreso)}</b>, manifiesto que por así convenir a mis intereses personales presento mi <b>RENUNCIA VOLUNTARIA</b>, de manera libre, espontánea e irrevocable, al empleo que desempeño en la empresa, con efectos a partir del <b>${fmtFechaLarga(fCalcStr)}</b>.</div>
+    <div class="fq-parrafo">Hago constar que esta decisión es enteramente mía, que no ha mediado presión, engaño ni coacción de ninguna clase, y que no ha existido despido alguno por parte de la empresa.</div>
+    <div class="fq-parrafo">Agradezco las atenciones y las oportunidades que se me brindaron durante el tiempo que presté mis servicios.</div>
+    <div class="fq-parrafo">Solicito que se me cubran las prestaciones que por ley me corresponden (salarios pendientes, vacaciones, prima vacacional y aguinaldo proporcionales), cuyo pago constará en el recibo de finiquito que firmaré por separado.</div>
+    <div class="fq-atte">A T E N T A M E N T E</div>
+    <div class="fq-firmas">
+      <div class="fq-firma"><div class="fq-firma-line">${e.nombre}</div>El trabajador</div>
+      <div class="fq-firma"><div class="fq-firma-line">&nbsp;</div>Recibió por la empresa<br>(nombre, firma y fecha)</div>
+    </div>
+  </div>
+</div>
+</body></html>`;
+  const w=window.open('','_blank');
+  w.document.write(html);
+  w.document.close();
+}
+
 // Recibo de finiquito por RENUNCIA VOLUNTARIA (el caso casi siempre, según el
 // dueño) de hoja completa -- mismo diseño que el recibo de
 // vacaciones (membrete con razón social/RFC/domicilio del patrón real de la
@@ -4463,8 +4537,7 @@ function imprimirFiniquito(){
   ];
   if(r.otroLabel&&r.otroMonto)rows.push([r.otroLabel,fmxn(r.otroMonto)]);
   const decl=[
-    `Que el <b>${fmtFechaLarga(r.fCalcStr)}</b> presenté mi <b>renuncia voluntaria</b>, de manera libre, espontánea e irrevocable, al puesto de <b>${puesto||'—'}</b> que desempeñaba con <b>${patronNombre}</b>, por así convenir a mis intereses, sin que haya mediado presión, engaño, coacción ni despido alguno por parte de la empresa.`,
-    `Que la relación de trabajo inició el <b>${fmtFechaLarga(e.fecha_ingreso)}</b> y terminó el <b>${fmtFechaLarga(r.fCalcStr)}</b>, con un salario diario de <b>${fmxn(r.salario)}</b> y una antigüedad de <b>${r.antiguedadTxt}</b>.`,
+    `Que la relación de trabajo que sostuve con <b>${patronNombre}</b> en el puesto de <b>${puesto||'—'}</b> inició el <b>${fmtFechaLarga(e.fecha_ingreso)}</b> y terminó el <b>${fmtFechaLarga(r.fCalcStr)}</b> por mi <b>renuncia voluntaria</b>, presentada por escrito y firmada por separado, con un salario diario de <b>${fmxn(r.salario)}</b> y una antigüedad de <b>${r.antiguedadTxt}</b>.`,
     `Que la cantidad que recibo se integra por los conceptos desglosados en este recibo, calculados conforme a los artículos 76, 80, 87 y 89 de la Ley Federal del Trabajo, y que la recibo a mi entera satisfacción.`,
     `Que durante la relación de trabajo se me cubrieron oportunamente mi salario, los días de descanso semanal y obligatorios y las demás prestaciones devengadas, sin que se me adeude cantidad alguna por esos conceptos distinta de la que aquí se liquida.`,
     `Que durante la relación de trabajo no sufrí accidente ni enfermedad de trabajo, ni tengo pendiente incapacidad alguna derivada de ellos.`,
@@ -4518,14 +4591,14 @@ imprimir va de orilla a orilla de la hoja, sin marco ni bordes redondeados. */
 </style></head><body>
 <button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
 <div class="fq-wrap">
-  <div class="fq-hdr"><img src="${PA_LOGO}" alt="El Pescador"><div><div class="fq-hdr-text">FINIQUITO POR RENUNCIA VOLUNTARIA</div><div class="fq-hdr-sub">${entLabel} — El Pescador</div></div></div>
+  <div class="fq-hdr"><img src="${PA_LOGO}" alt="El Pescador"><div><div class="fq-hdr-text">RECIBO DE FINIQUITO</div><div class="fq-hdr-sub">${entLabel} — El Pescador</div></div></div>
   <div class="fq-body">
     <div class="fq-letterhead">
       <div class="razon">${patronNombre}</div>
       ${fiscal?`<div class="datos">RFC: ${fiscal.rfc}<br>${fiscal.domicilio_fiscal||''}${fiscal.cp?' · CP. '+fiscal.cp:''}</div>`:''}
     </div>
     <div class="fq-bueno">BUENO POR ${fmxn(r.subtotal)}</div>
-    <div class="fq-parrafo">En ${ciudad}, a ${fmtFechaLarga(r.fCalcStr)}, yo, <b>${e.nombre}</b>, recibí de <b>${patronNombre}</b> la cantidad de <b>${fmxn(r.subtotal)} (${numeroALetras(r.subtotal)})</b>, por concepto de <b>FINIQUITO</b> con motivo de mi renuncia voluntaria, de acuerdo con el siguiente desglose:</div>
+    <div class="fq-parrafo">En ${ciudad}, a ${fmtFechaLarga(r.fCalcStr)}, yo, <b>${e.nombre}</b>, recibí de <b>${patronNombre}</b> la cantidad de <b>${fmxn(r.subtotal)} (${numeroALetras(r.subtotal)})</b>, por concepto de <b>FINIQUITO</b> con motivo de la terminación de la relación de trabajo por mi renuncia voluntaria, de acuerdo con el siguiente desglose:</div>
     <table class="fq-tbl">
       ${rows.map(row=>`<tr><td>${row[0]}</td><td>${row[1]}</td></tr>`).join('')}
       <tr class="fq-total"><td>TOTAL NETO RECIBIDO</td><td>${fmxn(r.subtotal)}</td></tr>
