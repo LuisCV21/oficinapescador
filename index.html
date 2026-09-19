@@ -8294,7 +8294,7 @@ async function renderBalancePreviewLuis(){
       ['NÓMINA (auto)',null,true,'&nbsp;',v.egresos_nomina_total],
     ],
     egrTot:[c.egrTotalIva,c.egrTotalTotal],
-    isr:c.isrTotal,iva:c.ivaAPagar,
+    isr:c.isrTotal,isrSinIva:c.isrBaseSinIva,iva:c.ivaAPagar,
   });
 }
 async function renderBalancePreviewKat(){
@@ -8348,7 +8348,7 @@ async function renderBalancePreviewKat(){
       ['NÓMINA HOTEL (auto)',null,true,'&nbsp;',v.egresos_nomina_hotel_total],
     ],
     egrTot:[c.egrTotalIva,c.egrTotalTotal],
-    isr:c.isrTotal,iva:c.ivaAPagar,
+    isr:c.isrTotal,isrSinIva:c.isrBaseSinIva,iva:c.ivaAPagar,
   });
 }
 // Arma las tablas tipo PDF (INGRESOS/EGRESOS + ISR/IVA) para las vistas
@@ -8383,7 +8383,8 @@ function balTablasHTML(o){
           <tr style="font-weight:700;background:var(--copper-light)"><td>TOTAL</td><td class="num">${fmxn(o.egrTot[0])}</td><td class="num">${fmxn(o.egrTot[1])}</td></tr>
         </table>
         <div style="margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px">
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>ISR${o.faltantes.length?' (preliminar)':''}</span><strong style="color:var(--green)">${fmxnSigned(o.isr)}</strong></div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>ISR (ingresos − egresos, con IVA incluido)${o.faltantes.length?' (preliminar)':''}</span><strong style="color:var(--green)">${fmxnSigned(o.isr)}</strong></div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;padding-top:6px;border-top:1px dashed var(--border2)"><span>ISR base sin IVA${o.faltantes.length?' (preliminar)':''}</span><strong style="color:var(--green)">${fmxnSigned(o.isrSinIva)}</strong></div>
           <div style="display:flex;justify-content:space-between"><span>IVA a pagar${o.faltantes.length?' (preliminar)':''}</span><strong style="color:var(--copper)">${fmxnSigned(o.iva)}</strong></div>
         </div>
       </div>
