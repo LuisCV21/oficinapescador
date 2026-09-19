@@ -1979,6 +1979,14 @@ mismo blob ya cargado, sin volver a pedirlo. -->
       <div class="f-row"><label>Días de salario pendientes de pago</label><input type="number" step="0.5" id="fq-dias-pend" value="0" oninput="calcFiniquito()"/></div>
       <div class="f-row"><label>Días de vacaciones ya gozados en el periodo</label><input type="number" step="0.5" id="fq-vac-tomadas" value="0" oninput="calcFiniquito()"/></div>
     </div>
+    <div class="f-row"><label>Motivo de la terminación (sale impreso en el recibo)</label>
+      <select id="fq-motivo">
+        <option value="renuncia">Renuncia voluntaria del trabajador</option>
+        <option value="mutuo">Terminación por mutuo consentimiento</option>
+        <option value="prueba">Terminación al concluir el periodo de prueba</option>
+        <option value="otra">Terminación de la relación de trabajo</option>
+      </select>
+    </div>
     <div class="f-row"><label>Otro concepto (opcional — bono, préstamo pendiente, etc.)</label>
       <div style="display:flex;gap:8px">
         <input type="text" id="fq-otro-label" placeholder="Descripción" style="flex:2" oninput="calcFiniquito()"/>
@@ -4371,6 +4379,7 @@ function openFiniquitoModal(empId,fechaPreset){
   document.getElementById('fq-vac-tomadas').value=0;
   document.getElementById('fq-otro-label').value='';
   document.getElementById('fq-otro-monto').value='';
+  document.getElementById('fq-motivo').value=e.tipo_contrato==='prueba'?'prueba':'renuncia';
   openModal('m-finiquito');
   calcFiniquito();
 }
@@ -4435,66 +4444,120 @@ function calcFiniquito(){
   `;
   return{e,fCalcStr,salario,añosCompletos,añoServicioActual,diasTablaVac,diasPeriodoVac,vacProporcionalDias,vacProporcionalMonto,primaVacMonto,diasAñoCal,aguinaldoMonto,diasPendientes,salariosPendMonto,otroLabel,otroMonto,subtotal,antiguedadTxt};
 }
+// Recibo de finiquito de hoja completa -- mismo diseño que el recibo de
+// vacaciones (membrete con razón social/RFC/domicilio del patrón real de la
+// sucursal, "BUENO POR", monto con letra, sin marco al imprimir) más una
+// "relación de hechos y declaraciones", porque el art. 33 de la LFT exige
+// que todo convenio o liquidación conste por escrito y contenga una relación
+// circunstanciada de los hechos y de los derechos comprendidos. OJO: ninguna
+// cláusula de "no tengo nada que reclamar" puede renunciar a derechos
+// irrenunciables (art. 33 párrafo 1 y art. 5 LFT) -- por eso el texto limita
+// el finiquito a "los conceptos aquí comprendidos". Pedido del dueño,
+// 19-sept-2026. Se recomienda que un abogado laboral revise el texto.
 function imprimirFiniquito(){
   const r=calcFiniquito();
   if(!r)return;
   const e=r.e;
   const entLabel=(ENTS[e.entidad]||{label:e.entidad}).label;
   const puesto=puestoNombre(e.puesto_id)||'';
+  const fiscal=entidadesFiscalesData.find(x=>x.entidad===e.entidad);
+  const patronNombre=fiscal?fiscal.razon_social:entLabel;
+  const ciudad=NOMINA_EMPRESA[e.entidad]?.ciudad||'POZA RICA, VER.';
+  const motivoSel=(document.getElementById('fq-motivo')||{}).value||'otra';
+  const MOTIVOS={
+    renuncia:'renuncia voluntaria de mi parte',
+    mutuo:'mutuo consentimiento entre las partes',
+    prueba:'la conclusión del periodo de prueba',
+    otra:'la terminación de la relación de trabajo'
+  };
+  const motivoTxt=MOTIVOS[motivoSel]||MOTIVOS.otra;
   const rows=[
+    ['Salarios pendientes de pago ('+r.diasPendientes+' día'+(r.diasPendientes!==1?'s':'')+')',fmxn(r.salariosPendMonto)],
     ['Vacaciones proporcionales ('+r.vacProporcionalDias.toFixed(2)+' días)',fmxn(r.vacProporcionalMonto)],
     ['Prima vacacional (25%)',fmxn(r.primaVacMonto)],
-    ['Aguinaldo proporcional ('+r.diasAñoCal+' días)',fmxn(r.aguinaldoMonto)],
-    ['Salarios pendientes de pago ('+r.diasPendientes+' días)',fmxn(r.salariosPendMonto)],
+    ['Aguinaldo proporcional ('+r.diasAñoCal+' días de '+r.fCalcStr.slice(0,4)+')',fmxn(r.aguinaldoMonto)],
   ];
   if(r.otroLabel&&r.otroMonto)rows.push([r.otroLabel,fmxn(r.otroMonto)]);
+  const decl=[
+    `Que la relación de trabajo que sostuve con <b>${patronNombre}</b> inició el <b>${fmtFechaLarga(e.fecha_ingreso)}</b> y terminó el <b>${fmtFechaLarga(r.fCalcStr)}</b> por <b>${motivoTxt}</b>, habiéndome desempeñado en el puesto de <b>${puesto||'—'}</b> con un salario diario de <b>${fmxn(r.salario)}</b> y una antigüedad de <b>${r.antiguedadTxt}</b>.`,
+    `Que la cantidad que recibo se integra por los conceptos desglosados en este recibo, calculados conforme a los artículos 76, 80, 87 y 89 de la Ley Federal del Trabajo, y que la recibo a mi entera satisfacción.`,
+    `Que durante la relación de trabajo se me cubrieron oportunamente mi salario, los días de descanso semanal y obligatorios y las demás prestaciones devengadas, sin que se me adeude cantidad alguna por esos conceptos distinta de la que aquí se liquida.`,
+    `Que durante la relación de trabajo no sufrí accidente ni enfermedad de trabajo, ni tengo pendiente incapacidad alguna derivada de ellos.`,
+  ];
+  if(e.fecha_alta_imss)decl.push(`Que estuve inscrito ante el Instituto Mexicano del Seguro Social a partir del ${fmtFechaLarga(e.fecha_alta_imss)} y que se me informa que la empresa tramita mi baja ante dicho Instituto.`);
+  decl.push(`Que con el pago que recibo quedan cubiertos los conceptos aquí comprendidos, por lo que no me reservo acción ni derecho alguno que ejercitar respecto de ellos. Ambas partes reconocen que este documento no implica renuncia a los derechos que la ley declara irrenunciables (artículo 33 de la Ley Federal del Trabajo).`);
+  decl.push(`Que firmo este documento libremente, sin presión ni engaño, después de leerlo y comprender su contenido, y que se me entrega una copia. Las partes podrán ratificarlo ante el Centro de Conciliación Laboral competente.`);
 
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Finiquito — ${e.nombre}</title>
 <style>
 @page{size:8.5in 11in;margin:1.2cm}
 *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
-html,body{width:100%;height:100%}
+html,body{width:100%}
 body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#16323c;background:#eaf4f5}
 .fq-wrap{max-width:720px;margin:0 auto}
-.fq-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:14px 20px;border-radius:8px 8px 0 0}
+.fq-hdr{background:linear-gradient(120deg,#1a5f7a 0%,#0f3d52 100%);color:#fff;display:flex;align-items:center;gap:14px;padding:14px 22px;border-radius:8px 8px 0 0}
 .fq-hdr img{height:42px;width:42px;object-fit:contain;flex-shrink:0}
 .fq-hdr-text{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;letter-spacing:.02em}
 .fq-hdr-sub{font-size:11px;opacity:.85;margin-top:2px}
-.fq-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:18px 20px}
-.fq-info{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid #e2eef0}
-.fq-info b{color:#0f3d52}
-table.fq-tbl{width:100%;border-collapse:collapse;margin-bottom:16px}
-table.fq-tbl td{padding:8px 6px;border-bottom:1px solid #e2eef0;font-size:12.5px}
+.fq-body{background:#fff;border:1.5px solid #c9dde0;border-top:none;border-radius:0 0 8px 8px;padding:20px 30px}
+.fq-letterhead{text-align:center;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #e2eef0}
+.fq-letterhead .razon{font-size:15px;font-weight:700;color:#0f3d52;letter-spacing:.01em}
+.fq-letterhead .datos{font-size:10.5px;color:#3a5a63;margin-top:4px;line-height:1.5}
+.fq-bueno{font-size:14px;font-weight:700;color:#0f3d52;margin-bottom:10px}
+.fq-parrafo{font-size:12px;line-height:1.6;text-align:justify;margin-bottom:12px}
+.fq-parrafo b{color:#0f3d52}
+table.fq-tbl{width:100%;border-collapse:collapse;margin-bottom:12px;page-break-inside:avoid}
+table.fq-tbl td{padding:7px 8px;border-bottom:1px solid #e2eef0;font-size:12.5px}
 table.fq-tbl td:last-child{text-align:right;font-family:'Courier New',monospace}
-.fq-total td{font-weight:700;font-size:15px;border-top:2px solid #0f3d52;border-bottom:none;padding-top:12px}
-.fq-legal{font-size:10.5px;color:#3a5a63;line-height:1.55;margin:18px 0;text-align:justify}
-.fq-firmas{display:flex;justify-content:space-between;margin-top:50px;gap:30px}
+.fq-total td{font-weight:700;font-size:15px;border-top:2px solid #0f3d52;border-bottom:none;padding-top:10px}
+.fq-tit{font-size:11px;font-weight:700;color:#0f3d52;letter-spacing:.06em;margin:14px 0 6px}
+ol.fq-decl{margin:0;padding-left:20px;font-size:11px;line-height:1.5;text-align:justify;color:#16323c}
+ol.fq-decl li{margin-bottom:5px}
+ol.fq-decl b{color:#0f3d52}
+.fq-pago{font-size:11px;margin:10px 0 0;color:#3a5a63}
+.fq-firmas{display:flex;justify-content:space-between;gap:30px;margin-top:40px;page-break-inside:avoid}
 .fq-firma{flex:1;text-align:center;font-size:11px;color:#3a5a63}
-.fq-firma-line{border-top:1px solid #16323c;margin-bottom:6px;padding-top:6px}
+.fq-firma-line{border-top:1px solid #16323c;margin-bottom:5px;padding-top:5px;font-weight:700;color:#16323c;font-size:11.5px}
+.fq-testigos{display:flex;justify-content:space-between;gap:30px;margin-top:32px;page-break-inside:avoid}
+.fq-pie{margin-top:10px;text-align:center;font-size:9.5px;color:#7a919a}
 .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
-@media print{.print-btn{display:none}body{padding:0;background:#fff}}
+/* Igual que el recibo de vacaciones: en pantalla es tarjeta sobre fondo, al
+imprimir va de orilla a orilla de la hoja, sin marco ni bordes redondeados. */
+@media print{
+  .print-btn{display:none}
+  body{padding:0;background:#fff}
+  .fq-wrap{max-width:100%}
+  .fq-hdr{border-radius:0}
+  .fq-body{border:none;border-radius:0;padding:8px 6px 0}
+}
 </style></head><body>
 <button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
 <div class="fq-wrap">
   <div class="fq-hdr"><img src="${PA_LOGO}" alt="El Pescador"><div><div class="fq-hdr-text">RECIBO DE FINIQUITO</div><div class="fq-hdr-sub">${entLabel} — El Pescador</div></div></div>
   <div class="fq-body">
-    <div class="fq-info">
-      <div><b>Trabajador:</b> ${e.nombre}</div>
-      <div><b>Puesto:</b> ${puesto}</div>
-      <div><b>Fecha de ingreso:</b> ${fmt(e.fecha_ingreso)}</div>
-      <div><b>Fecha de baja:</b> ${fmt(r.fCalcStr)}</div>
-      <div><b>Antigüedad:</b> ${r.antiguedadTxt}</div>
-      <div><b>Salario diario:</b> ${fmxn(r.salario)}</div>
+    <div class="fq-letterhead">
+      <div class="razon">${patronNombre}</div>
+      ${fiscal?`<div class="datos">RFC: ${fiscal.rfc}<br>${fiscal.domicilio_fiscal||''}${fiscal.cp?' · CP. '+fiscal.cp:''}</div>`:''}
     </div>
+    <div class="fq-bueno">BUENO POR ${fmxn(r.subtotal)}</div>
+    <div class="fq-parrafo">En ${ciudad}, a ${fmtFechaLarga(r.fCalcStr)}, yo, <b>${e.nombre}</b>, recibí de <b>${patronNombre}</b> la cantidad de <b>${fmxn(r.subtotal)} (${numeroALetras(r.subtotal)})</b>, por concepto de <b>FINIQUITO</b> con motivo de ${motivoTxt}, de acuerdo con el siguiente desglose:</div>
     <table class="fq-tbl">
       ${rows.map(row=>`<tr><td>${row[0]}</td><td>${row[1]}</td></tr>`).join('')}
-      <tr class="fq-total"><td>TOTAL FINIQUITO</td><td>${fmxn(r.subtotal)}</td></tr>
+      <tr class="fq-total"><td>TOTAL NETO RECIBIDO</td><td>${fmxn(r.subtotal)}</td></tr>
     </table>
-    <div class="fq-legal">El trabajador manifiesta que recibe de conformidad la cantidad señalada en este documento por concepto de finiquito, comprendiendo el pago de vacaciones proporcionales, prima vacacional, aguinaldo proporcional y demás percepciones pendientes derivadas de la relación laboral que sostuvo con la empresa, sin tener nada más que reclamar por ningún concepto.</div>
+    <div class="fq-tit">RELACIÓN DE HECHOS Y DECLARACIONES</div>
+    <div class="fq-parrafo" style="margin-bottom:6px">Manifiesto bajo protesta de decir verdad:</div>
+    <ol class="fq-decl">${decl.map(d=>`<li>${d}</li>`).join('')}</ol>
+    <div class="fq-pago">Forma de pago: &nbsp; ☐ Efectivo &nbsp;&nbsp; ☐ Transferencia &nbsp;&nbsp; ☐ Cheque</div>
     <div class="fq-firmas">
-      <div class="fq-firma"><div class="fq-firma-line">Firma del trabajador</div>${e.nombre}</div>
-      <div class="fq-firma"><div class="fq-firma-line">Firma de la empresa</div>${entLabel}</div>
+      <div class="fq-firma"><div class="fq-firma-line">${e.nombre}</div>El trabajador</div>
+      <div class="fq-firma"><div class="fq-firma-line">${patronNombre}</div>Por la empresa</div>
     </div>
+    <div class="fq-testigos">
+      <div class="fq-firma"><div class="fq-firma-line">&nbsp;</div>Testigo (nombre y firma)</div>
+      <div class="fq-firma"><div class="fq-firma-line">&nbsp;</div>Testigo (nombre y firma)</div>
+    </div>
+    <div class="fq-pie">Original: empresa · Copia: trabajador</div>
   </div>
 </div>
 </body></html>`;
