@@ -466,6 +466,10 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .bal-live{background:var(--copper-light);border:1px solid var(--border2);border-radius:var(--rl);
   padding:12px 14px;margin-top:8px;font-size:13px}
 .bal-live-row{display:flex;justify-content:space-between;padding:3px 0}
+.bal-tbl-live{width:100%;border-collapse:collapse;margin-bottom:10px;font-size:11.5px}
+.bal-tbl-live th{background:var(--copper-light);color:var(--copper-dark);text-align:left;padding:6px 8px;border:1px solid var(--border2);font-size:10px;text-transform:uppercase;letter-spacing:.03em}
+.bal-tbl-live td{padding:5px 8px;border:1px solid var(--border)}
+.bal-tbl-live .num{text-align:right;font-family:var(--mono)}
 .bal-live-row strong{color:var(--copper-dark)}
 .bal-summary-box{border-radius:var(--rl);padding:14px 16px;font-size:13px;margin-bottom:12px}
 .bal-proy-box{background:var(--surface2);border:1.5px dashed var(--border2);border-radius:var(--rl);
@@ -8230,25 +8234,68 @@ async function recargarAutoKateryn(){
 // del dueño, 17-sept-2026: que el balance "se vaya creando solito" y se
 // vea de entrada, sin tener que abrir nada, y que lo único que pida
 // actualización manual sean los egresos.
+// Vista previa "como el PDF" (tablas de INGRESOS/EGRESOS, no solo un
+// resumen de 3 líneas), que se va llenando día con día: lo facturado y la
+// nómina se calculan solos; lo manual (Gastos/Camioneta/IMSS) se captura
+// con un clic aquí mismo y se GUARDA de una vez en el balance del mes en
+// curso -- ya no hace falta esperar al asistente completo. Mientras algo
+// no se haya capturado no se inventa un $0, se avisa como pendiente y los
+// totales se marcan "preliminares". Pedido del dueño, 19-sept-2026.
+function balMesActualLuis(){
+  const mk=todayLocalISO().slice(0,7);
+  return balancesData.find(b=>(b.fecha_corte||'').slice(0,7)===mk)||null;
+}
+function balMesActualKat(){
+  const mk=todayLocalISO().slice(0,7);
+  return balancesKatData.find(b=>(b.fecha_corte||'').slice(0,7)===mk)||null;
+}
 async function renderBalancePreviewLuis(){
   const el=document.getElementById('balance-preview-luis');
   if(!el)return;
   el.innerHTML='<div class="loading"><div class="spinner"></div>Calculando vista previa...</div>';
   const hoy=todayLocalISO();
   const{desde,hasta}=mesCalendarioDeCorte(hoy);
+  const bal=balMesActualLuis();
   const r=ingresosFacturablesPeriodo('Florida',desde,hasta);
   const nomAuto=await nominaFacturadaPeriodo('FLO',desde,hasta);
-  el.innerHTML=`
-    <div class="acc-card" style="border:1.5px solid var(--copper);background:var(--copper-light)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-        <div style="font-weight:700;font-size:13px;color:var(--copper-dark)">📊 Vista previa — ${fmtFechaCorta(desde)} a hoy</div>
-        <button class="btn btn-sm btn-filled" onclick="openBalanceModal()">📝 Completar egresos y guardar →</button>
-      </div>
-      <div class="bal-live-row"><span>💳 Tarjeta + 🏦 Transferencia (Florida)</span><strong>${fmxn(r.tarjeta+r.transferencia)}</strong></div>
-      <div class="bal-live-row"><span style="color:var(--text3)">　 Ya facturado / Falta facturar</span><span>${fmxn(r.yaFacturado)} / <span style="color:${r.faltaFacturar>0.5?'var(--amber)':'inherit'}">${fmxn(r.faltaFacturar)}</span></span></div>
-      <div class="bal-live-row"><span>🧾 Nómina ya timbrada</span><strong>${fmxn(nomAuto)}</strong></div>
-      <div style="font-size:11px;color:var(--text3);margin-top:8px">Se recalcula solo cada vez que entras aquí — nada se guarda hasta que le des "Completar egresos y guardar". Falta capturar egresos (Gastos facturados, Camioneta, IMSS).</div>
-    </div>`;
+
+  const gastosOk=bal&&Number(bal.egresos_gastos_total)>0;
+  const camionetaOk=bal&&Number(bal.egresos_camioneta_total)>0;
+  const imssOk=bal&&Number(bal.egresos_imss_total)>0;
+  const faltantes=[];
+  if(!gastosOk)faltantes.push(['gastos','Gastos facturados']);
+  if(!camionetaOk)faltantes.push(['camioneta','Camioneta']);
+  if(!imssOk)faltantes.push(['imss','IMSS KM']);
+
+  const v={
+    ingresos_florida_total:r.tarjeta+r.transferencia,
+    ingresos_nextel_total:bal?Number(bal.ingresos_nextel_total||0):0,
+    ingresos_nextel_iva:bal?Number(bal.ingresos_nextel_iva||0):0,
+    ingresos_florida_iva:bal?bal.ingresos_florida_iva:null,
+    egresos_gastos_total:gastosOk?Number(bal.egresos_gastos_total):0,
+    egresos_gastos_iva:bal?bal.egresos_gastos_iva:null,
+    egresos_camioneta_total:camionetaOk?Number(bal.egresos_camioneta_total):0,
+    egresos_imss_total:imssOk?Number(bal.egresos_imss_total):0,
+    egresos_nomina_total:nomAuto,
+    iva_retenido_nextel:bal?Number(bal.iva_retenido_nextel||0):0,
+  };
+  const c=calcBalance(v);
+  el.innerHTML=balTablasHTML({
+    titulo:'Balance mensual — Florida',desde,
+    onAsistente:'openBalanceModal()',
+    faltantes,capturarFn:'capturarCampoBalanceLuis',
+    ingRows:[['FLORIDA',c.ingFloridaIva,v.ingresos_florida_total,true]]
+      .concat(v.ingresos_nextel_total?[['FACT. NEXTEL',v.ingresos_nextel_iva,v.ingresos_nextel_total,true]]:[]),
+    ingTot:[c.ingTotalIva,c.ingTotalTotal],
+    egrRows:[
+      ['GASTOS','gastos',gastosOk,c.egrGastosIva,v.egresos_gastos_total],
+      ['CAMIONETA','camioneta',camionetaOk,'-',v.egresos_camioneta_total],
+      ['IMSS KM','imss',imssOk,'&nbsp;',v.egresos_imss_total],
+      ['NÓMINA (auto)',null,true,'&nbsp;',v.egresos_nomina_total],
+    ],
+    egrTot:[c.egrTotalIva,c.egrTotalTotal],
+    isr:c.isrTotal,iva:c.ivaAPagar,
+  });
 }
 async function renderBalancePreviewKat(){
   const el=document.getElementById('balance-preview-kat');
@@ -8256,25 +8303,127 @@ async function renderBalancePreviewKat(){
   el.innerHTML='<div class="loading"><div class="spinner"></div>Calculando vista previa...</div>';
   const hoy=todayLocalISO();
   const{desde,hasta}=mesCalendarioDeCorte(hoy);
+  const bal=balMesActualKat();
   const rPue=ingresosFacturablesPeriodo('Puebla',desde,hasta);
   const rHot=ingresosFacturablesPeriodo('Hotel',desde,hasta);
   const[nomPue,nomHot]=await Promise.all([nominaFacturadaPeriodo('PUE',desde,hasta),nominaFacturadaPeriodo('HOT',desde,hasta)]);
-  el.innerHTML=`
-    <div class="acc-card" style="border:1.5px solid var(--copper);background:var(--copper-light)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-        <div style="font-weight:700;font-size:13px;color:var(--copper-dark)">📊 Vista previa — ${fmtFechaCorta(desde)} a hoy</div>
-        <button class="btn btn-sm btn-filled" onclick="openBalanceKatModal()">📝 Completar egresos y guardar →</button>
+
+  const gastosOk=bal&&Number(bal.egresos_gastos_total)>0;
+  const camionetaOk=bal&&Number(bal.egresos_camioneta_total)>0;
+  const imssPueOk=bal&&Number(bal.egresos_imss_puebla_total)>0;
+  const imssHotOk=bal&&Number(bal.egresos_imss_hotel_total)>0;
+  const faltantes=[];
+  if(!gastosOk)faltantes.push(['gastos','Gastos facturados']);
+  if(!camionetaOk)faltantes.push(['camioneta','Camioneta']);
+  if(!imssPueOk)faltantes.push(['imss_puebla','IMSS Puebla']);
+  if(!imssHotOk)faltantes.push(['imss_hotel','IMSS Hotel']);
+
+  const v={
+    ingresos_puebla_total:rPue.tarjeta+rPue.transferencia,
+    ingresos_hotel_total:rHot.tarjeta+rHot.transferencia,
+    ado_pagadas_total:bal?Number(bal.ado_pagadas_total||0):0,
+    ado_credito_total:bal?Number(bal.ado_credito_total||0):0,
+    egresos_gastos_total:gastosOk?Number(bal.egresos_gastos_total):0,
+    egresos_camioneta_total:camionetaOk?Number(bal.egresos_camioneta_total):0,
+    egresos_imss_puebla_total:imssPueOk?Number(bal.egresos_imss_puebla_total):0,
+    egresos_nomina_puebla_total:nomPue,
+    egresos_imss_hotel_total:imssHotOk?Number(bal.egresos_imss_hotel_total):0,
+    egresos_nomina_hotel_total:nomHot,
+  };
+  const c=calcBalanceKat(v);
+  const ado=v.ado_pagadas_total+v.ado_credito_total;
+  el.innerHTML=balTablasHTML({
+    titulo:'Balance mensual — Puebla + Hotel',desde,
+    onAsistente:'openBalanceKatModal()',
+    faltantes,capturarFn:'capturarCampoBalanceKat',
+    ingRows:[['PUEBLA',c.ivaPuebla,v.ingresos_puebla_total,true],['HOTEL',c.ivaHotel,v.ingresos_hotel_total,true]]
+      .concat(ado?[['ADO',c.ivaAdoPagadas+c.ivaAdoCredito,ado,true]]:[]),
+    ingTot:[c.ingTotalIva,c.ingTotalTotal],
+    egrRows:[
+      ['GASTOS','gastos',gastosOk,c.egrGastosIva,v.egresos_gastos_total],
+      ['CAMIONETA','camioneta',camionetaOk,'-',v.egresos_camioneta_total],
+      ['IMSS PUEBLA','imss_puebla',imssPueOk,'&nbsp;',v.egresos_imss_puebla_total],
+      ['NÓMINA PUEBLA (auto)',null,true,'&nbsp;',v.egresos_nomina_puebla_total],
+      ['IMSS HOTEL','imss_hotel',imssHotOk,'&nbsp;',v.egresos_imss_hotel_total],
+      ['NÓMINA HOTEL (auto)',null,true,'&nbsp;',v.egresos_nomina_hotel_total],
+    ],
+    egrTot:[c.egrTotalIva,c.egrTotalTotal],
+    isr:c.isrTotal,iva:c.ivaAPagar,
+  });
+}
+// Arma las tablas tipo PDF (INGRESOS/EGRESOS + ISR/IVA) para las vistas
+// previas de arriba -- un renglón de egreso sin capturar todavía sale
+// como "Sin capturar · ✎ capturar" en vez de inventar un $0.
+function balTablasHTML(o){
+  const filaIng=([label,ivaVal,totVal])=>`<tr><td>${label}</td><td class="num">${fmxn(ivaVal)}</td><td class="num">${fmxn(totVal)}</td></tr>`;
+  const filaEgr=([label,campo,ok,ivaVal,totVal])=>{
+    if(campo&&!ok)return`<tr><td>${label}</td><td class="num" colspan="2"><span style="color:var(--text3);font-style:italic">Sin capturar</span> <a href="#" onclick="event.preventDefault();${o.capturarFn}('${campo}')" style="color:var(--copper);font-weight:600">✎ capturar</a></td></tr>`;
+    return`<tr><td>${label}</td><td class="num">${ivaVal}</td><td class="num">${fmxn(totVal)}</td></tr>`;
+  };
+  const alertaHtml=o.faltantes.length?`<div style="background:var(--amber-light);border:1px solid var(--amber);border-radius:var(--r);padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--amber)">⚠ Falta actualizar: ${o.faltantes.map(([campo,label])=>`<a href="#" onclick="event.preventDefault();${o.capturarFn}('${campo}')" style="color:var(--amber);font-weight:600;text-decoration:underline">${label}</a>`).join(', ')} — los totales de abajo son preliminares mientras falte.</div>`:'';
+  return`
+    <div class="acc-card" style="border:1.5px solid var(--copper);padding:0;overflow:hidden">
+      <div style="background:linear-gradient(120deg,var(--teal) 0%,var(--slate-dark) 100%);color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-family:var(--display);font-weight:700;font-size:15px">${o.titulo}</div>
+          <div style="font-size:11px;opacity:.85">${fmtFechaCorta(o.desde)} a hoy · se actualiza solo</div>
+        </div>
+        <button class="btn btn-sm btn-filled" onclick="${o.onAsistente}">📝 Asistente completo →</button>
       </div>
-      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;margin:2px 0 2px">Av. Puebla</div>
-      <div class="bal-live-row"><span>💳 Tarjeta + 🏦 Transferencia</span><strong>${fmxn(rPue.tarjeta+rPue.transferencia)}</strong></div>
-      <div class="bal-live-row"><span style="color:var(--text3)">　 Falta facturar</span><span style="color:${rPue.faltaFacturar>0.5?'var(--amber)':'inherit'}">${fmxn(rPue.faltaFacturar)}</span></div>
-      <div class="bal-live-row"><span>🧾 Nómina ya timbrada</span><strong>${fmxn(nomPue)}</strong></div>
-      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;margin:10px 0 2px">Hotel</div>
-      <div class="bal-live-row"><span>💳 Tarjeta + 🏦 Transferencia</span><strong>${fmxn(rHot.tarjeta+rHot.transferencia)}</strong></div>
-      <div class="bal-live-row"><span style="color:var(--text3)">　 Falta facturar</span><span style="color:${rHot.faltaFacturar>0.5?'var(--amber)':'inherit'}">${fmxn(rHot.faltaFacturar)}</span></div>
-      <div class="bal-live-row"><span>🧾 Nómina ya timbrada</span><strong>${fmxn(nomHot)}</strong></div>
-      <div style="font-size:11px;color:var(--text3);margin-top:8px">Se recalcula solo cada vez que entras aquí — nada se guarda hasta que le des "Completar egresos y guardar". Falta capturar ADO y egresos (Gastos facturados, Camioneta, IMSS).</div>
+      <div style="padding:14px 16px">
+        ${alertaHtml}
+        <table class="bal-tbl-live">
+          <tr><th>INGRESOS</th><th class="num">IVA</th><th class="num">TOTAL</th></tr>
+          ${o.ingRows.map(filaIng).join('')}
+          <tr style="font-weight:700;background:var(--copper-light)"><td>TOTAL</td><td class="num">${fmxn(o.ingTot[0])}</td><td class="num">${fmxn(o.ingTot[1])}</td></tr>
+        </table>
+        <table class="bal-tbl-live">
+          <tr><th>EGRESOS</th><th class="num">IVA</th><th class="num">TOTAL</th></tr>
+          ${o.egrRows.map(filaEgr).join('')}
+          <tr style="font-weight:700;background:var(--copper-light)"><td>TOTAL</td><td class="num">${fmxn(o.egrTot[0])}</td><td class="num">${fmxn(o.egrTot[1])}</td></tr>
+        </table>
+        <div style="margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>ISR${o.faltantes.length?' (preliminar)':''}</span><strong style="color:var(--green)">${fmxnSigned(o.isr)}</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>IVA a pagar${o.faltantes.length?' (preliminar)':''}</span><strong style="color:var(--copper)">${fmxnSigned(o.iva)}</strong></div>
+        </div>
+      </div>
     </div>`;
+}
+async function capturarCampoBalanceLuis(campo){
+  const LABELS={gastos:'Gastos facturados (total, con IVA incluido)',camioneta:'Camioneta Colorado',imss:'IMSS KM'};
+  const CAMPO_DB={gastos:'egresos_gastos_total',camioneta:'egresos_camioneta_total',imss:'egresos_imss_total'};
+  const val=prompt('Captura: '+LABELS[campo]+' — monto total en pesos:');
+  if(val===null)return;
+  const monto=Number(val);
+  if(isNaN(monto)||monto<0){toast('Monto inválido',true);return;}
+  const bal=balMesActualLuis();
+  const campoDb=CAMPO_DB[campo];
+  const hoy=todayLocalISO();
+  const{error}=bal
+    ?await sb.from('balances_mensuales').update({[campoDb]:monto,fecha_corte:hoy}).eq('id',bal.id)
+    :await sb.from('balances_mensuales').insert({fecha_corte:hoy,[campoDb]:monto,creado_por:currentUser?.id||null});
+  if(error){toast('Error: '+error.message,true);return;}
+  toast('Actualizado');
+  await loadBalances();
+  renderBalancePreviewLuis();
+}
+async function capturarCampoBalanceKat(campo){
+  const LABELS={gastos:'Gastos facturados (total, con IVA incluido)',camioneta:'Camioneta',imss_puebla:'IMSS Puebla',imss_hotel:'IMSS Hotel'};
+  const CAMPO_DB={gastos:'egresos_gastos_total',camioneta:'egresos_camioneta_total',imss_puebla:'egresos_imss_puebla_total',imss_hotel:'egresos_imss_hotel_total'};
+  const val=prompt('Captura: '+LABELS[campo]+' — monto total en pesos:');
+  if(val===null)return;
+  const monto=Number(val);
+  if(isNaN(monto)||monto<0){toast('Monto inválido',true);return;}
+  const bal=balMesActualKat();
+  const campoDb=CAMPO_DB[campo];
+  const hoy=todayLocalISO();
+  const{error}=bal
+    ?await sb.from('balances_kateryn').update({[campoDb]:monto,fecha_corte:hoy}).eq('id',bal.id)
+    :await sb.from('balances_kateryn').insert({fecha_corte:hoy,[campoDb]:monto,creado_por:currentUser?.id||null});
+  if(error){toast('Error: '+error.message,true);return;}
+  toast('Actualizado');
+  await loadBalancesKat();
+  renderBalancePreviewKat();
 }
 
 let adoActiveTipo='pagada';
@@ -14952,8 +15101,8 @@ function setupRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'cfdi_cancelaciones'},async()=>{await loadCancelacionesCfdi();if(document.getElementById('page-cortes').classList.contains('active')){renderCortes();renderVentasMes();}})
     .on('postgres_changes',{event:'*',schema:'public',table:'solicitudes_rh'},async()=>{await loadSolicitudesRh();renderSolicitudesRhBadge();if(document.getElementById('m-solicitudes-rh').classList.contains('open'))renderSolicitudesRhList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'entidades_fiscales'},async()=>{await loadEntidadesFiscales();})
-    .on('postgres_changes',{event:'*',schema:'public',table:'balances_mensuales'},async()=>{await loadBalances();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='luis')renderBalanceList();})
-    .on('postgres_changes',{event:'*',schema:'public',table:'balances_kateryn'},async()=>{await loadBalancesKat();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='kat')renderBalanceKatList();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'balances_mensuales'},async()=>{await loadBalances();if(document.getElementById('page-balance').classList.contains('active')){if(balActiveTab==='luis')renderBalanceList();renderBalancePreviewLuis();}})
+    .on('postgres_changes',{event:'*',schema:'public',table:'balances_kateryn'},async()=>{await loadBalancesKat();if(document.getElementById('page-balance').classList.contains('active')){if(balActiveTab==='kat')renderBalanceKatList();renderBalancePreviewKat();}})
     .on('postgres_changes',{event:'*',schema:'public',table:'nomina_ledger'},async()=>{await loadNominaLedger();if(document.getElementById('page-nominayasist').classList.contains('active')&&moduloActivoTab==='bitacora')renderNominaLedgerList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'ado_ledger'},async()=>{await loadAdoLedger();if(document.getElementById('page-balance').classList.contains('active')&&balActiveTab==='ado')renderAdoLedgerList();})
     .on('postgres_changes',{event:'*',schema:'public',table:'bitacora_tareas'},async()=>{await loadBitacora();if(document.getElementById('page-bitacora').classList.contains('active'))renderBitacora();})
