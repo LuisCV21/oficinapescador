@@ -10585,6 +10585,11 @@ function toggleGPGrupo(key){
 
 async function gpCrearBorrador(satCode){
   if(gpCargando)return;
+  // Aunque se llame "borrador", esto SÍ crea el CFDI en Factura.com (con
+  // Draft="1") -- consume un folio real de la serie, nomás no se timbra
+  // ante el SAT todavía. Antes bastaba un clic sin avisar nada, y se
+  // podía crear sin querer -- pedido del dueño, 19-sept-2026.
+  if(!confirm('Esto va a crear un folio real en Factura.com para este grupo (queda como borrador, sin timbrar ante el SAT todavía). ¿Confirmas crear el borrador?'))return;
   const entidad=gpEntidadActual();
   const mes=Number(document.getElementById('gp-mes')?.value);
   const anio=Number(document.getElementById('gp-anio')?.value);
