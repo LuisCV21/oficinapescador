@@ -11436,33 +11436,44 @@ function renderPolizaBanco(){
     if(!items.length)return`<td class="num">${fmxn(valor)}</td>`;
     return`<td class="num" title="Clic para ver las facturas" style="cursor:pointer;text-decoration:underline dotted" onclick="abrirDetallePolizaBanco('${dk}','${forma}')">${fmxn(valor)}</td>`;
   };
+  // "Pendiente (Global)" = terminal − ya facturado individual. Antes esto
+  // se mostraba como "Diferencia" en rojo/verde, como si fuera un error --
+  // pero así es como SIEMPRE debe verse mientras no se haya hecho la
+  // Global del mes: no es un descuadre, es la parte que falta por
+  // facturar y que la Global va a cubrir después. Junto con lo ya
+  // facturado, debe sumar exacto la terminal (igual que en la póliza de
+  // papel). Solo se marca en rojo si se facturó DE MÁS (pendiente
+  // negativo), eso sí es una anomalía real. Pedido del dueño, 19-sept-2026.
+  const celdaPendiente=(pos,facturado)=>{
+    const pend=Math.round((pos-facturado)*100)/100;
+    if(pend<-0.01)return`<td class="num" style="color:var(--red)" title="Se facturó más de lo que reportó la terminal">⚠ ${fmxn(pend)}</td>`;
+    return`<td class="num" style="color:${pend>0.01?'var(--copper)':'var(--text3)'}">${fmxn(pend)}</td>`;
+  };
   const rows=diasOrdenados.map(dk=>{
     const d=dias.get(dk);
     const totalPos=Math.round((d.credito.pos+d.debito.pos)*100)/100;
-    const totalFact=Math.round((d.credito.facturado+d.debito.facturado)*100)/100;
-    if(!totalPos&&!totalFact)return'';
-    const{texto:difTxt,color:difColor}=cuadreLabel(Math.round((totalFact-totalPos)*100)/100);
+    if(!totalPos&&!d.credito.facturado&&!d.debito.facturado)return'';
     return`<tr>
       <td>${fmtDiaMes(dk)}</td>
       <td class="num">${fmxn(d.credito.pos)}</td>
       ${celdaFacturado(dk,'credito',d.credito.facturado)}
+      ${celdaPendiente(d.credito.pos,d.credito.facturado)}
       <td class="num">${fmxn(d.debito.pos)}</td>
       ${celdaFacturado(dk,'debito',d.debito.facturado)}
-      <td class="num"><b>${fmxn(totalFact)}</b></td>
-      <td class="num" style="color:${difColor}"><b>${difTxt}</b></td>
+      ${celdaPendiente(d.debito.pos,d.debito.facturado)}
+      <td class="num"><b>${fmxn(totalPos)}</b></td>
     </tr>`;
   }).join('');
   const tot=diasOrdenados.reduce((a,dk)=>{const d=dias.get(dk);a.cPos+=d.credito.pos;a.cFac+=d.credito.facturado;a.dPos+=d.debito.pos;a.dFac+=d.debito.facturado;return a;},{cPos:0,cFac:0,dPos:0,dFac:0});
-  const totPos=Math.round((tot.cPos+tot.dPos)*100)/100, totFac=Math.round((tot.cFac+tot.dFac)*100)/100;
-  const{texto:totTxt,color:totColor}=cuadreLabel(Math.round((totFac-totPos)*100)/100);
+  const totPos=Math.round((tot.cPos+tot.dPos)*100)/100;
   el.innerHTML=`<div style="overflow-x:auto"><table class="corte-tbl">
-    <thead><tr><th>Día</th><th class="num">Crédito (terminal)</th><th class="num">Crédito facturado</th><th class="num">Débito (terminal)</th><th class="num">Débito facturado</th><th class="num">Total facturado</th><th class="num">Diferencia</th></tr></thead>
+    <thead><tr><th>Día</th><th class="num">Crédito (terminal)</th><th class="num">Crédito facturado</th><th class="num">Crédito pendiente (Global)</th><th class="num">Débito (terminal)</th><th class="num">Débito facturado</th><th class="num">Débito pendiente (Global)</th><th class="num">Total del día</th></tr></thead>
     <tbody>${rows}</tbody>
-    <tfoot><tr style="font-weight:700;background:var(--surface2)">
-      <td>Total</td><td class="num">${fmxn(tot.cPos)}</td><td class="num">${fmxn(tot.cFac)}</td><td class="num">${fmxn(tot.dPos)}</td><td class="num">${fmxn(tot.dFac)}</td><td class="num">${fmxn(totFac)}</td><td class="num" style="color:${totColor}">${totTxt}</td>
+    <tfoot style="font-weight:700;background:var(--surface2)"><tr>
+      <td>Total</td><td class="num">${fmxn(tot.cPos)}</td><td class="num">${fmxn(tot.cFac)}</td>${celdaPendiente(tot.cPos,tot.cFac)}<td class="num">${fmxn(tot.dPos)}</td><td class="num">${fmxn(tot.dFac)}</td>${celdaPendiente(tot.dPos,tot.dFac)}<td class="num">${fmxn(totPos)}</td>
     </tr></tfoot>
   </table></div>
-  <div style="font-size:11px;color:var(--text2);margin-top:10px">Clic en "Crédito facturado" o "Débito facturado" para ver el detalle de folios de ese día. Diferencia = facturado − lo que reportó el corte por terminal (negativo = todavía falta facturar).</div>`;
+  <div style="font-size:11px;color:var(--text2);margin-top:10px">Clic en "Crédito facturado" o "Débito facturado" para ver el detalle de folios de ese día. "Pendiente (Global)" es lo que todavía no se factura individual -- se cubre con la Global del mes; junto con lo facturado, siempre suma exacto el total de la terminal.</div>`;
 }
 
 function abrirDetallePolizaBanco(dk,forma){
@@ -11483,20 +11494,20 @@ function exportarPolizaBancoXLSX(){
   const{dias,diasOrdenados}=pbUltimoDatos;
   const wb=XLSX.utils.book_new();
 
+  const pend=(pos,fac)=>Math.round((pos-fac)*100)/100;
   const aoaResumen=[
-    ['Día','Crédito (terminal)','Crédito facturado','Débito (terminal)','Débito facturado','Total facturado','Diferencia'],
+    ['Día','Crédito (terminal)','Crédito facturado','Crédito pendiente (Global)','Débito (terminal)','Débito facturado','Débito pendiente (Global)','Total del día'],
     ...diasOrdenados.map(dk=>{
       const d=dias.get(dk);
       const totalPos=Math.round((d.credito.pos+d.debito.pos)*100)/100;
-      const totalFact=Math.round((d.credito.facturado+d.debito.facturado)*100)/100;
-      return[fmtDiaMes(dk),d.credito.pos,d.credito.facturado,d.debito.pos,d.debito.facturado,totalFact,Math.round((totalFact-totalPos)*100)/100];
+      return[fmtDiaMes(dk),d.credito.pos,d.credito.facturado,pend(d.credito.pos,d.credito.facturado),d.debito.pos,d.debito.facturado,pend(d.debito.pos,d.debito.facturado),totalPos];
     }),
   ];
   const tot=diasOrdenados.reduce((a,dk)=>{const d=dias.get(dk);a.cPos+=d.credito.pos;a.cFac+=d.credito.facturado;a.dPos+=d.debito.pos;a.dFac+=d.debito.facturado;return a;},{cPos:0,cFac:0,dPos:0,dFac:0});
-  const totPos=Math.round((tot.cPos+tot.dPos)*100)/100, totFac=Math.round((tot.cFac+tot.dFac)*100)/100;
-  aoaResumen.push([],['Total',tot.cPos,tot.cFac,tot.dPos,tot.dFac,totFac,Math.round((totFac-totPos)*100)/100]);
+  const totPos=Math.round((tot.cPos+tot.dPos)*100)/100;
+  aoaResumen.push([],['Total',tot.cPos,tot.cFac,pend(tot.cPos,tot.cFac),tot.dPos,tot.dFac,pend(tot.dPos,tot.dFac),totPos]);
   const wsResumen=XLSX.utils.aoa_to_sheet(aoaResumen);
-  wsResumen['!cols']=[{wch:12},{wch:16},{wch:16},{wch:14},{wch:14},{wch:14},{wch:12}];
+  wsResumen['!cols']=[{wch:12},{wch:16},{wch:16},{wch:18},{wch:14},{wch:14},{wch:18},{wch:12}];
   XLSX.utils.book_append_sheet(wb,wsResumen,'Resumen');
 
   const aoaFact=[['Día','Forma','Folio','Cliente','Monto']];
@@ -11523,6 +11534,7 @@ function imprimirPolizaBancoPDF(){
       <tbody>${items.map(i=>`<tr><td class="tc">${i.folio}</td><td class="tc">${i.quien}</td><td class="tn">${fmxn(i.monto)}</td></tr>`).join('')}</tbody>
     </table>`;
   };
+  const pend=(pos,fac)=>Math.round((pos-fac)*100)/100;
   let gTotPos=0,gTotFac=0;
   const bloques=diasOrdenados.map(dk=>{
     const d=dias.get(dk);
@@ -11530,23 +11542,22 @@ function imprimirPolizaBancoPDF(){
     const totalFact=Math.round((d.credito.facturado+d.debito.facturado)*100)/100;
     if(!totalPos&&!totalFact)return'';
     gTotPos+=totalPos;gTotFac+=totalFact;
-    const dif=Math.round((totalFact-totalPos)*100)/100;
-    const{texto:difTxt,color:difColor}=cuadreLabel(dif);
+    const totalPend=pend(totalPos,totalFact);
     return`<div class="pb-dia">
-      <div class="pb-dia-hdr">${fmtDiaMes(dk)} &nbsp;·&nbsp; Terminal: ${fmxn(totalPos)} &nbsp;·&nbsp; Facturado: ${fmxn(totalFact)} &nbsp;·&nbsp; <span style="color:${difColor}">${difTxt}</span></div>
+      <div class="pb-dia-hdr">${fmtDiaMes(dk)} &nbsp;·&nbsp; Terminal: ${fmxn(totalPos)} &nbsp;·&nbsp; Facturado: ${fmxn(totalFact)} &nbsp;·&nbsp; Pendiente (Global): ${fmxn(totalPend)}</div>
       <div class="pb-dia-cols">
         <div class="pb-col">
-          <div class="pb-col-hdr">CRÉDITO — terminal ${fmxn(d.credito.pos)} · facturado ${fmxn(d.credito.facturado)}</div>
+          <div class="pb-col-hdr">CRÉDITO — terminal ${fmxn(d.credito.pos)} · facturado ${fmxn(d.credito.facturado)} · pendiente ${fmxn(pend(d.credito.pos,d.credito.facturado))}</div>
           ${tablaFacturas(d.credito.items)}
         </div>
         <div class="pb-col">
-          <div class="pb-col-hdr">DÉBITO — terminal ${fmxn(d.debito.pos)} · facturado ${fmxn(d.debito.facturado)}</div>
+          <div class="pb-col-hdr">DÉBITO — terminal ${fmxn(d.debito.pos)} · facturado ${fmxn(d.debito.facturado)} · pendiente ${fmxn(pend(d.debito.pos,d.debito.facturado))}</div>
           ${tablaFacturas(d.debito.items)}
         </div>
       </div>
     </div>`;
   }).join('');
-  const{texto:gTxt,color:gColor}=cuadreLabel(Math.round((gTotFac-gTotPos)*100)/100);
+  const gPend=pend(gTotPos,gTotFac);
 
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Póliza Banco ${corteSucLabel(currentPBSuc)}</title>
 <style>
@@ -11583,7 +11594,7 @@ table.pb-tbl{border-collapse:collapse;width:100%;table-layout:fixed}
 </div>
 <div class="pb-body">
   ${bloques}
-  <div class="grand-tot"><span>TERMINAL: ${fmxn(gTotPos)}</span><span>FACTURADO: ${fmxn(gTotFac)}</span><span style="color:#fff">DIFERENCIA: <span style="color:${gColor==='var(--green)'?'#8fd6a8':'#ff9b9b'}">${gTxt}</span></span></div>
+  <div class="grand-tot"><span>TERMINAL: ${fmxn(gTotPos)}</span><span>FACTURADO: ${fmxn(gTotFac)}</span><span>PENDIENTE (GLOBAL): ${fmxn(gPend)}</span></div>
 </div>
 </body></html>`;
   const w=window.open('','_blank');
