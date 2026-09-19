@@ -351,6 +351,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .dc-amber{background:var(--amber-light);color:var(--amber)}
 .dc-copper{background:var(--copper-light);color:var(--copper)}
 .dc-gray{background:var(--surface2);color:var(--text3)}
+.dc-green{background:var(--green-light);color:var(--green)}
 .obl-footer{padding:9px 16px;border-top:1px solid var(--border);
   background:var(--surface2);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
 .obl-footer-l{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
@@ -3345,11 +3346,24 @@ function renderList(){
   el.innerHTML=html;
 }
 
+// Antes esto solo mostraba días restantes -- ni recién pagada se veía
+// distinto a "todavía falta tiempo", así que no quedaba claro a simple
+// vista qué ya se pagó (pedido del dueño, 19-sept-2026). Ahora, si hay al
+// menos un pago registrado, se muestra "✓ Pagado" (verde) mientras falten
+// más de 7 días para el siguiente vencimiento -- en la última semana
+// vuelve a avisar como antes, para que sí se note que ya toca de nuevo.
+// Una obligación de una sola vez (sin recurrencia) que ya se pagó se queda
+// en "✓ Pagado" para siempre (su fecha_limite no avanza, así que sin esto
+// se quedaría marcada "Vence hoy"/vencida aunque ya no haya nada que pagar).
 function oblChip(o){
+  const pagada=pagosData.some(p=>p.obligacion_id===o.id);
+  const esUnica=!o.recurrencia||o.recurrencia==='none';
+  if(pagada&&esUnica)return{chipTxt:'✓ Pagado',chipCls:'dc-green'};
   const st=oblStatus(o);
   const days=daysUntil(o.fecha_limite);
   if(st==='overdue')return{chipTxt:Math.abs(days)+'d vencida',chipCls:'dc-red'};
   if(days===0)return{chipTxt:'Vence hoy',chipCls:'dc-red'};
+  if(pagada&&st!=='urgent')return{chipTxt:'✓ Pagado',chipCls:'dc-green'};
   return{chipTxt:days+' días',chipCls:st==='urgent'?'dc-amber':st==='soon'?'dc-copper':'dc-gray'};
 }
 function entPillHtml(o){
@@ -3387,13 +3401,24 @@ function openOblDetail(id){
   meta+='<span style="font-size:11px;color:var(--text2)">Límite: '+fmt(o.fecha_limite)+'</span>';
   if(o.monto_estimado)meta+='<span style="font-size:11px;color:var(--text2)">'+fmxn(o.monto_estimado)+'</span>';
   if(o.recurrencia&&o.recurrencia!=='none')meta+='<span class="recur-tag">'+RECUR[o.recurrencia]+'</span>';
+  // Antes esto solo era un chip "📎 fecha · monto" que había que dar clic
+  // para llegar al historial y ahí sí encontrar el archivo -- no quedaba
+  // claro dónde ver qué (pedido del dueño, 19-sept-2026). Ahora se muestra
+  // el ÚLTIMO pago con sus archivos ya clicables aquí mismo, sin brincar de
+  // pantalla; los pagos más viejos se quedan en Archivos (o Historial, para
+  // ver fecha/monto/notas de cada uno), no amontonados aquí.
   let attachHtml='';
   if(lastPay){
-    attachHtml='<div class="obl-attach">'
-      +'<span class="attach-chip ok" onclick="openHist(\'' +id+ '\')">📎 '+fmt(lastPay.fecha_pago)+' · '+fmxn(lastPay.monto)+'</span>';
-    if(!hasFac)attachHtml+='<span class="attach-chip warn">🧾 Factura pendiente</span>';
-    if(pays.length>1)attachHtml+='<span class="attach-chip" onclick="openHist(\'' +id+ '\')">🕐 '+pays.length+' pagos</span>';
-    attachHtml+='</div>';
+    const archivosLastPay=archivosData.filter(a=>a.pago_id===lastPay.id);
+    const archivosHtml=archivosLastPay.length
+      ?archivosLastPay.map(a=>'<div class="hist-file" onclick="viewFile(\''+a.storage_path+'\',\''+a.nombre_archivo+'\',\'pagos\')">'+(FILE_ICONS[a.tipo]||'📄')+' '+(FILE_LABELS[a.tipo]||a.tipo)+'</div>').join('')
+      :'<span style="font-size:11px;color:var(--text3);font-style:italic">Sin archivos adjuntos a este pago</span>';
+    attachHtml='<div class="obl-attach" style="margin-top:10px;padding:10px 12px;border-radius:var(--r);background:var(--green-light);border:1px solid var(--border)">'
+      +'<div style="font-size:11px;font-weight:600;color:var(--green);text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px">✓ Último pago — '+fmt(lastPay.fecha_pago)+' · '+fmxn(lastPay.monto)+'</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px">'+archivosHtml+'</div>'
+      +(!hasFac?'<div style="margin-top:7px"><span class="attach-chip warn">🧾 Factura pendiente</span></div>':'')
+      +(pays.length>1?'<div style="margin-top:8px;font-size:11px"><a href="#" onclick="event.preventDefault();verArchivosDeObligacion(\''+id+'\')" style="color:var(--copper);font-weight:500">Ver pagos anteriores ('+(pays.length-1)+') en Archivos →</a></div>':'')
+      +'</div>';
   }
   let respHtml=o.responsable?'<div style="font-size:11px;color:var(--text3);margin-top:8px">Responsable: '+o.responsable+'</div>':'';
   let notasHtml=o.notas?'<div class="obl-notes">'+o.notas+'</div>':'';
@@ -6850,6 +6875,18 @@ function renderRepo(){
   }
 }
 function repoNav(path){repoPath=path;document.getElementById('repo-search').value='';renderRepo();}
+// Desde el detalle de una obligación, brinca directo a su carpeta en
+// Archivos con el nombre ya buscado -- para ver los pagos viejos sin tener
+// que amontonarlos todos en el modal de la obligación (pedido del dueño,
+// 19-sept-2026).
+function verArchivosDeObligacion(id){
+  const o=oblData.find(x=>x.id===id);if(!o)return;
+  closeModal('m-obl-detail');
+  showPage('archivos');
+  repoPath=[o.entidad,o.categoria];
+  document.getElementById('repo-search').value=o.nombre;
+  renderRepo();
+}
 
 async function repoDownload(storagePath,fileName,bucket){
   const{data,error}=await sb.storage.from(bucket).createSignedUrl(storagePath,300);
