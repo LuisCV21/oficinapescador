@@ -1990,8 +1990,27 @@ mismo blob ya cargado, sin volver a pedirlo. -->
   </div>
   <div class="modal-ftr">
     <button class="btn" onclick="closeModal('m-finiquito')">Cerrar</button>
-    <button class="btn" onclick="imprimirRenuncia()">📄 Carta de renuncia</button>
+    <button class="btn" onclick="imprimirRenuncia(fqEmpId,document.getElementById('fq-fecha').value)">📄 Carta de renuncia</button>
     <button class="btn btn-filled" onclick="imprimirFiniquito()">🖨 Imprimir finiquito</button>
+  </div>
+</div>
+</div>
+
+<!-- MODAL CARTA DE RENUNCIA (sin dinero -- no pasa por la aprobación del
+     finiquito, ver abrirVacacionesOFiniquito. Pedido del dueño,
+     19-sept-2026: la renuncia se manda de inmediato a la sucursal, el
+     finiquito sí necesita autorización porque ahí sí hay dinero de por
+     medio.) -->
+<div class="modal-overlay" id="m-renuncia">
+<div class="modal">
+  <div class="modal-hdr"><div class="modal-title">Carta de renuncia</div><button class="btn-icon" onclick="closeModal('m-renuncia')">✕</button></div>
+  <div class="modal-body">
+    <div id="rn-emp-ref" style="font-size:12px;color:var(--text2);padding:9px 12px;background:var(--surface2);border-radius:var(--r);margin-bottom:14px;border-left:3px solid var(--copper)"></div>
+    <div class="f-row"><label>Fecha de baja <span class="req">*</span></label><input type="date" id="rn-fecha"/></div>
+  </div>
+  <div class="modal-ftr">
+    <button class="btn" onclick="closeModal('m-renuncia')">Cancelar</button>
+    <button class="btn btn-filled" onclick="imprimirRenuncia(rnEmpId,document.getElementById('rn-fecha').value)">📄 Imprimir carta de renuncia</button>
   </div>
 </div>
 </div>
@@ -4210,6 +4229,7 @@ async function openEmpDetail(id){
     <button class="btn" onclick="closeModal('m-emp-detail');abrirVacacionesOFiniquito('${e.id}','finiquito')">🧮 Finiquito</button>
     ${e.activo&&e.tipo_contrato==='prueba'?`<button class="btn btn-filled" style="background:var(--green);border-color:var(--green)" onclick="closeModal('m-emp-detail');confirmarPasarAPlanta('${e.id}')">✅ Pasar a planta</button>`:''}
     ${e.activo?`
+    <button class="btn" onclick="closeModal('m-emp-detail');openRenunciaModal('${e.id}')">📄 Carta de renuncia</button>
     <button class="btn" onclick="closeModal('m-emp-detail');abrirVacacionesOFiniquito('${e.id}','vacaciones')">🏖️ Vacaciones</button>
     <button class="btn" onclick="closeModal('m-emp-detail');openFestivoModal('${e.id}')">🎉 Día festivo</button>
     <button class="btn" onclick="openUniformeModal('${e.id}')">👕 Uniforme</button>
@@ -4375,6 +4395,16 @@ function openFiniquitoModal(empId,fechaPreset){
   openModal('m-finiquito');
   calcFiniquito();
 }
+// Sin candado de aprobación (a diferencia de Finiquito, ver
+// abrirVacacionesOFiniquito) -- no trae ningún monto, es solo la carta.
+let rnEmpId=null;
+function openRenunciaModal(empId){
+  rnEmpId=empId;
+  const e=empData.find(x=>x.id===empId);if(!e)return;
+  document.getElementById('rn-emp-ref').textContent='👤 '+e.nombre+' — '+((ENTS[e.entidad]||{label:e.entidad}).label)+' · Ingreso: '+fmt(e.fecha_ingreso);
+  document.getElementById('rn-fecha').value=e.fecha_baja||new Date().toISOString().slice(0,10);
+  openModal('m-renuncia');
+}
 function calcFiniquito(){
   const e=empData.find(x=>x.id===fqEmpId);
   const out=document.getElementById('fq-breakdown');
@@ -4441,9 +4471,8 @@ function calcFiniquito(){
 // que renuncia y no lleva cantidades; el finiquito con desglose se firma
 // después, al pagarle. No renuncia a prestaciones: al contrario, pide que se
 // le cubran (art. 33 LFT: es nula la renuncia a derechos irrenunciables).
-function imprimirRenuncia(){
-  const e=empData.find(x=>x.id===fqEmpId);if(!e)return;
-  const fCalcStr=document.getElementById('fq-fecha').value;
+function imprimirRenuncia(empId,fCalcStr){
+  const e=empData.find(x=>x.id===empId);if(!e)return;
   if(!fCalcStr){toast('Indica la fecha de baja',true);return;}
   const entLabel=(ENTS[e.entidad]||{label:e.entidad}).label;
   const puesto=puestoNombre(e.puesto_id)||'';
