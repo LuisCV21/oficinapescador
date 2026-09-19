@@ -4190,6 +4190,13 @@ async function openEmpDetail(id){
     <div><div style="font-size:10px;color:var(--text3);font-weight:500">Contrato</div><div style="font-size:13px">${{prueba:'Prueba (30 días)',indeterminado:'Tiempo indeterminado',obra:'Por obra'}[e.tipo_contrato]||e.tipo_contrato}</div></div>
     ${e.fecha_fin_prueba?`<div><div style="font-size:10px;color:var(--text3);font-weight:500">Fin de prueba</div><div style="font-size:13px">${fmt(e.fecha_fin_prueba)}</div></div>`:''}
   </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:var(--r);margin-bottom:14px;border:1px solid ${e.nomina_fiscal!==false?'var(--border)':'#f7c1c1'};background:${e.nomina_fiscal!==false?'var(--green-light)':'var(--amber-light)'}">
+    <div>
+      <div style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em">Nómina fiscal (IMSS / CFDI)</div>
+      <div style="font-size:13px;font-weight:600;color:${e.nomina_fiscal!==false?'var(--green)':'var(--amber)'};margin-top:2px">${e.nomina_fiscal!==false?'✓ Sí — se timbra CFDI y se calcula IMSS/ISR':'⚠ No — recibo simple, sin CFDI ni IMSS/ISR'}</div>
+    </div>
+    <button class="btn btn-sm" onclick="confirmarCambioNominaFiscal('${e.id}')">Cambiar</button>
+  </div>
   <div style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Documentos</div>
   <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px">`;
   DOC_TYPES.forEach(type=>{
@@ -4238,6 +4245,25 @@ async function openEmpDetail(id){
     <button class="btn" onclick="closeModal('m-emp-detail');editEmp('${e.id}')">Editar</button>
     <button class="btn" style="background:var(--red-light);color:var(--red);border-color:#f7c1c1" onclick="closeModal('m-emp-detail');openBajaModal('${e.id}')">Dar de baja</button>`:''}`;
   openModal('m-emp-detail');
+}
+// Antes esto solo se cambiaba dentro de "Editar", medio escondido para algo
+// que cambia si a alguien le calculan IMSS/ISR y le sale CFDI o no -- se
+// sube a la vista principal del expediente, pero con un confirm() explícito
+// (no un checkbox que se pueda dar clic por error) para que no se voltee
+// sin querer. Pedido del dueño, 19-sept-2026.
+async function confirmarCambioNominaFiscal(empId){
+  const e=empData.find(x=>x.id===empId);if(!e)return;
+  const actual=e.nomina_fiscal!==false;
+  const nuevo=!actual;
+  const msg=nuevo
+    ?`¿Confirmas pasar a ${e.nombre} a NÓMINA FISCAL?\n\nA partir de ahora se le va a generar CFDI de nómina y se le calculará IMSS/ISR cada semana.`
+    :`¿Confirmas pasar a ${e.nombre} a RECIBO SIMPLE?\n\nYa NO se le va a generar CFDI de nómina ni se le calculará IMSS/ISR -- deja de estar dado de alta fiscalmente para efectos de nómina.`;
+  if(!confirm(msg))return;
+  const{error}=await sb.from('empleados').update({nomina_fiscal:nuevo}).eq('id',empId);
+  if(error){toast('Error: '+error.message,true);return;}
+  toast('Actualizado');
+  await loadEmpleados();
+  openEmpDetail(empId);
 }
 
 async function uploadEmpDoc(empId,tipo,input){
