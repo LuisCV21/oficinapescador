@@ -616,6 +616,8 @@ empleado a planta o darlo de baja. */
 .repo-card{background:var(--surface);border-radius:var(--rl);border:1px solid var(--border);
   box-shadow:var(--shadow);padding:16px;cursor:pointer;transition:all .2s}
 .repo-card:hover{box-shadow:var(--shadow2);border-color:var(--border2);transform:translateY(-1px)}
+.repo-card.repo-static{cursor:default}
+.repo-card.repo-static:hover{box-shadow:var(--shadow);border-color:var(--border);transform:none}
 .repo-folder-ico{font-size:30px;margin-bottom:8px}
 .repo-folder-name{font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px}
 .repo-folder-meta{font-size:11px;color:var(--text2)}
@@ -6892,7 +6894,6 @@ function renderRepo(){
   let pathHtml=`<span class="repo-seg" onclick="repoNav([])">🗂️ Archivos</span>`;
   if(repoPath.length>0){const ek=repoPath[0];const e=ENTS[ek]||{label:ek};pathHtml+=`<span class="repo-sep">/</span><span class="repo-seg" onclick="repoNav(['${ek}'])">${e.label}</span>`;}
   if(repoPath.length>1){const ck=repoPath[1];const cLabel=ck==='empleados'?'👥 Expedientes empleados':(catInfo(ck).icono+' '+catInfo(ck).label);pathHtml+=`<span class="repo-sep">/</span><span class="repo-seg" onclick="repoNav(['${repoPath[0]}','${ck}'])">${cLabel}</span>`;}
-  if(repoPath.length>2){const mk=repoPath[2];pathHtml+=`<span class="repo-sep">/</span><span class="repo-seg">📅 ${mk==='sin-fecha'?'Sin fecha':mesLabelDe(mk+'-01')}</span>`;}
   document.getElementById('repo-path').innerHTML=pathHtml;
   if(repoPath.length===0){
     const entKeys=Object.keys(tree);
@@ -6911,38 +6912,48 @@ function renderRepo(){
       const cLabel=ck==='empleados'?'👥 Expedientes empleados':(catInfo(ck).icono+' '+catInfo(ck).label);
       return`<div class="repo-card" onclick="repoNav(['${ek}','${ck}'])"><div class="repo-folder-ico">${cLabel.split(' ')[0]}</div><div class="repo-folder-name">${cLabel.replace(/^[^\s]+ /,'')}</div><div class="repo-folder-meta">${files.length} archivo${files.length!==1?'s':''}</div></div>`;
     }).join('');
-  }else if(repoPath.length===2){
+  }else{
     const ek=repoPath[0],ck=repoPath[1];
     const files=(tree[ek]&&tree[ek][ck])||[];
-    // Buscando (o expedientes de empleados, que no tienen fecha de pago):
-    // se enseña la lista de archivos directo, sin pasar por carpetas de mes
-    // -- si ya sabes el nombre no tiene caso hacerte entrar mes por mes.
-    if(search||ck==='empleados'){
-      let filtrados=search?files.filter(f=>((f.nombre_archivo||'').toLowerCase().includes(search))||(f._empNombre||'').toLowerCase().includes(search)||(f.obligaciones?.nombre||'').toLowerCase().includes(search)):files;
+    // Expedientes de empleados (sin fecha de pago ni obligación) se quedan
+    // como lista plana de siempre.
+    if(ck==='empleados'){
+      let filtrados=search?files.filter(f=>((f.nombre_archivo||'').toLowerCase().includes(search))||(f._empNombre||'').toLowerCase().includes(search)):files;
       filtrados=[...filtrados].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
       if(!filtrados.length){grid.innerHTML=`<div class="repo-empty">Sin archivos${search?' que coincidan':''}</div>`;return;}
       grid.innerHTML=renderRepoFileCards(filtrados,ck);
       return;
     }
-    // Cuadrícula por mes de pago -- pedido del dueño, 19-sept-2026: "dividir
-    // los archivos por cuadrículas por mes de pago, para saber cuáles son
-    // de cada uno" (antes se amontonaban todos juntos en una sola lista).
-    if(!files.length){grid.innerHTML=`<div class="repo-empty">Sin archivos en esta categoría</div>`;return;}
-    const porMes={};
-    files.forEach(f=>{const mk=mesKeyDe(f);(porMes[mk]=porMes[mk]||[]).push(f);});
-    const meses=Object.keys(porMes).sort((a,b)=>b.localeCompare(a));
-    grid.innerHTML=meses.map(mk=>{
-      const cnt=porMes[mk].length;
-      const label=mk==='sin-fecha'?'Sin fecha':mesLabelDe(mk+'-01');
-      return`<div class="repo-card" onclick="repoNav(['${ek}','${ck}','${mk}'])"><div class="repo-folder-ico">📅</div><div class="repo-folder-name">${label}</div><div class="repo-folder-meta">${cnt} archivo${cnt!==1?'s':''}</div></div>`;
+    // Tarjetas por pago (obligación + mes), con sus archivos ya adentro y
+    // clicables -- sin tener que entrar a otra carpeta más. Pedido del
+    // dueño, 19-sept-2026: separar por "qué pago es" (luz, teléfono, etc.)
+    // como "cuadros clickeables con sus archivos dentro".
+    let filtrados=search?files.filter(f=>((f.nombre_archivo||'').toLowerCase().includes(search))||(f.obligaciones?.nombre||'').toLowerCase().includes(search)):files;
+    if(!filtrados.length){grid.innerHTML=`<div class="repo-empty">Sin archivos${search?' que coincidan':''}</div>`;return;}
+    const grupos={};
+    filtrados.forEach(f=>{
+      const mk=mesKeyDe(f);
+      const key=(f.obligacion_id||'sin-obligacion')+'|'+mk;
+      if(!grupos[key])grupos[key]={oblLabel:f.obligaciones?.nombre||'Sin obligación',mesKey:mk,items:[]};
+      grupos[key].items.push(f);
+    });
+    const keys=Object.keys(grupos).sort((a,b)=>{
+      const ga=grupos[a],gb=grupos[b];
+      return ga.oblLabel.localeCompare(gb.oblLabel)||gb.mesKey.localeCompare(ga.mesKey);
+    });
+    grid.innerHTML=keys.map(k=>{
+      const g=grupos[k];
+      const mesLbl=g.mesKey==='sin-fecha'?'Sin fecha':mesLabelDe(g.mesKey+'-01');
+      const filesHtml=g.items.map(f=>{
+        const tipo=f.tipo,name=f.nombre_archivo,bucket=f._bucket||'pagos';
+        return`<div class="hist-file" onclick="event.stopPropagation();viewFile('${f.storage_path}','${name}','${bucket}')">${FILE_ICONS[tipo]||'📄'} ${FILE_LABELS[tipo]||tipo}</div>`;
+      }).join('');
+      return`<div class="repo-card repo-static">
+        <div class="repo-folder-name">${g.oblLabel}</div>
+        <div class="repo-folder-meta">📅 ${mesLbl}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:9px">${filesHtml}</div>
+      </div>`;
     }).join('');
-  }else{
-    const ek=repoPath[0],ck=repoPath[1],mk=repoPath[2];
-    let files=((tree[ek]&&tree[ek][ck])||[]).filter(f=>mesKeyDe(f)===mk);
-    if(search)files=files.filter(f=>((f.nombre_archivo||'').toLowerCase().includes(search))||(f._empNombre||'').toLowerCase().includes(search)||(f.obligaciones?.nombre||'').toLowerCase().includes(search));
-    files=[...files].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
-    if(!files.length){grid.innerHTML=`<div class="repo-empty">Sin archivos${search?' que coincidan':''}</div>`;return;}
-    grid.innerHTML=renderRepoFileCards(files,ck);
   }
 }
 function repoNav(path){repoPath=path;document.getElementById('repo-search').value='';renderRepo();}
