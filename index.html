@@ -8294,6 +8294,8 @@ async function renderBalancePreviewLuis(){
       ['NÓMINA (auto)',null,true,'&nbsp;',v.egresos_nomina_total],
     ],
     egrTot:[c.egrTotalIva,c.egrTotalTotal],
+    ingresosSinIva:c.ingresosSinIva,egresosSinIva:c.egresosSinIva,
+    ivaRetenidoNextel:v.iva_retenido_nextel,
     isr:c.isrTotal,isrSinIva:c.isrBaseSinIva,iva:c.ivaAPagar,
   });
 }
@@ -8348,6 +8350,7 @@ async function renderBalancePreviewKat(){
       ['NÓMINA HOTEL (auto)',null,true,'&nbsp;',v.egresos_nomina_hotel_total],
     ],
     egrTot:[c.egrTotalIva,c.egrTotalTotal],
+    ingresosSinIva:c.ingresosSinIva,egresosSinIva:c.egresosSinIva,
     isr:c.isrTotal,isrSinIva:c.isrBaseSinIva,iva:c.ivaAPagar,
   });
 }
@@ -8383,12 +8386,24 @@ function balTablasHTML(o){
           <tr style="font-weight:700;background:var(--copper-light)"><td>TOTAL</td><td class="num">${fmxn(o.egrTot[0])}</td><td class="num">${fmxn(o.egrTot[1])}</td></tr>
         </table>
         <div style="margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px">
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>ISR (ingresos − egresos, con IVA incluido)${o.faltantes.length?' (preliminar)':''}</span><strong style="color:var(--green)">${fmxnSigned(o.isr)}</strong></div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;padding-top:6px;border-top:1px dashed var(--border2)"><span>ISR base sin IVA${o.faltantes.length?' (preliminar)':''}</span><strong style="color:var(--green)">${fmxnSigned(o.isrSinIva)}</strong></div>
-          <div style="display:flex;justify-content:space-between"><span>IVA a pagar${o.faltantes.length?' (preliminar)':''}</span><strong style="color:var(--copper)">${fmxnSigned(o.iva)}</strong></div>
+          ${balResumenBloque('ISR (ingresos − egresos, con IVA incluido)',o.faltantes.length,'Ingresos',o.ingTot[1],'Egresos',o.egrTot[1],o.isr,'var(--green)')}
+          ${balResumenBloque('ISR base sin IVA',o.faltantes.length,'Ingresos sin IVA',o.ingresosSinIva,'Egresos sin IVA',o.egresosSinIva,o.isrSinIva,'var(--green)',true)}
+          ${balResumenBloque('IVA',o.faltantes.length,'IVA en ingresos',o.ingTot[0],'IVA en egresos'+(o.ivaRetenidoNextel?' + retenido Nextel':''),o.egrTot[0]-(o.ivaRetenidoNextel||0),o.iva,'var(--copper)',true,'Total a pagar')}
         </div>
       </div>
     </div>`;
+}
+// Un bloque "Ingresos / Egresos / = Total" por cada métrica (ISR, ISR sin
+// IVA, IVA a pagar) -- antes solo se veía el número final, sin mostrar qué
+// se está sumando y qué se está restando para llegar ahí. Pedido del
+// dueño, 19-sept-2026.
+function balResumenBloque(titulo,preliminar,lblA,valA,lblB,valB,total,color,sep,tituloTotal){
+  return`<div style="${sep?'margin-top:10px;padding-top:8px;border-top:1px dashed var(--border2)':''}">
+    <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px">${titulo}${preliminar?' (preliminar)':''}</div>
+    <div class="bal-live-row"><span>${lblA}</span><span>${fmxn(valA)}</span></div>
+    <div class="bal-live-row"><span>${lblB}</span><span>${fmxn(valB)}</span></div>
+    <div class="bal-live-row" style="font-weight:700;color:${color}"><span>${tituloTotal||'Total'}</span><span>${fmxnSigned(total)}</span></div>
+  </div>`;
 }
 async function capturarCampoBalanceLuis(campo){
   const LABELS={gastos:'Gastos facturados (total, con IVA incluido)',camioneta:'Camioneta Colorado',imss:'IMSS KM'};
