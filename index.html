@@ -521,6 +521,22 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .emp-name{font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px}
 .emp-puesto{font-size:11px;color:var(--text2)}
 .emp-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+/* Alerta de periodo de prueba en Inicio -- pedido del dueño 19-sept-2026:
+"que haga mucha alusión para que empecemos a preocuparnos". Arranca 7 días
+antes del fin de prueba y no se puede cerrar: solo desaparece al pasar al
+empleado a planta o darlo de baja. */
+@keyframes pruebaPulso{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.55)}50%{box-shadow:0 0 0 8px rgba(192,57,43,0)}}
+.prueba-box{border-radius:12px;padding:16px 18px;margin-bottom:14px;border:2px solid var(--amber);background:var(--amber-light);animation:pruebaPulso 2.2s infinite}
+.prueba-box.critica{border-color:var(--red);background:var(--red-light)}
+.prueba-titulo{font-size:16px;font-weight:800;letter-spacing:.01em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.prueba-box .prueba-titulo{color:var(--amber)}
+.prueba-box.critica .prueba-titulo{color:var(--red)}
+.prueba-sub{font-size:12px;color:var(--text2);margin:6px 0 12px;line-height:1.5}
+.prueba-fila{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--bg,#fff);border:1px solid rgba(0,0,0,.12);border-radius:10px;padding:10px 12px;margin-top:8px}
+.prueba-fila .pf-nombre{font-weight:700;font-size:14px;color:var(--text)}
+.prueba-fila .pf-det{font-size:11px;color:var(--text2);margin-top:2px}
+.prueba-fila .pf-dias{font-weight:800;font-size:13px}
+.prueba-acciones{display:flex;gap:6px;flex-wrap:wrap}
 .emp-alert{border-radius:8px;padding:5px 10px;font-size:11px;font-weight:600;margin-top:8px}
 .emp-alert.warn{background:var(--amber-light);color:var(--amber)}
 .emp-alert.danger{background:var(--red-light);color:var(--red)}
@@ -896,6 +912,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       <div class="sb-item" onclick="showPage('rh')" id="si-rh">
         <span class="sb-item-icon">👥</span>
         <span class="sb-item-label">Recursos Humanos</span>
+        <span class="sb-badge" id="rh-prueba-badge" style="display:none;background:var(--red);color:#fff"></span>
       </div>
       <div class="sb-item" onclick="showPage('flotilla')" id="si-flotilla">
         <span class="sb-item-icon">🚗</span>
@@ -958,6 +975,7 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
       <!-- INICIO -->
       <div class="page active" id="page-inicio">
         <div id="gm-container"></div>
+        <div id="prueba-container"></div>
         <div id="branch-summary-container"></div>
         <div class="home-2col">
           <div id="vencimientos-container"></div>
@@ -3148,6 +3166,7 @@ function showPage(id){
 
 function renderAll(){
   renderGoodMorning();
+  renderAlertaPrueba();
   renderBranchSummary();
   renderVencimientos();
   renderNominaStatusWidget();
@@ -4188,6 +4207,7 @@ async function openEmpDetail(id){
   const ftr=document.getElementById('m-emp-detail-ftr');
   ftr.innerHTML=`<button class="btn" onclick="closeModal('m-emp-detail')">Cerrar</button>
     <button class="btn" onclick="closeModal('m-emp-detail');abrirVacacionesOFiniquito('${e.id}','finiquito')">🧮 Finiquito</button>
+    ${e.activo&&e.tipo_contrato==='prueba'?`<button class="btn btn-filled" style="background:var(--green);border-color:var(--green)" onclick="closeModal('m-emp-detail');confirmarPasarAPlanta('${e.id}')">✅ Pasar a planta</button>`:''}
     ${e.activo?`
     <button class="btn" onclick="closeModal('m-emp-detail');abrirVacacionesOFiniquito('${e.id}','vacaciones')">🏖️ Vacaciones</button>
     <button class="btn" onclick="closeModal('m-emp-detail');openFestivoModal('${e.id}')">🎉 Día festivo</button>
@@ -14344,14 +14364,70 @@ function renderGoodMorning(){
   const nombre=currentPerfil?currentPerfil.nombre:(currentUser?currentUser.email.split('@')[0]:'');
   const ov=(oblData||[]).filter(o=>oblStatus(o)==='overdue').length;
   const ug=(oblData||[]).filter(o=>oblStatus(o)==='urgent').length;
-  const prueba=(empData||[]).filter(e=>e.activo&&e.tipo_contrato==='prueba'&&daysUntil(e.fecha_fin_prueba)<=7&&daysUntil(e.fecha_fin_prueba)>=0);
+  const prueba=pruebaPorDefinir();
   let pills='';
   if(ov>0)pills+=`<div class="gm-pill alert" onclick="showPage('obligaciones')">🚨 ${ov} vencida${ov>1?'s':''}</div>`;
   if(ug>0)pills+=`<div class="gm-pill alert" onclick="showPage('obligaciones')">⚠️ ${ug} urgente${ug>1?'s':''}</div>`;
-  if(prueba.length>0)pills+=`<div class="gm-pill alert" onclick="showPage('rh')">👤 ${prueba.length} contrato${prueba.length>1?'s':''} por vencer</div>`;
+  if(prueba.length>0)pills+=`<div class="gm-pill alert" onclick="document.getElementById('prueba-container').scrollIntoView({behavior:'smooth'})">🚨 ${prueba.length} periodo${prueba.length>1?'s':''} de prueba por definir</div>`;
   if(!ov&&!ug&&!prueba.length)pills='<div class="gm-pill ok">✓ Todo al corriente</div>';
   const el=document.getElementById('gm-container');
   if(el)el.innerHTML=`<div class="gm-widget"><div class="gm-greeting">${greeting}, ${nombre} 👋</div><div class="gm-date">${new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div><div class="gm-pills">${pills}</div></div>`;
+}
+
+// ─── ALERTA DE PERIODO DE PRUEBA (Inicio, admin y oficinistas) ──
+// Empleados activos en prueba cuyo fin cae en los próximos 7 días o que ya
+// se pasaron -- ordenados del más urgente (más vencido) al menos urgente.
+function pruebaPorDefinir(){
+  return (empData||[])
+    .filter(e=>e.activo&&e.tipo_contrato==='prueba'&&e.fecha_fin_prueba&&daysUntil(e.fecha_fin_prueba)<=7)
+    .sort((a,b)=>daysUntil(a.fecha_fin_prueba)-daysUntil(b.fecha_fin_prueba));
+}
+function renderAlertaPrueba(){
+  const el=document.getElementById('prueba-container');
+  const lista=pruebaPorDefinir();
+  const badge=document.getElementById('rh-prueba-badge');
+  if(badge){badge.style.display=lista.length?'inline-block':'none';badge.textContent=lista.length;}
+  if(!el)return;
+  if(!lista.length){el.innerHTML='';return;}
+  const vencidos=lista.filter(e=>daysUntil(e.fecha_fin_prueba)<0);
+  const critica=vencidos.length>0||lista.some(e=>daysUntil(e.fecha_fin_prueba)<=2);
+  const filas=lista.map(e=>{
+    const d=daysUntil(e.fecha_fin_prueba);
+    const ent=(ENTS[e.entidad]||{label:e.entidad}).label;
+    const puesto=puestoNombre(e.puesto_id)||'';
+    const cuando=d<0?`VENCIÓ hace ${-d} día${-d!==1?'s':''}`:d===0?'VENCE HOY':d===1?'Vence MAÑANA':`Vence en ${d} días`;
+    const color=d<=2?'var(--red)':'var(--amber)';
+    return `<div class="prueba-fila">
+      <div><div class="pf-nombre">${e.nombre}</div>
+      <div class="pf-det">${ent}${puesto?' · '+puesto:''} · Ingresó ${fmt(e.fecha_ingreso)} · Fin de prueba ${fmt(e.fecha_fin_prueba)}</div></div>
+      <div class="pf-dias" style="color:${color}">${d<0?'🚨':'⏰'} ${cuando}</div>
+      <div class="prueba-acciones">
+        <button class="btn btn-filled" style="background:var(--green);border-color:var(--green)" onclick="confirmarPasarAPlanta('${e.id}')">✅ Pasar a planta</button>
+        <button class="btn" onclick="openEmpDetail('${e.id}')">Ver empleado</button>
+        <button class="btn" style="background:var(--red-light);color:var(--red);border-color:#f7c1c1" onclick="openBajaModal('${e.id}')">Dar de baja</button>
+      </div>
+    </div>`;
+  }).join('');
+  el.innerHTML=`<div class="prueba-box${critica?' critica':''}">
+    <div class="prueba-titulo">${vencidos.length?'🚨':'⚠️'} ${vencidos.length?'PERIODO DE PRUEBA VENCIDO — DEFINAN YA':'SE ACABA EL PERIODO DE PRUEBA — HAY QUE DEFINIR'}
+      <span style="font-size:12px;font-weight:700">(${lista.length} empleado${lista.length>1?'s':''})</span></div>
+    <div class="prueba-sub">Cada uno tiene que quedar en una de dos: <b>pasar a planta</b> (contrato por tiempo indeterminado) o <b>darse de baja</b> antes de que termine su prueba. No lo dejen correr — este aviso no se quita hasta que se defina.</div>
+    ${filas}
+  </div>`;
+}
+function confirmarPasarAPlanta(id){
+  const e=empData.find(x=>x.id===id);if(!e)return;
+  if(!confirm('¿Pasar a PLANTA a '+e.nombre+'?\n\nSu contrato cambia de "Prueba" a "Tiempo indeterminado" y se quita la fecha de fin de prueba.\n\nDespués recuerden generar y firmar su contrato por tiempo indeterminado.'))return;
+  pasarAPlanta(id);
+}
+async function pasarAPlanta(id){
+  const e=empData.find(x=>x.id===id);if(!e)return;
+  const{error}=await sb.from('empleados').update({tipo_contrato:'indeterminado',fecha_fin_prueba:null}).eq('id',id);
+  if(error){toast('Error: '+error.message,true);return;}
+  toast('✅ '+e.nombre+' pasó a planta — falta su contrato indeterminado firmado');
+  await loadEmpleados();
+  renderAll();
+  if(typeof renderEmps==='function')renderEmps();
 }
 
 // ─── INICIO: RESUMEN POR SUCURSAL ──────────────────────────────
