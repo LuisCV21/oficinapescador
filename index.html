@@ -6,6 +6,10 @@
 <title>Administración El Pescador</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- xlsx (SheetJS community) no escribe colores/estilos de celda de forma
+confiable -- exceljs sí, se usa solo para la Póliza Banco (pedido del
+dueño, 19-sept-2026: que el Excel se vea parecido al PDF con colores). -->
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;1,9..144,300&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=DM+Mono:wght@400;500&display=swap');
 
@@ -11489,38 +11493,86 @@ function abrirDetallePolizaBanco(dk,forma){
   openModal('m-pb-detalle');
 }
 
-function exportarPolizaBancoXLSX(){
+// Igual que xlsx (SheetJS community) no escribe colores de forma
+// confiable, este export usa ExcelJS -- mismo diseño por bloques de día
+// que ya tiene el PDF (fondo marino/verde azulado de El Pescador), para
+// que el Excel se vea parecido. Pedido del dueño, 19-sept-2026.
+async function exportarPolizaBancoXLSX(){
   if(!pbUltimoDatos||!pbUltimoDatos.diasOrdenados.length){toast('No hay datos para exportar.',true);return;}
   const{dias,diasOrdenados}=pbUltimoDatos;
-  const wb=XLSX.utils.book_new();
-
   const pend=(pos,fac)=>Math.round((pos-fac)*100)/100;
-  const aoaResumen=[
-    ['Día','Crédito (terminal)','Crédito facturado','Crédito pendiente (Global)','Débito (terminal)','Débito facturado','Débito pendiente (Global)','Total del día'],
-    ...diasOrdenados.map(dk=>{
-      const d=dias.get(dk);
-      const totalPos=Math.round((d.credito.pos+d.debito.pos)*100)/100;
-      return[fmtDiaMes(dk),d.credito.pos,d.credito.facturado,pend(d.credito.pos,d.credito.facturado),d.debito.pos,d.debito.facturado,pend(d.debito.pos,d.debito.facturado),totalPos];
-    }),
-  ];
-  const tot=diasOrdenados.reduce((a,dk)=>{const d=dias.get(dk);a.cPos+=d.credito.pos;a.cFac+=d.credito.facturado;a.dPos+=d.debito.pos;a.dFac+=d.debito.facturado;return a;},{cPos:0,cFac:0,dPos:0,dFac:0});
-  const totPos=Math.round((tot.cPos+tot.dPos)*100)/100;
-  aoaResumen.push([],['Total',tot.cPos,tot.cFac,pend(tot.cPos,tot.cFac),tot.dPos,tot.dFac,pend(tot.dPos,tot.dFac),totPos]);
-  const wsResumen=XLSX.utils.aoa_to_sheet(aoaResumen);
-  wsResumen['!cols']=[{wch:12},{wch:16},{wch:16},{wch:18},{wch:14},{wch:14},{wch:18},{wch:12}];
-  XLSX.utils.book_append_sheet(wb,wsResumen,'Resumen');
+  const NAVY='FF0F3D52',TEAL='FF1A5F7A',LIGHT='FFE2F0F1',WHITE='FFFFFFFF',GRAY='FF7F8C8D';
+  const MONEY='"$"#,##0.00';
 
-  const aoaFact=[['Día','Forma','Folio','Cliente','Monto']];
+  const wb=new ExcelJS.Workbook();
+  const ws=wb.addWorksheet('Póliza Banco');
+  ws.columns=[{width:12},{width:36},{width:14}];
+
+  const banda=(texto,fill,font={})=>{
+    const r=ws.addRow([texto]);
+    ws.mergeCells(r.number,1,r.number,3);
+    const c=r.getCell(1);
+    c.fill={type:'pattern',pattern:'solid',fgColor:{argb:fill}};
+    c.font={bold:true,color:{argb:WHITE},size:11,...font};
+    c.alignment={vertical:'middle',horizontal:'left'};
+    r.height=20;
+    return r;
+  };
+  const colHdr=()=>{
+    const r=ws.addRow(['Folio','Cliente','Monto']);
+    r.eachCell(c=>{
+      c.fill={type:'pattern',pattern:'solid',fgColor:{argb:LIGHT}};
+      c.font={bold:true,color:{argb:NAVY},size:9.5};
+    });
+    r.getCell(3).alignment={horizontal:'right'};
+    return r;
+  };
+  const filaItem=(folio,cliente,monto)=>{
+    const r=ws.addRow([folio,cliente,monto]);
+    r.getCell(3).numFmt=MONEY;
+    r.getCell(3).alignment={horizontal:'right'};
+    return r;
+  };
+  const filaPendiente=(monto)=>{
+    const r=ws.addRow(['—','Pendiente por facturar (Global)',monto]);
+    r.getCell(3).numFmt=MONEY;
+    r.getCell(3).alignment={horizontal:'right'};
+    r.eachCell(c=>{c.font={italic:true,color:{argb:GRAY},size:9.5};});
+    return r;
+  };
+  const bloqueForma=(titulo,pos,facturado,items)=>{
+    banda(`${titulo} — terminal ${fmxn(pos)} · facturado ${fmxn(facturado)} · pendiente ${fmxn(pend(pos,facturado))}`,TEAL);
+    colHdr();
+    items.forEach(i=>filaItem(i.folio,i.quien,i.monto));
+    const p=pend(pos,facturado);
+    if(p>0.01)filaPendiente(p);
+  };
+
+  banda(`PÓLIZA BANCO — ${corteSucLabel(currentPBSuc).toUpperCase()}`,NAVY,{size:14});
+  banda(pbTituloRango().toUpperCase(),TEAL);
+  ws.addRow([]);
+
+  let gTotPos=0,gTotFac=0;
   diasOrdenados.forEach(dk=>{
     const d=dias.get(dk);
-    d.credito.items.forEach(i=>aoaFact.push([fmtDiaMes(dk),'Crédito',i.folio,i.quien,i.monto]));
-    d.debito.items.forEach(i=>aoaFact.push([fmtDiaMes(dk),'Débito',i.folio,i.quien,i.monto]));
+    const totalPos=Math.round((d.credito.pos+d.debito.pos)*100)/100;
+    const totalFact=Math.round((d.credito.facturado+d.debito.facturado)*100)/100;
+    if(!totalPos&&!totalFact)return;
+    gTotPos+=totalPos;gTotFac+=totalFact;
+    banda(`${fmtDiaMes(dk)}  ·  Terminal: ${fmxn(totalPos)}  ·  Facturado: ${fmxn(totalFact)}  ·  Pendiente (Global): ${fmxn(pend(totalPos,totalFact))}`,NAVY);
+    bloqueForma('CRÉDITO',d.credito.pos,d.credito.facturado,d.credito.items);
+    bloqueForma('DÉBITO',d.debito.pos,d.debito.facturado,d.debito.items);
+    ws.addRow([]);
   });
-  const wsFact=XLSX.utils.aoa_to_sheet(aoaFact);
-  wsFact['!cols']=[{wch:12},{wch:10},{wch:10},{wch:34},{wch:12}];
-  XLSX.utils.book_append_sheet(wb,wsFact,'Facturas');
+  banda(`TOTAL  ·  Terminal: ${fmxn(gTotPos)}  ·  Facturado: ${fmxn(gTotFac)}  ·  Pendiente (Global): ${fmxn(pend(gTotPos,gTotFac))}`,NAVY,{size:12});
 
-  XLSX.writeFile(wb,`Poliza_Banco_${corteSucLabel(currentPBSuc)}_${pbUltimoDatos.desde.slice(0,7)}.xlsx`);
+  const buf=await wb.xlsx.writeBuffer();
+  const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=`Poliza_Banco_${corteSucLabel(currentPBSuc)}_${pbUltimoDatos.desde.slice(0,7)}.xlsx`;
+  document.body.appendChild(a);a.click();a.remove();
+  URL.revokeObjectURL(url);
   toast('Excel exportado.');
 }
 
