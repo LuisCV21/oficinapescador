@@ -2914,6 +2914,18 @@ function catInfo(clave){
 }
 function cuentaNombre(id){const c=cuentasPagoData.find(x=>x.id===id);return c?c.nombre:'';}
 function puestoNombre(id){const p=puestosData.find(x=>x.id===id);return p?p.nombre:'';}
+function entLabelCorto(ent){if(ent==='MULTI')return'Multi';return(ENTS[ent]||{label:ent||'?'}).label;}
+// Nombre "estratégico" para un archivo subido -- explica qué es, de qué
+// sucursal y de qué mes, en vez de quedarse con el nombre que trae la
+// foto/escaneo original (IMG_2026.jpg, escaneo001.pdf...) que no dice nada
+// al buscarlo después. Pedido del dueño, 19-sept-2026.
+function nombreEstrategico(partes,archivoOriginal){
+  const ext=(archivoOriginal||'').split('.').pop().toLowerCase();
+  const limpio=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-zA-Z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+  const nombre=partes.filter(Boolean).map(limpio).filter(Boolean).join('_');
+  return ext?`${nombre}.${ext}`:nombre;
+}
 
 // STATE
 let currentUser=null,currentPerfil=null;
@@ -3905,6 +3917,7 @@ async function savePay(){
   const {data:pago,error:pe}=await sb.from('pagos').insert({obligacion_id:payOblId,fecha_pago,monto:Number(monto),banco_id,referencia:document.getElementById('pf-ref').value||null,observaciones:document.getElementById('pf-obs').value||null,registrado_por:currentUser.id}).select().single();
   if(pe){toast('Error al registrar pago: '+pe.message,true);setLoading('pay-save-btn',false);return;}
   // 2. Upload files
+  const obl=oblData.find(x=>x.id===payOblId);
   const fileTypes=['pago','cotizacion','factura_pdf','factura_xml'];
   for(const type of fileTypes){
     const f=pendingFiles[type];if(!f)continue;
@@ -3913,11 +3926,11 @@ async function savePay(){
     const blob=dataURLtoBlob(f.data);
     const {error:ue}=await sb.storage.from('pagos').upload(path,blob,{contentType:f.mime,upsert:true});
     if(!ue){
-      await sb.from('archivos_pago').insert({pago_id:pago.id,obligacion_id:payOblId,tipo:type,nombre_archivo:f.name,storage_path:path,size_bytes:f.size,mime_type:f.mime});
+      const nombreArchivo=nombreEstrategico([fecha_pago.slice(0,7),entLabelCorto(obl?.entidad),obl?.nombre,FILE_LABELS[type]],f.name);
+      await sb.from('archivos_pago').insert({pago_id:pago.id,obligacion_id:payOblId,tipo:type,nombre_archivo:nombreArchivo,storage_path:path,size_bytes:f.size,mime_type:f.mime});
     }
   }
   // 3. Advance date if recurring
-  const obl=oblData.find(x=>x.id===payOblId);
   if(obl&&obl.recurrencia&&obl.recurrencia!=='none'){
     await sb.from('obligaciones').update({fecha_limite:nextDate(obl.fecha_limite,obl.recurrencia),updated_at:new Date().toISOString()}).eq('id',payOblId);
   }
@@ -3973,7 +3986,10 @@ async function uploadLateFile(oblId,pagoId,input){
   const blob=await fileToBlob(file);
   const {error}=await sb.storage.from('pagos').upload(path,blob,{contentType:file.type,upsert:true});
   if(error){toast('Error al subir archivo',true);return;}
-  await sb.from('archivos_pago').insert({pago_id:pagoId,obligacion_id:oblId,tipo:type,nombre_archivo:file.name,storage_path:path,size_bytes:file.size,mime_type:file.type});
+  const obl=oblData.find(x=>x.id===oblId);
+  const pago=pagosData.find(x=>x.id===pagoId);
+  const nombreArchivo=nombreEstrategico([(pago?.fecha_pago||'').slice(0,7),entLabelCorto(obl?.entidad),obl?.nombre,FILE_LABELS[type]],file.name);
+  await sb.from('archivos_pago').insert({pago_id:pagoId,obligacion_id:oblId,tipo:type,nombre_archivo:nombreArchivo,storage_path:path,size_bytes:file.size,mime_type:file.type});
   toast('Factura subida correctamente');
   closeModal('m-hist');await loadArchivos();openHist(oblId);renderAll();
 }
@@ -4305,8 +4321,10 @@ async function uploadEmpDoc(empId,tipo,input){
   const blob=await fileToBlob(file);
   const{error:se}=await sb.storage.from('empleados').upload(storagePath,blob,{contentType:file.type,upsert:true});
   if(se){toast('Error al subir: '+se.message,true);return;}
+  const e=empData.find(x=>x.id===empId);
+  const nombreArchivo=nombreEstrategico([FILE_LABELS[tipo]||tipo,entLabelCorto(e?.entidad),e?.nombre],file.name);
   await sb.from('documentos_empleado').delete().eq('empleado_id',empId).eq('tipo',tipo);
-  const{error:de}=await sb.from('documentos_empleado').insert({empleado_id:empId,tipo,nombre_archivo:file.name,storage_path:storagePath,size_bytes:file.size,mime_type:file.type});
+  const{error:de}=await sb.from('documentos_empleado').insert({empleado_id:empId,tipo,nombre_archivo:nombreArchivo,storage_path:storagePath,size_bytes:file.size,mime_type:file.type});
   if(de){toast('Error al registrar: '+de.message,true);return;}
   toast('Documento subido correctamente');
   await loadEmpleados();
@@ -4387,7 +4405,10 @@ async function saveEmp(){
     const path=`empleados/${empId}/${tipo}.${ext}`;
     const blob=dataURLtoBlob(f.data);
     const{error:ue}=await sb.storage.from('empleados').upload(path,blob,{contentType:f.mime,upsert:true});
-    if(!ue)await sb.from('documentos_empleado').upsert({empleado_id:empId,tipo,nombre_archivo:f.name,storage_path:path,size_bytes:f.size,mime_type:f.mime},{onConflict:'empleado_id,tipo'});
+    if(!ue){
+      const nombreArchivo=nombreEstrategico([FILE_LABELS[tipo]||tipo,entLabelCorto(obj.entidad),obj.nombre],f.name);
+      await sb.from('documentos_empleado').upsert({empleado_id:empId,tipo,nombre_archivo:nombreArchivo,storage_path:path,size_bytes:f.size,mime_type:f.mime},{onConflict:'empleado_id,tipo'});
+    }
   }
   setLoading('emp-save-btn',false);
   toast(editEmpId?'Empleado actualizado':'Empleado registrado');
@@ -4416,7 +4437,9 @@ async function saveBaja(){
   const path=`empleados/${bajaEmpId}/finiquito.${ext}`;
   const blob=dataURLtoBlob(f.data);
   await sb.storage.from('empleados').upload(path,blob,{contentType:f.mime,upsert:true});
-  await sb.from('documentos_empleado').upsert({empleado_id:bajaEmpId,tipo:'finiquito',nombre_archivo:f.name,storage_path:path,size_bytes:f.size,mime_type:f.mime},{onConflict:'empleado_id,tipo'});
+  const eBaja=empData.find(x=>x.id===bajaEmpId);
+  const nombreArchivo=nombreEstrategico(['Finiquito',entLabelCorto(eBaja?.entidad),eBaja?.nombre,fecha_baja],f.name);
+  await sb.from('documentos_empleado').upsert({empleado_id:bajaEmpId,tipo:'finiquito',nombre_archivo:nombreArchivo,storage_path:path,size_bytes:f.size,mime_type:f.mime},{onConflict:'empleado_id,tipo'});
   await sb.from('empleados').update({activo:false,fecha_baja,motivo_baja:document.getElementById('bf-motivo').value||null}).eq('id',bajaEmpId);
   setLoading('baja-save-btn',false);
   toast('Baja registrada correctamente');
