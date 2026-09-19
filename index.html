@@ -6832,6 +6832,36 @@ function getRepoTree(){
   return tree;
 }
 
+// Etiqueta "Septiembre 2026" a partir de una fecha YYYY-MM-DD (o YYYY-MM).
+function mesLabelDe(fechaYMD){
+  const m=Number(fechaYMD.slice(5,7))-1,y=fechaYMD.slice(0,4);
+  return`${MESES_ES[m]||'?'} ${y}`;
+}
+// A qué mes pertenece un archivo -- el de la fecha en que se PAGÓ (no en
+// que se subió), que es lo que de verdad importa para encontrarlo después.
+// Los expedientes de empleados no tienen fecha de pago, esos no se agrupan.
+function mesKeyDe(f){
+  const fecha=f.pagos?.fecha_pago||(f.created_at||'').slice(0,10);
+  return fecha?fecha.slice(0,7):'sin-fecha';
+}
+function renderRepoFileCards(files,ck){
+  const bucket=ck==='empleados'?'empleados':'pagos';
+  return files.map(f=>{
+    const tipo=f.tipo;const name=f.nombre_archivo;
+    const context=f._empNombre||(f.obligaciones?.nombre)||'';
+    return`<div class="repo-card" onclick="viewFile('${f.storage_path}','${name}','${f._bucket||bucket}')">
+      <div class="repo-file-ico">${FILE_ICONS[tipo]||'📄'}</div>
+      <div class="repo-file-name">${name}</div>
+      <div class="repo-file-meta">${context}</div>
+      ${f.size_bytes?`<div class="repo-file-meta">${(f.size_bytes/1024).toFixed(0)} KB</div>`:''}
+      <div class="repo-file-tags"><span class="rft rft-${tipo}">${FILE_LABELS[tipo]||tipo}</span></div>
+      <div class="repo-file-actions">
+        <button class="btn btn-sm" onclick="event.stopPropagation();repoDownload('${f.storage_path}','${name}','${bucket}')">⬇ Descargar</button>
+        ${isAdmin()?`<button class="btn-text red" onclick="event.stopPropagation();repoDeleteFile('${f.obligacion_id||''}','${f.pago_id||''}','${tipo}','${f.storage_path}','${f.empleado_id||''}','${bucket}')">Eliminar</button>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
 function renderRepo(){
   const tree=getRepoTree();
   const search=document.getElementById('repo-search').value.toLowerCase().trim();
@@ -6839,6 +6869,7 @@ function renderRepo(){
   let pathHtml=`<span class="repo-seg" onclick="repoNav([])">🗂️ Archivos</span>`;
   if(repoPath.length>0){const ek=repoPath[0];const e=ENTS[ek]||{label:ek};pathHtml+=`<span class="repo-sep">/</span><span class="repo-seg" onclick="repoNav(['${ek}'])">${e.label}</span>`;}
   if(repoPath.length>1){const ck=repoPath[1];const cLabel=ck==='empleados'?'👥 Expedientes empleados':(catInfo(ck).icono+' '+catInfo(ck).label);pathHtml+=`<span class="repo-sep">/</span><span class="repo-seg" onclick="repoNav(['${repoPath[0]}','${ck}'])">${cLabel}</span>`;}
+  if(repoPath.length>2){const mk=repoPath[2];pathHtml+=`<span class="repo-sep">/</span><span class="repo-seg">📅 ${mk==='sin-fecha'?'Sin fecha':mesLabelDe(mk+'-01')}</span>`;}
   document.getElementById('repo-path').innerHTML=pathHtml;
   if(repoPath.length===0){
     const entKeys=Object.keys(tree);
@@ -6857,28 +6888,38 @@ function renderRepo(){
       const cLabel=ck==='empleados'?'👥 Expedientes empleados':(catInfo(ck).icono+' '+catInfo(ck).label);
       return`<div class="repo-card" onclick="repoNav(['${ek}','${ck}'])"><div class="repo-folder-ico">${cLabel.split(' ')[0]}</div><div class="repo-folder-name">${cLabel.replace(/^[^\s]+ /,'')}</div><div class="repo-folder-meta">${files.length} archivo${files.length!==1?'s':''}</div></div>`;
     }).join('');
-  }else{
+  }else if(repoPath.length===2){
     const ek=repoPath[0],ck=repoPath[1];
-    let files=(tree[ek]&&tree[ek][ck])||[];
+    const files=(tree[ek]&&tree[ek][ck])||[];
+    // Buscando (o expedientes de empleados, que no tienen fecha de pago):
+    // se enseña la lista de archivos directo, sin pasar por carpetas de mes
+    // -- si ya sabes el nombre no tiene caso hacerte entrar mes por mes.
+    if(search||ck==='empleados'){
+      let filtrados=search?files.filter(f=>((f.nombre_archivo||'').toLowerCase().includes(search))||(f._empNombre||'').toLowerCase().includes(search)||(f.obligaciones?.nombre||'').toLowerCase().includes(search)):files;
+      filtrados=[...filtrados].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+      if(!filtrados.length){grid.innerHTML=`<div class="repo-empty">Sin archivos${search?' que coincidan':''}</div>`;return;}
+      grid.innerHTML=renderRepoFileCards(filtrados,ck);
+      return;
+    }
+    // Cuadrícula por mes de pago -- pedido del dueño, 19-sept-2026: "dividir
+    // los archivos por cuadrículas por mes de pago, para saber cuáles son
+    // de cada uno" (antes se amontonaban todos juntos en una sola lista).
+    if(!files.length){grid.innerHTML=`<div class="repo-empty">Sin archivos en esta categoría</div>`;return;}
+    const porMes={};
+    files.forEach(f=>{const mk=mesKeyDe(f);(porMes[mk]=porMes[mk]||[]).push(f);});
+    const meses=Object.keys(porMes).sort((a,b)=>b.localeCompare(a));
+    grid.innerHTML=meses.map(mk=>{
+      const cnt=porMes[mk].length;
+      const label=mk==='sin-fecha'?'Sin fecha':mesLabelDe(mk+'-01');
+      return`<div class="repo-card" onclick="repoNav(['${ek}','${ck}','${mk}'])"><div class="repo-folder-ico">📅</div><div class="repo-folder-name">${label}</div><div class="repo-folder-meta">${cnt} archivo${cnt!==1?'s':''}</div></div>`;
+    }).join('');
+  }else{
+    const ek=repoPath[0],ck=repoPath[1],mk=repoPath[2];
+    let files=((tree[ek]&&tree[ek][ck])||[]).filter(f=>mesKeyDe(f)===mk);
     if(search)files=files.filter(f=>((f.nombre_archivo||'').toLowerCase().includes(search))||(f._empNombre||'').toLowerCase().includes(search)||(f.obligaciones?.nombre||'').toLowerCase().includes(search));
     files=[...files].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
     if(!files.length){grid.innerHTML=`<div class="repo-empty">Sin archivos${search?' que coincidan':''}</div>`;return;}
-    const bucket=ck==='empleados'?'empleados':'pagos';
-    grid.innerHTML=files.map(f=>{
-      const tipo=f.tipo;const name=f.nombre_archivo;
-      const context=f._empNombre||(f.obligaciones?.nombre)||'';
-      return`<div class="repo-card" onclick="viewFile('${f.storage_path}','${name}','${f._bucket||bucket}')">
-        <div class="repo-file-ico">${FILE_ICONS[tipo]||'📄'}</div>
-        <div class="repo-file-name">${name}</div>
-        <div class="repo-file-meta">${context}</div>
-        ${f.size_bytes?`<div class="repo-file-meta">${(f.size_bytes/1024).toFixed(0)} KB</div>`:''}
-        <div class="repo-file-tags"><span class="rft rft-${tipo}">${FILE_LABELS[tipo]||tipo}</span></div>
-        <div class="repo-file-actions">
-          <button class="btn btn-sm" onclick="event.stopPropagation();repoDownload('${f.storage_path}','${name}','${bucket}')">⬇ Descargar</button>
-          ${isAdmin()?`<button class="btn-text red" onclick="event.stopPropagation();repoDeleteFile('${f.obligacion_id||''}','${f.pago_id||''}','${tipo}','${f.storage_path}','${f.empleado_id||''}','${bucket}')">Eliminar</button>`:''}
-        </div>
-      </div>`;
-    }).join('');
+    grid.innerHTML=renderRepoFileCards(files,ck);
   }
 }
 function repoNav(path){repoPath=path;document.getElementById('repo-search').value='';renderRepo();}
