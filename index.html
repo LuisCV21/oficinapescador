@@ -3355,6 +3355,12 @@ function renderList(){
 // Una obligación de una sola vez (sin recurrencia) que ya se pagó se queda
 // en "✓ Pagado" para siempre (su fecha_limite no avanza, así que sin esto
 // se quedaría marcada "Vence hoy"/vencida aunque ya no haya nada que pagar).
+// Cuántos días antes del siguiente vencimiento se deja de mostrar "✓
+// Pagado" y se vuelve a avisar -- proporcional al ciclo, no un fijo de 7
+// días para todas: una semanal se pasaría el ciclo ENTERO avisando (nunca
+// se vería "Pagado"), y una anual con solo 7 días de aviso da poco
+// margen. Pedido del dueño, 19-sept-2026.
+const OBL_AVISO_DIAS={weekly:2,monthly:7,bimonthly:12,annual:30};
 function oblChip(o){
   const pagada=pagosData.some(p=>p.obligacion_id===o.id);
   const esUnica=!o.recurrencia||o.recurrencia==='none';
@@ -3363,7 +3369,8 @@ function oblChip(o){
   const days=daysUntil(o.fecha_limite);
   if(st==='overdue')return{chipTxt:Math.abs(days)+'d vencida',chipCls:'dc-red'};
   if(days===0)return{chipTxt:'Vence hoy',chipCls:'dc-red'};
-  if(pagada&&st!=='urgent')return{chipTxt:'✓ Pagado',chipCls:'dc-green'};
+  const avisoDias=OBL_AVISO_DIAS[o.recurrencia]||7;
+  if(pagada&&days>avisoDias)return{chipTxt:'✓ Pagado',chipCls:'dc-green'};
   return{chipTxt:days+' días',chipCls:st==='urgent'?'dc-amber':st==='soon'?'dc-copper':'dc-gray'};
 }
 function entPillHtml(o){
