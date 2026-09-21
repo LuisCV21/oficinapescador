@@ -13846,6 +13846,34 @@ function renderEditarCortePreviewHotel(){
 // desactualizado hasta que el POS aplicara la corrección.
 const FORMAS_PAGO_POS=['Efectivo','Debito','Credito','Transferencia'];
 
+// El POS mete lo cobrado por transferencia a Baucher como UN solo depósito
+// ("Transferencias del turno", categoria='transferencia') al cerrar turno --
+// ver DialogoCierreTurno._confirmar. Si después se corrige un folio a/desde
+// Transferencia, ese depósito no se rehace solo, y Baucher (y el cuadre) se
+// quedaban sin ese dinero (caso real: Puebla, 20-sept-2026, un folio
+// capturado como Efectivo que era Transferencia). Ajusta ese mismo depósito
+// por `delta` (+ suma, - resta); si no existe y delta>0 lo crea. Regresa
+// true si movió algo. Muta d.movimientos_desglose -- recalcularCorteJson
+// hace el resto (saldo_baucher, primer_total_caja, cuadre).
+function ajustarBaucherTransferencia(d,delta,usuario){
+  const r2=x=>Math.round((Number(x)||0)*100)/100;
+  if(!delta)return false;
+  d.movimientos_desglose=Array.isArray(d.movimientos_desglose)?d.movimientos_desglose:[];
+  const movs=d.movimientos_desglose;
+  const esAgregado=m=>m.medio==='baucher'&&m.tipo==='deposito'&&m.categoria==='transferencia';
+  const agg=movs.find(m=>esAgregado(m)&&/transferencias del turno/i.test(m.concepto||''))||movs.find(esAgregado);
+  if(delta>0){
+    if(agg)agg.monto=r2(Number(agg.monto||0)+delta);
+    else movs.push({tipo:'deposito',categoria:'transferencia',medio:'baucher',monto:r2(delta),concepto:'Transferencias del turno',fecha:new Date().toISOString(),usuario_nombre:usuario});
+    return true;
+  }
+  if(!agg)return false;
+  const resto=r2(Number(agg.monto||0)+delta);
+  if(resto>0.004)agg.monto=resto;
+  else movs.splice(movs.indexOf(agg),1);
+  return true;
+}
+
 function correccionDe(sucursal,folio){
   return correccionesData.find(c=>c.sucursal===sucursal&&c.folio===folio);
 }
@@ -13888,16 +13916,33 @@ async function guardarCorreccionPago(sucursal,folio,turnoId){
   const corte=corteConFolio(sucursal,folio,turnoId);
   if(corte){
     const d=JSON.parse(JSON.stringify(corte.datos));
+    const pagoAntes=d.pagos_detalle.find(p=>p.folio===folio);
+    const eraTransf=(pagoAntes?.forma_pago||'').toLowerCase()==='transferencia';
+    const seraTransf=forma.toLowerCase()==='transferencia';
     d.pagos_detalle=d.pagos_detalle.map(p=>p.folio===folio?{...p,forma_pago:forma.toLowerCase()}:p);
+    // Transferencia = Baucher (ver ajustarBaucherTransferencia). Solo
+    // restaurante: el Hotel lleva Baucher en resumen_recepcion, otro formato.
+    let baucherMovido=false;
+    if(!d.resumen_recepcion&&pagoAntes&&eraTransf!==seraTransf){
+      const monto=Number(pagoAntes.monto||0);
+      baucherMovido=ajustarBaucherTransferencia(d,seraTransf?monto:-monto,creadaPor);
+    }
     recalcularCorteJson(d);
     d.ediciones=Array.isArray(d.ediciones)?d.ediciones:[];
     d.ediciones.push({
       fecha:new Date().toISOString(),usuario:creadaPor,
-      motivo:motivo||`Folio ${folio}: forma de pago corregida a ${forma}`,
+      motivo:(motivo||`Folio ${folio}: forma de pago corregida a ${forma}`)+(baucherMovido?` (Baucher ${seraTransf?'+':'-'}${fmxn(pagoAntes.monto)})`:''),
       diferencia_cuadre_antes:Number(corte.diferencia_cuadre||0),diferencia_cuadre_despues:d.cuadre.diferencia_cuadre,
     });
     const {error:e2}=await sb.from('cortes_caja').update({datos:d,diferencia_cuadre:d.cuadre.diferencia_cuadre}).eq('id',corte.id);
-    avisoLocal=e2?' (no se pudo recuadrar aquí: '+e2.message+')':' — cuadre de Oficina ya actualizado';
+    avisoLocal=e2?' (no se pudo recuadrar aquí: '+e2.message+')':' — cuadre de Oficina ya actualizado'+(baucherMovido?' y Baucher ajustado':'');
+    // Baucher cambió => cambia el "anterior" de los turnos siguientes.
+    if(!e2&&baucherMovido){
+      try{
+        const n=await propagarAnteriorForward(sucursal,corte.turno_id,d,`Folio ${folio}: ${forma}`);
+        if(n)avisoLocal+=`; se recalcularon ${n} corte(s) posteriores`;
+      }catch(e3){avisoLocal+=' (no se pudo encadenar a los cortes siguientes: '+e3.message+')';}
+    }
   }
 
   closeModal('m-correccion-pago');
