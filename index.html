@@ -887,6 +887,10 @@ empleado a planta o darlo de baja. */
       </div>
     </div>
     <div class="tb-right">
+      <div id="pres-wrap" style="display:none;position:relative">
+        <button class="tb-theme-btn" id="pres-btn" onclick="togglePresPanel(event)" title="Usuarios en línea" style="width:auto;padding:0 10px;gap:6px;font-size:12px;font-weight:600"><span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block"></span><span id="pres-count">0</span> en línea</button>
+        <div id="pres-panel" style="display:none;position:absolute;right:0;top:calc(100% + 6px);min-width:260px;max-width:340px;background:var(--surface,#fff);border:1px solid var(--border,#ddd);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:6px;z-index:500"></div>
+      </div>
       <div id="rt-indicator" title="Conectando..." style="width:8px;height:8px;border-radius:50%;background:var(--amber);flex-shrink:0;transition:background .3s" title="Sincronización en tiempo real"></div>
       <button class="tb-theme-btn" onclick="openAccionesFeed()" title="Cambios de facturación (cancelaciones/sustituciones)" style="position:relative">🔔<span id="av-badge" style="display:none;position:absolute;top:2px;right:2px;background:var(--red,#e74c3c);color:white;border-radius:8px;min-width:16px;height:16px;font-size:9px;font-weight:700;align-items:center;justify-content:center;padding:0 3px">0</span></button>
       <button class="tb-theme-btn" onclick="toggleTheme()" title="Cambiar tema" id="theme-btn">🌙</button>
@@ -2997,6 +3001,7 @@ async function doLogin(){
   await initApp(data.user);
 }
 async function doLogout(){
+  stopPresence();
   await sb.auth.signOut();
   document.getElementById('app').style.display='none';
   document.getElementById('login-wrap').style.display='flex';
@@ -3037,6 +3042,7 @@ async function initApp(user){
   if(tabFacturacion)tabFacturacion.style.display=isAdmin()?'block':'none';
   await loadAll();
   setupRealtime();
+  startPresence();
 }
 
 // ─── LOAD DATA ────────────────────────────────────────────────
@@ -3171,6 +3177,7 @@ function renderGrupoTabbar(id){
 }
 
 function showPage(id){
+  presenciaPagina=id;trackPresence();
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.sb-item').forEach(s=>s.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');
@@ -3720,10 +3727,12 @@ function renderConfigUsuarios(){
   if(!usuariosData.length){el.innerHTML=`<div class="empty"><div class="empty-ico">👤</div>Sin usuarios aún</div>`;return;}
   el.innerHTML=usuariosData.map(u=>{
     const esYo=currentUser&&u.id===currentUser.id;
+    const pres=presenciaUsuarios[u.id];
+    const dot=`<span title="${pres?'En línea':'Desconectado'}" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:${pres?'var(--green)':'var(--border,#ccc)'}"></span>`;
     return `<div class="cfgcat-row ${u.activo===false?'inactive':''}">
       <div class="cfgcat-swatch" style="background:var(--slate-light)">${u.rol==='admin'?'🛡️':'👤'}</div>
       <div class="cfgcat-info">
-        <div class="cfgcat-label">${u.nombre||'(sin nombre)'}${esYo?' · tú':''}</div>
+        <div class="cfgcat-label">${dot}${u.nombre||'(sin nombre)'}${esYo?' · tú':''}${pres?` <span style="font-size:10px;font-weight:500;color:var(--green)">en línea · ${escHtml(presenciaNombrePagina(pres.pagina))}</span>`:''}</div>
         <div class="cfgcat-meta">${u.correo||''} · ${u.rol==='admin'?'Admin':'Oficinista'}${u.activo===false?' · desactivado':''}</div>
       </div>
       ${!esYo?`<button class="btn-text" onclick="editUsuario('${u.id}')">Editar</button><button class="btn-text ${u.activo===false?'':'red'}" onclick="toggleUsuarioActivo('${u.id}',${u.activo===false})">${u.activo===false?'Reactivar':'Desactivar'}</button>`:''}
@@ -15146,6 +15155,84 @@ function showRealtimeIndicator(connected){
   if(!el)return;
   el.style.background=connected?'var(--green)':'var(--amber)';
 }
+
+// ─── PRESENCIA (usuarios en línea, solo lo ve el admin) ───────
+// Realtime Presence: sin tabla; el usuario desaparece solo al cerrar la pestaña.
+let presenciaChannel=null,presenciaUsuarios={},presenciaPagina='',presenciaDesde=null;
+function escHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function presenciaNombrePagina(id){
+  if(!id)return 'inicio';
+  const si=document.getElementById('si-'+id);
+  const t=si?si.textContent.replace(/\s+/g,' ').trim():'';
+  return t||id;
+}
+function trackPresence(){
+  if(!presenciaChannel||!currentUser)return;
+  presenciaChannel.track({
+    nombre:currentPerfil&&currentPerfil.nombre||currentUser.email.split('@')[0],
+    correo:currentUser.email,
+    rol:currentPerfil&&currentPerfil.rol||'oficinista',
+    pagina:presenciaPagina,
+    desde:presenciaDesde
+  }).catch(()=>{});
+}
+function startPresence(){
+  stopPresence();
+  presenciaDesde=new Date().toISOString();
+  presenciaChannel=sb.channel('ep-presence',{config:{presence:{key:currentUser.id}}});
+  presenciaChannel
+    .on('presence',{event:'sync'},()=>{
+      const st=presenciaChannel.presenceState();
+      presenciaUsuarios={};
+      Object.keys(st).forEach(k=>{const m=st[k];if(m&&m.length)presenciaUsuarios[k]=m[m.length-1];});
+      renderPresence();
+    })
+    .subscribe(status=>{if(status==='SUBSCRIBED')trackPresence();});
+  const wrap=document.getElementById('pres-wrap');
+  if(wrap)wrap.style.display=isAdmin()?'block':'none';
+}
+function stopPresence(){
+  if(presenciaChannel){sb.removeChannel(presenciaChannel);presenciaChannel=null;}
+  presenciaUsuarios={};
+  const wrap=document.getElementById('pres-wrap');if(wrap)wrap.style.display='none';
+  const pn=document.getElementById('pres-panel');if(pn)pn.style.display='none';
+}
+function haceCuanto(iso){
+  const min=Math.max(0,Math.round((Date.now()-new Date(iso).getTime())/60000));
+  if(min<1)return 'ahora';
+  if(min<60)return 'hace '+min+' min';
+  const h=Math.floor(min/60);return 'hace '+h+' h '+(min%60)+' min';
+}
+function renderPresence(){
+  if(!isAdmin())return;
+  const lista=Object.entries(presenciaUsuarios).map(([id,p])=>({id,...p}))
+    .sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  const c=document.getElementById('pres-count');if(c)c.textContent=lista.length;
+  const pn=document.getElementById('pres-panel');
+  if(pn){
+    pn.innerHTML=lista.length?lista.map(p=>{
+      const esYo=currentUser&&p.id===currentUser.id;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px">
+        <span style="width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0"></span>
+        <div style="min-width:0;flex:1">
+          <div style="font-size:12px;font-weight:600;color:var(--text)">${escHtml(p.nombre||'')}${esYo?' · tú':''}${p.rol==='admin'?' 🛡️':''}</div>
+          <div style="font-size:11px;color:var(--text-muted,#888)">${escHtml(presenciaNombrePagina(p.pagina))} · ${haceCuanto(p.desde)}</div>
+        </div>
+      </div>`;
+    }).join(''):'<div style="padding:12px;font-size:12px;color:var(--text-muted,#888)">Nadie en línea</div>';
+  }
+  if(document.getElementById('page-config')&&document.getElementById('page-config').classList.contains('active')&&configTabCurrent==='usuarios')renderConfigUsuarios();
+}
+function togglePresPanel(e){
+  e.stopPropagation();
+  const pn=document.getElementById('pres-panel');
+  pn.style.display=pn.style.display==='block'?'none':'block';
+  if(pn.style.display==='block')renderPresence();
+}
+document.addEventListener('click',e=>{
+  const pn=document.getElementById('pres-panel');
+  if(pn&&pn.style.display==='block'&&!pn.contains(e.target))pn.style.display='none';
+});
 
 // Check existing session
 sb.auth.getSession().then(({data:{session}})=>{
