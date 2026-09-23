@@ -129,18 +129,52 @@ async function buscarClientePorRfc(apiKey: string, secretKey: string, rfc: strin
   return data.Data;
 }
 
+async function actualizarCliente(apiKey: string, secretKey: string, uid: string, payload: unknown) {
+  const resp = await fetch(`${HOST}/v1/clients/${uid}/update`, {
+    method: "POST",
+    headers: facturacomHeaders(apiKey, secretKey),
+    body: JSON.stringify(payload),
+  });
+  await fcCheck(resp);
+  return await resp.json();
+}
+
+// Si el RFC ya existe en Factura.com pero el correo capturado ahora es
+// distinto al que tiene registrado, lo actualiza -- bug real (sep-2026,
+// mismo hallazgo del lado de Pescador POS, ver facturacom.py allá): esta
+// función nunca aceptaba "email" y, si el cliente ya existía, regresaba su
+// UID sin tocar NADA, ni siquiera cuando cambiaban razón social/CP/régimen/
+// uso CFDI -- un cliente recurrente que pedía la factura a un correo
+// distinto (o corregía cualquier otro dato) se quedaba PARA SIEMPRE con lo
+// que se capturó la primera vez que se le facturó desde Oficina.
 async function buscarOCrearCliente(
   apiKey: string, secretKey: string,
-  opts: { rfc: string; razonSocial: string; cp: string; regimen: string; usoCfdi: string },
+  opts: { rfc: string; razonSocial: string; cp: string; regimen: string; usoCfdi: string; email?: string },
 ): Promise<string> {
   const existente = await buscarClientePorRfc(apiKey, secretKey, opts.rfc);
-  if (existente) return existente.UID;
+  if (existente) {
+    const emailExistente = existente.Contacto?.Email || "";
+    const cambios =
+      existente.RazonSocial !== opts.razonSocial ||
+      existente.CodigoPostal !== opts.cp ||
+      existente.RegimenId !== opts.regimen ||
+      existente.UsoCFDI !== opts.usoCfdi ||
+      (opts.email && opts.email !== emailExistente);
+    if (cambios) {
+      await actualizarCliente(apiKey, secretKey, existente.UID, {
+        rfc: opts.rfc, razons: opts.razonSocial, codpos: opts.cp,
+        email: opts.email || emailExistente || "sin-correo@example.com",
+        usocfdi: opts.usoCfdi, regimen: opts.regimen, pais: "MEX",
+      });
+    }
+    return existente.UID;
+  }
   const resp = await fetch(`${HOST}/v1/clients/create`, {
     method: "POST",
     headers: facturacomHeaders(apiKey, secretKey),
     body: JSON.stringify({
       rfc: opts.rfc, razons: opts.razonSocial, codpos: opts.cp,
-      email: "sin-correo@example.com", usocfdi: opts.usoCfdi, regimen: opts.regimen, pais: "MEX",
+      email: opts.email || "sin-correo@example.com", usocfdi: opts.usoCfdi, regimen: opts.regimen, pais: "MEX",
     }),
   });
   await fcCheck(resp);
