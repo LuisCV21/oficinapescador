@@ -189,7 +189,13 @@ async function obtenerSerieFactura(apiKey: string, secretKey: string): Promise<n
   const resp = await fetch(`${HOST}/v4/series`, { headers: facturacomHeaders(apiKey, secretKey) });
   await fcCheck(resp);
   const data = await resp.json();
-  const serie = (data.data || []).find((s: any) => s.SerieType === "factura" && s.SerieStatus === "Activa");
+  // "AF" es la serie exclusiva del Autofacturador de Factura.com (sept-2026) --
+  // nunca debe usarse para facturas normales/globales. Además se toma la más
+  // antigua (SerieID menor), porque el orden de /v4/series pone primero las
+  // series recién creadas.
+  const serie = (data.data || [])
+    .filter((s: any) => s.SerieType === "factura" && s.SerieStatus === "Activa" && s.SerieName !== "AF")
+    .sort((a: any, b: any) => Number(a.SerieID) - Number(b.SerieID))[0];
   if (!serie) throw new Error("La cuenta de Factura.com no tiene una serie activa de tipo 'factura'.");
   return serie.SerieID;
 }
