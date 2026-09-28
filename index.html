@@ -235,6 +235,52 @@ body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--s
 .wv-red{color:var(--red)}.wv-amber{color:var(--amber)}.wv-copper{color:var(--copper)}
 .wv-green{color:var(--green)}.wv-slate{color:var(--slate)}
 
+/* Tickets y garantías */
+.gar-widgets{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.gar-w{flex:1 1 120px;min-width:110px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--gw,var(--border2));
+  border-radius:var(--rl);padding:8px 12px;cursor:pointer;display:flex;flex-direction:column;transition:box-shadow .15s,transform .15s;font-family:var(--font);text-align:left;color:var(--text)}
+.gar-w:hover{box-shadow:var(--shadow);transform:translateY(-1px)}
+.gar-w.on{background:var(--surface2);box-shadow:0 0 0 2px var(--gw,var(--border2)) inset}
+.gar-w-val{font-size:20px;font-weight:600;line-height:1.1;color:var(--gw,var(--text))}
+.gar-w-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text2)}
+.gar-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
+.gar-toolbar select{width:auto;font-size:12px}
+.gar-search-wrap{position:relative;flex:1;min-width:220px}
+.gar-search-wrap .repo-search{width:100%;font-size:14px;padding:10px 34px 10px 16px;box-sizing:border-box}
+.gar-search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:none;cursor:pointer;color:var(--text3);font-size:13px;display:none}
+.gar-vista{display:flex;border:1px solid var(--border2);border-radius:20px;overflow:hidden}
+.gar-vista button{border:none;background:var(--surface);color:var(--text2);padding:7px 12px;cursor:pointer;font-size:14px}
+.gar-vista button.on{background:var(--copper);color:#fff}
+.gar-cats{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.gar-cat{border:1px solid var(--border2);background:var(--surface);color:var(--text);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:var(--font);display:inline-flex;gap:5px;align-items:center}
+.gar-cat:hover{background:var(--surface2)}
+.gar-cat.on{background:var(--copper);border-color:var(--copper);color:#fff}
+.gar-cat .n{font-size:10px;opacity:.7}
+.gar-grupo-hdr{display:flex;align-items:center;gap:8px;margin:18px 0 10px;font-size:13px;font-weight:700;color:var(--text)}
+.gar-grupo-hdr .n{font-size:11px;color:var(--text3);font-weight:500}
+.gar-grupo-hdr::after{content:'';flex:1;height:1px;background:var(--border2)}
+.gar-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}
+.gar-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:14px;border-top:3px solid var(--gc,var(--border2));display:flex;flex-direction:column}
+.gar-estado{display:inline-block;font-size:11px;font-weight:600;padding:3px 8px;border-radius:10px;margin:8px 0}
+.gar-files{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+.gar-file{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 9px;border-radius:14px;background:var(--surface2);border:1px solid var(--border2);cursor:pointer;color:var(--text)}
+.gar-file:hover{border-color:var(--copper)}
+.gar-file .x{margin-left:2px;color:var(--text3);font-size:10px}
+.gar-file .x:hover{color:var(--red)}
+.gar-card mark,.gar-tabla mark{background:#FFE58A;color:#2A1E00;border-radius:2px;padding:0 1px}
+.gar-tabla{width:100%;border-collapse:collapse;font-size:12px;background:var(--surface);border-radius:var(--rl);overflow:hidden}
+.gar-tabla th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text2);padding:8px 10px;background:var(--surface2);border-bottom:1px solid var(--border2);white-space:nowrap;cursor:pointer}
+.gar-tabla td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+.gar-tabla tr:hover td{background:var(--surface2)}
+.gar-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
+.gar-cat-pick{display:flex;flex-wrap:wrap;gap:5px}
+.gar-cat-pick button{border:1px solid var(--border2);background:var(--surface);color:var(--text);border-radius:16px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:var(--font)}
+.gar-cat-pick button.on{background:var(--copper);border-color:var(--copper);color:#fff}
+.gar-dur{display:flex;gap:4px;flex-wrap:wrap}
+.gar-dur button{border:1px solid var(--border2);background:var(--surface);color:var(--text);border-radius:14px;padding:4px 9px;font-size:11px;cursor:pointer;font-family:var(--font)}
+.gar-dur button.on{background:var(--copper);border-color:var(--copper);color:#fff}
+@media(max-width:640px){.gar-tabla .opt{display:none}}
+
 /* Obligaciones: barra de resumen compacta (más chica que el widget genérico) */
 #widgets{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
 #widgets .widget{padding:8px 14px;border-left:3px solid var(--border);
@@ -892,7 +938,7 @@ empleado a planta o darlo de baja. */
         <div id="pres-panel" style="display:none;position:absolute;right:0;top:calc(100% + 6px);min-width:260px;max-width:340px;background:var(--surface,#fff);border:1px solid var(--border,#ddd);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:6px;z-index:500"></div>
       </div>
       <div id="rt-indicator" title="Conectando..." style="width:8px;height:8px;border-radius:50%;background:var(--amber);flex-shrink:0;transition:background .3s" title="Sincronización en tiempo real"></div>
-      <button class="tb-theme-btn" onclick="openAccionesFeed()" title="Cambios de facturación (cancelaciones/sustituciones)" style="position:relative">🔔<span id="av-badge" style="display:none;position:absolute;top:2px;right:2px;background:var(--red,#e74c3c);color:white;border-radius:8px;min-width:16px;height:16px;font-size:9px;font-weight:700;align-items:center;justify-content:center;padding:0 3px">0</span></button>
+      <button class="tb-theme-btn" onclick="openAccionesFeed()" title="Notificaciones (solicitudes de vacaciones/finiquito y cambios de facturación)" style="position:relative">🔔<span id="av-badge" style="display:none;position:absolute;top:2px;right:2px;background:var(--red,#e74c3c);color:white;border-radius:8px;min-width:16px;height:16px;font-size:9px;font-weight:700;align-items:center;justify-content:center;padding:0 3px">0</span></button>
       <button class="tb-theme-btn" onclick="toggleTheme()" title="Cambiar tema" id="theme-btn">🌙</button>
       <div class="tb-user-chip">
         <div class="tb-avatar" id="tb-avatar">?</div>
@@ -995,6 +1041,7 @@ empleado a planta o darlo de baja. */
       <div class="page active" id="page-inicio">
         <div id="gm-container"></div>
         <div id="prueba-container"></div>
+        <div id="sol-rh-home-container"></div>
         <div id="branch-summary-container"></div>
         <div class="home-2col">
           <div id="vencimientos-container"></div>
@@ -1268,10 +1315,25 @@ empleado a planta o darlo de baja. */
           </div>
           <button class="btn btn-filled" onclick="openGarantiaModal()">+ Registrar producto</button>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-          <input class="repo-search" type="text" id="gar-search" placeholder="🔍 Buscar producto, marca, tienda o no. de serie..." oninput="renderGarantias()" style="flex:1;min-width:220px;font-size:14px;padding:10px 16px">
-          <select id="gar-filtro-ent" onchange="renderGarantias()" style="width:auto"></select>
+        <div id="gar-widgets" class="gar-widgets"></div>
+        <div class="gar-toolbar">
+          <div class="gar-search-wrap">
+            <input class="repo-search" type="text" id="gar-search" placeholder="🔍 Buscar producto, marca, modelo, tienda, ubicación o no. de serie..." oninput="garOnSearch()" autocomplete="off">
+            <button class="gar-search-clear" id="gar-search-clear" onclick="garLimpiarBusqueda()" title="Borrar búsqueda">✕</button>
+          </div>
+          <select id="gar-filtro-ent" onchange="renderGarantias()"></select>
+          <select id="gar-orden" onchange="garGuardarPref();renderGarantias()">
+            <option value="recientes">Más recientes</option>
+            <option value="az">Nombre A–Z</option>
+            <option value="vence">Vence primero</option>
+            <option value="compra">Fecha de compra</option>
+          </select>
+          <div class="gar-vista">
+            <button id="gar-vista-tarjetas" onclick="garSetVista('tarjetas')" title="Tarjetas">▦</button>
+            <button id="gar-vista-lista" onclick="garSetVista('lista')" title="Lista">☰</button>
+          </div>
         </div>
+        <div id="gar-cats" class="gar-cats"></div>
         <div id="gar-content"></div>
       </div>
 
@@ -1658,7 +1720,7 @@ mismo blob ya cargado, sin volver a pedirlo. -->
 
 <div class="modal-overlay" id="m-acciones-feed">
 <div class="modal" style="max-width:560px">
-  <div class="modal-hdr"><div class="modal-title">Cambios de facturación</div><button class="btn-icon" onclick="closeModal('m-acciones-feed')">✕</button></div>
+  <div class="modal-hdr"><div class="modal-title">Notificaciones</div><button class="btn-icon" onclick="closeModal('m-acciones-feed')">✕</button></div>
   <div class="modal-body" id="m-acciones-feed-body"></div>
   <div class="modal-ftr"><button class="btn" onclick="closeModal('m-acciones-feed')">Cerrar</button></div>
 </div>
@@ -2154,9 +2216,54 @@ mismo blob ya cargado, sin volver a pedirlo. -->
 <div class="modal" style="max-width:760px">
   <div class="modal-hdr"><div class="modal-title">Solicitudes de vacaciones y finiquitos</div><button class="btn-icon" onclick="closeModal('m-solicitudes-rh')">✕</button></div>
   <div class="modal-body">
+    <div class="ledger-subtabs" id="sol-rh-tabs" style="margin-bottom:12px">
+      <div class="ledger-subtab active" data-t="activas" onclick="switchSolRhTab('activas')">Por atender</div>
+      <div class="ledger-subtab" data-t="historial" onclick="switchSolRhTab('historial')">🗂 Historial</div>
+    </div>
+    <div id="sol-rh-hist-filtros" style="display:none;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <input type="text" id="sol-rh-hist-q" placeholder="🔍 Buscar empleado..." oninput="renderSolicitudesRhList()" style="flex:1;min-width:180px"/>
+      <select id="sol-rh-hist-tipo" onchange="renderSolicitudesRhList()" style="width:auto">
+        <option value="">Vacaciones y finiquitos</option><option value="vacaciones">Solo vacaciones</option><option value="finiquito">Solo finiquitos</option>
+      </select>
+      <select id="sol-rh-hist-estado" onchange="renderSolicitudesRhList()" style="width:auto">
+        <option value="">Aceptadas y rechazadas</option><option value="aceptada">Solo aceptadas</option><option value="rechazada">Solo rechazadas</option>
+      </select>
+    </div>
     <div id="solicitudes-rh-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
   </div>
   <div class="modal-ftr"><button class="btn" onclick="closeModal('m-solicitudes-rh')">Cerrar</button></div>
+</div>
+</div>
+
+<!-- MODAL REVISAR SOLICITUD RH (solo admin): ver todos los datos del
+     cálculo, corregirlos (fecha, días, salario, fecha de ingreso del
+     expediente) y luego aceptar o rechazar. Pedido del dueño, 28-sept-2026:
+     "no puedes ver bien los datos ... ni cambiarlas en caso de que tenga una
+     fecha de ingreso incorrecta". -->
+<div class="modal-overlay" id="m-revisar-sol-rh">
+<div class="modal" style="max-width:680px">
+  <div class="modal-hdr"><div class="modal-title" id="rsr-title">Revisar solicitud</div><button class="btn-icon" onclick="closeModal('m-revisar-sol-rh')">✕</button></div>
+  <div class="modal-body">
+    <div id="rsr-info" style="font-size:12px;color:var(--text2);padding:9px 12px;background:var(--surface2);border-radius:var(--r);margin-bottom:14px;border-left:3px solid var(--blue);line-height:1.6"></div>
+    <div class="modal-sec">Datos del empleado (expediente)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
+      <div class="f-row"><label>Fecha de ingreso</label><input type="date" id="rsr-ingreso" oninput="calcRevisarSolRh()"/></div>
+      <div class="f-row"><label>Salario diario</label><input type="number" step="0.01" id="rsr-salario" oninput="calcRevisarSolRh()"/></div>
+    </div>
+    <div id="rsr-ingreso-aviso" style="display:none;font-size:11px;color:var(--amber);margin:-4px 0 8px"></div>
+    <div class="modal-sec" style="margin-top:6px">Datos de la solicitud</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
+      <div class="f-row"><label id="rsr-fecha-lbl">Fecha</label><input type="date" id="rsr-fecha" oninput="calcRevisarSolRh()"/></div>
+      <div class="f-row" id="rsr-row-dias"><label style="display:flex;justify-content:space-between;align-items:center">Días que tomará <button class="btn-text" style="font-size:10px" onclick="document.getElementById('rsr-dias').value='';calcRevisarSolRh()">usar tabla LFT</button></label><input type="number" step="0.5" id="rsr-dias" placeholder="Automático (tabla LFT)" oninput="calcRevisarSolRh()"/></div>
+      <div class="f-row rsr-fin"><label>Días de salario pendientes</label><input type="number" step="0.5" id="rsr-dias-pend" oninput="calcRevisarSolRh()"/></div>
+      <div class="f-row rsr-fin"><label>Vacaciones ya gozadas en el periodo</label><input type="number" step="0.5" id="rsr-vac-tomadas" oninput="calcRevisarSolRh()"/></div>
+    </div>
+    <div class="f-row"><label>Notas</label><textarea id="rsr-notas" rows="2"></textarea></div>
+    <div class="modal-sec" style="margin-top:6px">Cálculo con estos datos</div>
+    <div id="rsr-breakdown"></div>
+    <div id="rsr-previas"></div>
+  </div>
+  <div class="modal-ftr" id="rsr-ftr"></div>
 </div>
 </div>
 
@@ -2624,24 +2731,45 @@ mismo blob ya cargado, sin volver a pedirlo. -->
 <div class="modal">
   <div class="modal-hdr"><div class="modal-title" id="m-garantia-title">Registrar producto</div><button class="btn-icon" onclick="closeModal('m-garantia')">✕</button></div>
   <div class="modal-body">
+    <!-- Las sugerencias (datalist) salen de lo ya capturado, para que todas
+    escriban "Mabe" igual y no "mabe"/"MABE"/"Mabe S.A." -- así el buscador
+    y el orden A–Z agrupan bien. -->
+    <datalist id="gar-dl-producto"></datalist><datalist id="gar-dl-marca"></datalist>
+    <datalist id="gar-dl-tienda"></datalist><datalist id="gar-dl-ubicacion"></datalist>
     <div class="f-row"><label>Producto <span class="req">*</span></label>
-      <input type="text" id="gf-producto" placeholder="Ej. Refrigerador, Licuadora, Aire acondicionado"/>
+      <input type="text" id="gf-producto" list="gar-dl-producto" placeholder="Ej. Refrigerador, Licuadora, Aire acondicionado" oninput="garSugerirCategoria()"/>
+      <div id="gf-dup-hint" style="font-size:11px;color:var(--amber);margin-top:3px;display:none"></div>
+    </div>
+    <div class="f-row"><label>Categoría</label>
+      <div class="gar-cat-pick" id="gf-cat-pick"></div>
     </div>
     <div class="f-grid">
-      <div class="f-row"><label>Marca</label><input type="text" id="gf-marca" placeholder="Ej. Mabe"/></div>
+      <div class="f-row"><label>Marca</label><input type="text" id="gf-marca" list="gar-dl-marca" placeholder="Ej. Mabe"/></div>
       <div class="f-row"><label>Modelo</label><input type="text" id="gf-modelo"/></div>
     </div>
     <div class="f-grid">
       <div class="f-row"><label>No. de serie</label><input type="text" id="gf-serie"/></div>
-      <div class="f-row"><label>Tienda / proveedor</label><input type="text" id="gf-tienda" placeholder="Ej. Home Depot"/></div>
+      <div class="f-row"><label>Tienda / proveedor</label><input type="text" id="gf-tienda" list="gar-dl-tienda" placeholder="Ej. Home Depot"/></div>
     </div>
     <div class="f-grid">
       <div class="f-row"><label>Sucursal</label><select id="gf-entidad"></select></div>
-      <div class="f-row"><label>Monto (MXN)</label><input type="number" id="gf-monto" placeholder="0.00" step="0.01"/></div>
+      <div class="f-row"><label>Ubicación</label><input type="text" id="gf-ubicacion" list="gar-dl-ubicacion" placeholder="Ej. Cocina, Habitación 12, Barra"/></div>
     </div>
     <div class="f-grid">
-      <div class="f-row"><label>Fecha de compra</label><input type="date" id="gf-fecha-compra"/></div>
-      <div class="f-row"><label>Garantía vence</label><input type="date" id="gf-vence"/></div>
+      <div class="f-row"><label>Fecha de compra</label><input type="date" id="gf-fecha-compra" onchange="garRecalcVence()"/></div>
+      <div class="f-row"><label>Monto (MXN)</label><input type="number" id="gf-monto" placeholder="0.00" step="0.01"/></div>
+    </div>
+    <div class="f-row"><label>Garantía vence</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <input type="date" id="gf-vence" style="width:auto;flex:1;min-width:150px" oninput="garDuracionSel=null;garMarcarDuracion()"/>
+        <div class="gar-dur" id="gf-dur">
+          <button type="button" data-m="6" onclick="garSetDuracion(6)">6 meses</button>
+          <button type="button" data-m="12" onclick="garSetDuracion(12)">1 año</button>
+          <button type="button" data-m="24" onclick="garSetDuracion(24)">2 años</button>
+          <button type="button" data-m="36" onclick="garSetDuracion(36)">3 años</button>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--text3);margin-top:3px">Toca la duración y se calcula sola desde la fecha de compra.</div>
     </div>
     <div id="gf-archivos-wrap">
       <div class="f-grid">
@@ -4930,15 +5058,63 @@ async function guardarSolicitudRh(){
   await loadSolicitudesRh();
   renderSolicitudesRhBadge();
 }
+// Contador de solicitudes pendientes: botón "Solicitudes" en RH, tarjeta en
+// Inicio y campanita de arriba (estas dos últimas solo para admin, que es
+// quien las autoriza).
+function solRhPendientes(){return solicitudesRhData.filter(s=>s.estado==='pendiente');}
 function renderSolicitudesRhBadge(){
   const badge=document.getElementById('sol-rh-badge');
-  if(!badge)return;
-  const n=solicitudesRhData.filter(s=>s.estado==='pendiente').length;
-  badge.style.display=n?'inline-block':'none';
-  badge.textContent=n;
+  const n=solRhPendientes().length;
+  if(badge){badge.style.display=n?'inline-block':'none';badge.textContent=n;}
+  renderSolicitudesRhHome();
+  if(typeof renderAccionesVentaBadge==='function')renderAccionesVentaBadge();
+}
+function solRhEmpNombre(s){const e=empData.find(x=>x.id===s.empleado_id);return e?e.nombre:'(empleado eliminado)';}
+function solRhResumen(s){
+  const d=s.datos||{};
+  if(s.tipo==='vacaciones')return`Inicia ${fmt(d.fecha)}${d.dias!=null?' · '+d.dias+' día'+(d.dias!==1?'s':''):' · días por tabla LFT'}`;
+  return`Baja ${fmt(d.fecha)}`;
+}
+function renderSolicitudesRhHome(){
+  const el=document.getElementById('sol-rh-home-container');
+  if(!el)return;
+  const pend=isAdmin()?solRhPendientes():[];
+  if(!pend.length){el.innerHTML='';return;}
+  const filas=pend.map(s=>`<div class="prueba-fila" style="border-color:var(--border2)">
+      <div><div class="pf-nombre">${s.tipo==='vacaciones'?'🏖️':'🧮'} ${escHtml(solRhEmpNombre(s))} <span style="font-weight:400;color:var(--text3);font-size:12px">· ${ENTS[s.entidad]?.label||s.entidad}</span></div>
+      <div class="pf-det">${s.tipo==='vacaciones'?'Vacaciones':'Finiquito'} · ${solRhResumen(s)} · Pedida por ${escHtml(s.solicitado_por_nombre||'?')} el ${fmtFechaHora(s.solicitado_at)}</div></div>
+      <div class="prueba-acciones"><button class="btn btn-filled" onclick="openRevisarSolRh('${s.id}')">🔍 Revisar</button></div>
+    </div>`).join('');
+  el.innerHTML=`<div class="home-card" style="border-left:3px solid var(--blue)">
+    <div class="home-card-title">🕐 Solicitudes por autorizar (${pend.length})<button class="btn-text" onclick="openSolicitudesRhModal()">Ver todas</button></div>
+    ${filas}
+  </div>`;
+}
+
+// "Por atender" vs "Historial": para que la lista no se llene con miles de
+// solicitudes viejas. Se quedan a la vista las pendientes, las aceptadas
+// cuya fecha todavía no pasa o que se aceptaron hace menos de 7 días (para
+// que las chicas alcancen a imprimirlas), y las rechazadas de los últimos
+// 3 días (para que vean el motivo). Todo lo demás vive en Historial.
+let solRhTab='activas';
+function solRhEsActiva(s){
+  if(s.estado==='pendiente')return true;
+  const hace=s.revisado_at?(Date.now()-new Date(s.revisado_at))/86400000:999;
+  if(s.estado==='aceptada'){
+    const f=(s.datos||{}).fecha;
+    return hace<7||(f&&f>=new Date().toISOString().slice(0,10));
+  }
+  return hace<3;
+}
+function switchSolRhTab(t){
+  solRhTab=t;
+  document.querySelectorAll('#sol-rh-tabs .ledger-subtab').forEach(x=>x.classList.toggle('active',x.dataset.t===t));
+  document.getElementById('sol-rh-hist-filtros').style.display=t==='historial'?'flex':'none';
+  renderSolicitudesRhList();
 }
 async function openSolicitudesRhModal(){
   openModal('m-solicitudes-rh');
+  switchSolRhTab('activas');
   document.getElementById('solicitudes-rh-list').innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
   await loadSolicitudesRh();
   renderSolicitudesRhList();
@@ -4952,32 +5128,177 @@ const SOL_RH_ESTADO_BADGE={
 function renderSolicitudesRhList(){
   const el=document.getElementById('solicitudes-rh-list');
   if(!el)return;
-  if(!solicitudesRhData.length){
-    el.innerHTML='<div class="empty" style="padding:16px">Ninguna solicitud todavía.</div>';
+  const activas=solicitudesRhData.filter(solRhEsActiva);
+  const nHist=solicitudesRhData.length-activas.length;
+  const tabHist=document.querySelector('#sol-rh-tabs [data-t="historial"]');
+  if(tabHist)tabHist.textContent='🗂 Historial'+(nHist?` (${nHist})`:'');
+  let lista;
+  if(solRhTab==='activas'){
+    // Pendientes primero
+    lista=activas.slice().sort((a,b)=>(a.estado==='pendiente'?0:1)-(b.estado==='pendiente'?0:1)||(b.solicitado_at||'').localeCompare(a.solicitado_at||''));
+  }else{
+    const q=garNorm(document.getElementById('sol-rh-hist-q').value.trim());
+    const tipo=document.getElementById('sol-rh-hist-tipo').value;
+    const est=document.getElementById('sol-rh-hist-estado').value;
+    lista=solicitudesRhData.filter(s=>!solRhEsActiva(s)
+      &&(!tipo||s.tipo===tipo)&&(!est||s.estado===est)
+      &&(!q||garNorm(solRhEmpNombre(s)+' '+(s.solicitado_por_nombre||'')).includes(q)));
+  }
+  if(!lista.length){
+    el.innerHTML=`<div class="empty" style="padding:16px">${solRhTab==='activas'?'Nada por atender 👍'+(nHist?'<br><small style="color:var(--text3)">Las anteriores están en Historial</small>':''):'Sin solicitudes en el historial con esos filtros.'}</div>`;
     return;
   }
-  const empById={};empData.forEach(e=>{empById[e.id]=e;});
-  const filas=solicitudesRhData.map(s=>{
-    const e=empById[s.empleado_id];
+  el.innerHTML=lista.map(s=>{
     const d=s.datos||{};
     let acciones='';
     if(s.estado==='pendiente'&&isAdmin()){
-      acciones=`<button class="btn btn-sm btn-filled" onclick="aceptarSolicitudRh('${s.id}')">✓ Aceptar</button>`+
+      acciones=`<button class="btn btn-sm btn-filled" onclick="openRevisarSolRh('${s.id}')">🔍 Revisar y autorizar</button>`+
         `<button class="btn btn-sm" style="color:var(--red)" onclick="rechazarSolicitudRh('${s.id}')">✕ Rechazar</button>`;
     }else if(s.estado==='aceptada'){
       acciones=`<button class="btn btn-sm btn-filled" onclick="abrirDesdeSolicitud('${s.id}')">🖨 Ver e imprimir</button>`;
     }
+    if(s.estado!=='pendiente'&&isAdmin())acciones+=`<button class="btn btn-sm" onclick="openRevisarSolRh('${s.id}')">🔍 Ver datos</button>`;
+    const extra=[];
+    if(d.salario!=null)extra.push('Salario '+fmxn(d.salario));
+    if(s.tipo==='finiquito'){
+      if(d.dias_pend)extra.push(d.dias_pend+' días de salario pendientes');
+      if(d.vac_tomadas)extra.push(d.vac_tomadas+' días de vacaciones ya gozados');
+    }
     return `<div class="hist-item">
-      <div class="hist-title">${s.tipo==='vacaciones'?'🏖️ Vacaciones':'🧮 Finiquito'} — ${e?e.nombre:'(empleado eliminado)'} <span style="font-weight:400;color:var(--text3)">· ${ENTS[s.entidad]?.label||s.entidad}</span></div>
-      <div class="hist-meta">Fecha solicitada: ${fmt(d.fecha)} · Pedida por ${s.solicitado_por_nombre||'?'} el ${fmtFechaHora(s.solicitado_at)}</div>
-      ${s.notas?`<div style="font-size:11px;color:var(--text2);margin-top:3px">"${s.notas}"</div>`:''}
-      ${s.estado==='rechazada'&&s.motivo_rechazo?`<div style="font-size:11px;color:var(--red);margin-top:3px">Motivo: ${s.motivo_rechazo}</div>`:''}
-      ${s.estado!=='pendiente'&&s.revisado_por_nombre?`<div style="font-size:10px;color:var(--text3);margin-top:2px">Revisada por ${s.revisado_por_nombre} el ${fmtFechaHora(s.revisado_at)}</div>`:''}
+      <div class="hist-title">${s.tipo==='vacaciones'?'🏖️ Vacaciones':'🧮 Finiquito'} — ${escHtml(solRhEmpNombre(s))} <span style="font-weight:400;color:var(--text3)">· ${ENTS[s.entidad]?.label||s.entidad}</span></div>
+      <div class="hist-meta">${solRhResumen(s)}${extra.length?' · '+extra.join(' · '):''}</div>
+      <div class="hist-meta">Pedida por ${escHtml(s.solicitado_por_nombre||'?')} el ${fmtFechaHora(s.solicitado_at)}</div>
+      ${s.notas?`<div style="font-size:11px;color:var(--text2);margin-top:3px">"${escHtml(s.notas)}"</div>`:''}
+      ${d.editado_por_nombre?`<div style="font-size:10px;color:var(--blue);margin-top:2px">✎ Datos corregidos por ${escHtml(d.editado_por_nombre)} el ${fmtFechaHora(d.editado_at)}</div>`:''}
+      ${s.estado==='rechazada'&&s.motivo_rechazo?`<div style="font-size:11px;color:var(--red);margin-top:3px">Motivo: ${escHtml(s.motivo_rechazo)}</div>`:''}
+      ${s.estado!=='pendiente'&&s.revisado_por_nombre?`<div style="font-size:10px;color:var(--text3);margin-top:2px">Revisada por ${escHtml(s.revisado_por_nombre)} el ${fmtFechaHora(s.revisado_at)}</div>`:''}
       <div style="margin-top:8px">${SOL_RH_ESTADO_BADGE[s.estado]||''}</div>
-      ${acciones?`<div style="margin-top:8px;display:flex;gap:6px">${acciones}</div>`:''}
+      ${acciones?`<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${acciones}</div>`:''}
     </div>`;
   }).join('');
-  el.innerHTML=filas;
+}
+
+// ── Revisar / corregir una solicitud (admin) ──
+let rsrId=null;
+function openRevisarSolRh(id){
+  const s=solicitudesRhData.find(x=>x.id===id);if(!s)return;
+  const e=empData.find(x=>x.id===s.empleado_id);
+  if(!e){toast('El empleado de esta solicitud ya no existe',true);return;}
+  rsrId=id;
+  const d=s.datos||{};
+  const esVac=s.tipo==='vacaciones';
+  const editable=s.estado==='pendiente';
+  document.getElementById('rsr-title').textContent=(esVac?'🏖️ Vacaciones':'🧮 Finiquito')+' — '+e.nombre;
+  const puesto=puestoNombre(e.puesto_id);
+  document.getElementById('rsr-info').innerHTML=`👤 <b>${escHtml(e.nombre)}</b> — ${(ENTS[e.entidad]||{label:e.entidad}).label}${puesto?' · '+escHtml(puesto):''}<br>
+    Pedida por <b>${escHtml(s.solicitado_por_nombre||'?')}</b> el ${fmtFechaHora(s.solicitado_at)} · ${SOL_RH_ESTADO_BADGE[s.estado]||''}
+    ${s.notas?`<br>📝 "${escHtml(s.notas)}"`:''}`;
+  document.getElementById('rsr-ingreso').value=e.fecha_ingreso||'';
+  document.getElementById('rsr-salario').value=d.salario!=null?d.salario:(e.salario_diario||0);
+  document.getElementById('rsr-fecha-lbl').textContent=esVac?'Fecha de inicio de vacaciones':'Fecha de baja / cálculo';
+  document.getElementById('rsr-fecha').value=d.fecha||'';
+  document.getElementById('rsr-dias').value=d.dias!=null?d.dias:'';
+  document.getElementById('rsr-dias-pend').value=d.dias_pend||0;
+  document.getElementById('rsr-vac-tomadas').value=d.vac_tomadas||0;
+  document.getElementById('rsr-notas').value=s.notas||'';
+  document.getElementById('rsr-row-dias').style.display=esVac?'':'none';
+  document.querySelectorAll('#m-revisar-sol-rh .rsr-fin').forEach(x=>x.style.display=esVac?'none':'');
+  document.querySelectorAll('#m-revisar-sol-rh input,#m-revisar-sol-rh textarea').forEach(x=>x.disabled=!editable);
+  document.getElementById('rsr-ftr').innerHTML=editable
+    ?`<button class="btn" onclick="closeModal('m-revisar-sol-rh')">Cerrar</button>
+      <button class="btn" style="color:var(--red)" onclick="rechazarSolicitudRh('${id}')">✕ Rechazar</button>
+      <button class="btn" onclick="guardarRevisionSolRh(false)">💾 Guardar cambios</button>
+      <button class="btn btn-filled" style="background:var(--green);border-color:var(--green)" onclick="guardarRevisionSolRh(true)">✓ Aceptar</button>`
+    :`<button class="btn" onclick="closeModal('m-revisar-sol-rh')">Cerrar</button>
+      ${s.estado==='aceptada'?`<button class="btn btn-filled" onclick="closeModal('m-revisar-sol-rh');abrirDesdeSolicitud('${id}')">🖨 Ver e imprimir</button>`:''}`;
+  // Vacaciones anteriores del mismo empleado, para verificar que no se
+  // estén pagando dos veces las del mismo año de servicio.
+  const previas=solicitudesRhData.filter(x=>x.id!==id&&x.empleado_id===s.empleado_id&&x.estado==='aceptada')
+    .sort((a,b)=>((b.datos||{}).fecha||'').localeCompare((a.datos||{}).fecha||''));
+  document.getElementById('rsr-previas').innerHTML=previas.length
+    ?`<div class="modal-sec" style="margin-top:14px">Solicitudes aceptadas antes para ${escHtml(e.nombre.split(' ')[0])}</div>
+      ${previas.map(p=>`<div style="font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)">${p.tipo==='vacaciones'?'🏖️ Vacaciones':'🧮 Finiquito'} · ${solRhResumen(p)} <span style="color:var(--text3)">· aceptada por ${escHtml(p.revisado_por_nombre||'?')}</span></div>`).join('')}`
+    :`<div style="font-size:11px;color:var(--text3);margin-top:12px">No hay otras solicitudes aceptadas para este empleado.</div>`;
+  openModal('m-revisar-sol-rh');
+  calcRevisarSolRh();
+}
+// Reusa calcVacaciones()/calcFiniquito() tal cual (misma fórmula que el
+// recibo que se imprime) llenando sus inputs sin abrir su modal y con la
+// fecha de ingreso de este formulario, y copia el desglose aquí.
+function calcRevisarSolRh(){
+  const s=solicitudesRhData.find(x=>x.id===rsrId);if(!s)return;
+  const e=empData.find(x=>x.id===s.empleado_id);if(!e)return;
+  const ing=document.getElementById('rsr-ingreso').value;
+  const aviso=document.getElementById('rsr-ingreso-aviso');
+  if(ing!==(e.fecha_ingreso||'')){
+    aviso.style.display='block';
+    aviso.textContent=`⚠ En el expediente dice ${fmt(e.fecha_ingreso)||'(vacío)'} — al guardar se corregirá a ${fmt(ing)||'(vacío)'} en el expediente del empleado.`;
+  }else aviso.style.display='none';
+  const origIng=e.fecha_ingreso;
+  e.fecha_ingreso=ing||null;
+  try{
+    const salario=document.getElementById('rsr-salario').value;
+    const fecha=document.getElementById('rsr-fecha').value;
+    if(s.tipo==='vacaciones'){
+      vcEmpId=e.id;
+      document.getElementById('vc-fecha').value=fecha;
+      document.getElementById('vc-salario').value=salario;
+      const dias=document.getElementById('rsr-dias').value;
+      vcDiasManual=dias!=='';
+      document.getElementById('vc-dias').value=dias;
+      const r=calcVacaciones();
+      document.getElementById('rsr-breakdown').innerHTML=document.getElementById('vc-breakdown').innerHTML;
+      if(r&&dias==='')document.getElementById('rsr-dias').placeholder=`Automático (${r.diasTablaVac} por tabla LFT)`;
+    }else{
+      fqEmpId=e.id;
+      document.getElementById('fq-fecha').value=fecha;
+      document.getElementById('fq-salario').value=salario;
+      document.getElementById('fq-dias-pend').value=document.getElementById('rsr-dias-pend').value;
+      document.getElementById('fq-vac-tomadas').value=document.getElementById('rsr-vac-tomadas').value;
+      document.getElementById('fq-otro-label').value='';
+      document.getElementById('fq-otro-monto').value='';
+      calcFiniquito();
+      document.getElementById('rsr-breakdown').innerHTML=document.getElementById('fq-breakdown').innerHTML;
+    }
+  }finally{e.fecha_ingreso=origIng;}
+}
+async function guardarRevisionSolRh(aceptar){
+  const s=solicitudesRhData.find(x=>x.id===rsrId);if(!s)return;
+  const e=empData.find(x=>x.id===s.empleado_id);if(!e)return;
+  const fecha=document.getElementById('rsr-fecha').value;
+  if(!fecha){toast('Indica la fecha',true);return;}
+  const ing=document.getElementById('rsr-ingreso').value;
+  if(!ing){toast('Falta la fecha de ingreso del empleado',true);return;}
+  const nombre=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Admin';
+  // 1) Fecha de ingreso: vive en el expediente, no en la solicitud
+  if(ing!==(e.fecha_ingreso||'')){
+    if(!confirm(`¿Corregir la fecha de ingreso de ${e.nombre} en su expediente?\n\n${fmt(e.fecha_ingreso)||'(vacío)'}  →  ${fmt(ing)}\n\nEsto también afecta sus cálculos futuros (vacaciones, finiquito, antigüedad).`))return;
+    const{error}=await sb.from('empleados').update({fecha_ingreso:ing}).eq('id',e.id);
+    if(error){toast('No se pudo corregir la fecha de ingreso: '+error.message,true);return;}
+  }
+  // 2) Datos de la solicitud
+  const datos={...(s.datos||{}),fecha};
+  const salario=document.getElementById('rsr-salario').value;
+  if(salario!==''&&Number(salario)!==Number(e.salario_diario||0))datos.salario=Number(salario);
+  else delete datos.salario;
+  if(s.tipo==='vacaciones'){
+    const dias=document.getElementById('rsr-dias').value;
+    if(dias!=='')datos.dias=Number(dias);else delete datos.dias;
+  }else{
+    datos.dias_pend=Number(document.getElementById('rsr-dias-pend').value)||0;
+    datos.vac_tomadas=Number(document.getElementById('rsr-vac-tomadas').value)||0;
+  }
+  const notas=document.getElementById('rsr-notas').value.trim()||null;
+  const cambio=JSON.stringify(datos)!==JSON.stringify(s.datos||{})||notas!==(s.notas||null);
+  if(cambio){datos.editado_por_nombre=nombre;datos.editado_at=new Date().toISOString();}
+  const upd={datos,notas};
+  if(aceptar)Object.assign(upd,{estado:'aceptada',revisado_por:currentUser?.id||null,revisado_por_nombre:nombre,revisado_at:new Date().toISOString()});
+  const{error}=await sb.from('solicitudes_rh').update(upd).eq('id',s.id);
+  if(error){toast('Error: '+error.message,true);return;}
+  toast(aceptar?'✓ Solicitud aceptada':'Cambios guardados');
+  closeModal('m-revisar-sol-rh');
+  await Promise.all([loadSolicitudesRh(),loadEmpleados()]);
+  renderSolicitudesRhList();renderSolicitudesRhBadge();
 }
 async function aceptarSolicitudRh(id){
   const nombre=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Admin';
@@ -4989,13 +5310,15 @@ async function aceptarSolicitudRh(id){
   await loadSolicitudesRh();renderSolicitudesRhList();renderSolicitudesRhBadge();
 }
 async function rechazarSolicitudRh(id){
-  const motivo=prompt('Motivo del rechazo (opcional):')||null;
+  const motivo=prompt('Motivo del rechazo (opcional):');
+  if(motivo===null)return; // Canceló el prompt
   const nombre=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Admin';
   const{error}=await sb.from('solicitudes_rh').update({
-    estado:'rechazada',motivo_rechazo:motivo,revisado_por:currentUser?.id||null,revisado_por_nombre:nombre,revisado_at:new Date().toISOString(),
+    estado:'rechazada',motivo_rechazo:motivo.trim()||null,revisado_por:currentUser?.id||null,revisado_por_nombre:nombre,revisado_at:new Date().toISOString(),
   }).eq('id',id);
   if(error){toast('Error: '+error.message,true);return;}
   toast('Solicitud rechazada');
+  closeModal('m-revisar-sol-rh');
   await loadSolicitudesRh();renderSolicitudesRhList();renderSolicitudesRhBadge();
 }
 // Abre el modal real de cálculo (el mismo que ya usa admin), prellenado con
@@ -5009,10 +5332,12 @@ function abrirDesdeSolicitud(id){
   if(sol.tipo==='vacaciones'){
     openVacacionesModal(sol.empleado_id);
     if(d.fecha)document.getElementById('vc-fecha').value=d.fecha;
+    if(d.salario!=null)document.getElementById('vc-salario').value=d.salario;
     if(d.dias!=null){vcDiasManual=true;document.getElementById('vc-dias').value=d.dias;}
     calcVacaciones();
   }else{
     openFiniquitoModal(sol.empleado_id,d.fecha);
+    if(d.salario!=null)document.getElementById('fq-salario').value=d.salario;
     if(d.dias_pend!=null)document.getElementById('fq-dias-pend').value=d.dias_pend;
     if(d.vac_tomadas!=null)document.getElementById('fq-vac-tomadas').value=d.vac_tomadas;
     calcFiniquito();
@@ -7526,10 +7851,44 @@ async function delCarga(id){
 // Ticket + póliza de cada producto comprado, para buscarlo por nombre
 // cuando haga falta hacer válida una garantía (pedido 28-sept-2026).
 // Tablas garantias/garantias_archivos + bucket privado `garantias`.
+// Para encontrar rápido: buscador sin acentos con resaltado, categorías,
+// filtros por estado (widgets de arriba), sucursal, orden y vista
+// tarjetas/lista agrupada por categoría.
 let garantiasData=[];
 let garEditId=null;
-const GAR_TIPOS={ticket:'Ticket',poliza:'Póliza de garantía',factura:'Factura',foto:'Foto',otro:'Otro'};
+let garFiltroCat='';        // '' = todas
+let garFiltroEstado='';     // '', 'vigente', 'porvencer', 'vencida', 'sinticket'
+let garVista='tarjetas';
+let garCatSel='';           // categoría elegida en el modal
+let garDuracionSel=null;    // meses elegidos en el modal (6/12/24/36)
+const GAR_TIPOS={ticket:'Ticket',poliza:'Póliza',factura:'Factura',foto:'Foto',otro:'Otro'};
 const GAR_ICONS={ticket:'🧾',poliza:'🛡️',factura:'📄',foto:'📷',otro:'📎'};
+// Categorías -- `kw` son palabras que, si aparecen en el nombre del
+// producto, sugieren la categoría sola al registrarlo.
+const GAR_CATEGORIAS={
+  cocina:{label:'Cocina',icon:'🍳',color:'#D9480F',kw:['licuadora','estufa','horno','freidora','plancha','parrilla','microondas','cafetera','batidora','procesador','extractor','campana','tostador','comal','rebanadora','molino']},
+  refrigeracion:{label:'Refrigeración',icon:'❄️',color:'#1971C2',kw:['refri','refrigerador','congelador','enfriador','hielo','fabrica de hielo','vitrina','conservador','minibar','frigobar']},
+  clima:{label:'Aire / clima',icon:'🌬️',color:'#0C8599',kw:['aire','minisplit','mini split','clima','ventilador','calentador','boiler','deshumidificador']},
+  computo:{label:'Cómputo y electrónica',icon:'💻',color:'#5F3DC4',kw:['laptop','computadora','pc','monitor','impresora','tablet','celular','telefono','router','modem','tv','television','pantalla','bocina','camara','dvr','nobreak','regulador','terminal','lector','cajon','bascula','mouse','teclado']},
+  hotel:{label:'Hotel / habitaciones',icon:'🛏️',color:'#C2255C',kw:['colchon','cama','base','almohada','secadora de pelo','cerradura','caja fuerte','blancos']},
+  lavanderia:{label:'Lavandería / limpieza',icon:'🧺',color:'#2B8A3E',kw:['lavadora','secadora','aspiradora','hidrolavadora','pulidora','trapeador']},
+  mantenimiento:{label:'Herramienta / mantenimiento',icon:'🔧',color:'#868E96',kw:['taladro','bomba','hidroneumatico','planta de luz','generador','esmeril','compresor','escalera','herramienta','soldadora','podadora']},
+  mobiliario:{label:'Mobiliario',icon:'🪑',color:'#A0522D',kw:['mesa','silla','sillon','sofa','escritorio','anaquel','estante','locker','archivero','banco']},
+  otro:{label:'Otro',icon:'📦',color:'#6B5747',kw:[]},
+};
+const GAR_CAT_ORDER=Object.keys(GAR_CATEGORIAS);
+function garCat(k){return GAR_CATEGORIAS[k]||{label:'Sin categoría',icon:'❔',color:'#A08070'};}
+
+function garLeerPref(){
+  try{
+    const p=JSON.parse(localStorage.getItem('gar-pref')||'{}');
+    if(p.vista)garVista=p.vista;
+    if(p.orden)document.getElementById('gar-orden').value=p.orden;
+  }catch(e){}
+}
+function garGuardarPref(){
+  try{localStorage.setItem('gar-pref',JSON.stringify({vista:garVista,orden:document.getElementById('gar-orden').value}));}catch(e){}
+}
 
 async function loadGarantias(){
   const el=document.getElementById('gar-content');
@@ -7540,57 +7899,188 @@ async function loadGarantias(){
   const sel=document.getElementById('gar-filtro-ent');
   if(sel&&!sel.options.length){
     sel.innerHTML='<option value="">Todas las sucursales</option>'+ENT_ORDER.map(k=>`<option value="${k}">${ENTS[k].label}</option>`).join('');
+    garLeerPref();
   }
 }
 
 // Sin acentos ni mayúsculas, para que "licuadora" encuentre "Licuadora" y
-// "refri" encuentre "Refrigerador" sin importar cómo lo escribieron.
+// "camara" encuentre "Cámara" sin importar cómo lo escribieron.
 function garNorm(s){return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();}
 
+function garDias(g){return g.vence_garantia?Math.round((new Date(g.vence_garantia+'T12:00:00')-TODAY)/86400000):null;}
+function garEstadoClave(g){
+  const d=garDias(g);
+  if(d===null)return'sinfecha';
+  if(d<0)return'vencida';
+  if(d<=30)return'porvencer';
+  return'vigente';
+}
+function garTieneTicket(g){return(g.garantias_archivos||[]).some(a=>a.tipo==='ticket'||a.tipo==='factura');}
 function garEstado(g){
-  if(!g.vence_garantia)return{txt:'Sin fecha de vencimiento',color:'var(--text3)',bg:'var(--surface2)'};
-  const dias=Math.round((new Date(g.vence_garantia+'T12:00:00')-TODAY)/86400000);
-  if(dias<0)return{txt:'Garantía vencida ('+fmt(g.vence_garantia)+')',color:'var(--red)',bg:'var(--red-light)'};
-  if(dias<=30)return{txt:'Vence en '+dias+' día'+(dias!==1?'s':'')+' ('+fmt(g.vence_garantia)+')',color:'var(--amber)',bg:'var(--amber-light)'};
-  return{txt:'Vigente hasta '+fmt(g.vence_garantia),color:'var(--green)',bg:'var(--green-light)'};
+  const d=garDias(g);
+  switch(garEstadoClave(g)){
+    case'sinfecha':return{txt:'Sin fecha de garantía',color:'var(--text3)',bg:'var(--surface2)'};
+    case'vencida':return{txt:'Garantía vencida · '+fmt(g.vence_garantia),color:'var(--red)',bg:'var(--red-light)'};
+    case'porvencer':return{txt:(d===0?'Vence hoy':'Vence en '+d+' día'+(d!==1?'s':''))+' · '+fmt(g.vence_garantia),color:'var(--amber)',bg:'var(--amber-light)'};
+    default:{
+      const meses=Math.floor(d/30.4);
+      const resta=meses>=12?(Math.floor(meses/12)+' año'+(meses>=24?'s':'')+(meses%12?' '+(meses%12)+' m':'')):meses>=1?meses+' mes'+(meses>1?'es':''):d+' días';
+      return{txt:'Vigente · quedan '+resta,color:'var(--green)',bg:'var(--green-light)'};
+    }
+  }
+}
+
+// Resalta las palabras buscadas dentro de un texto ya escapado, ignorando
+// acentos (busca en la versión normalizada y marca la misma posición en
+// el original -- normalize NFD + quitar diacríticos no cambia la longitud
+// de letras latinas comunes en un string ya en NFC).
+function garResaltar(texto,palabras){
+  const orig=String(texto??'');
+  if(!palabras.length||!orig)return escHtml(orig);
+  const norm=garNorm(orig);
+  if(norm.length!==orig.length)return escHtml(orig);
+  const marcas=new Array(orig.length).fill(false);
+  palabras.forEach(p=>{let i=norm.indexOf(p);while(i>=0){for(let k=i;k<i+p.length;k++)marcas[k]=true;i=norm.indexOf(p,i+p.length);}});
+  let out='',abierto=false;
+  for(let i=0;i<orig.length;i++){
+    if(marcas[i]&&!abierto){out+='<mark>';abierto=true;}
+    if(!marcas[i]&&abierto){out+='</mark>';abierto=false;}
+    out+=escHtml(orig[i]);
+  }
+  return out+(abierto?'</mark>':'');
+}
+
+function garPalabras(){return garNorm(document.getElementById('gar-search').value.trim()).split(/\s+/).filter(Boolean);}
+function garOnSearch(){
+  document.getElementById('gar-search-clear').style.display=document.getElementById('gar-search').value?'block':'none';
+  renderGarantias();
+}
+function garLimpiarBusqueda(){
+  const i=document.getElementById('gar-search');i.value='';garOnSearch();i.focus();
+}
+function garSetVista(v){garVista=v;garGuardarPref();renderGarantias();}
+function garSetFiltroCat(c){garFiltroCat=garFiltroCat===c?'':c;renderGarantias();}
+function garSetFiltroEstado(e){garFiltroEstado=garFiltroEstado===e?'':e;renderGarantias();}
+
+// Filtro base (búsqueda + sucursal); categoría y estado se aplican aparte
+// para que los contadores de chips/widgets reflejen lo que se ve.
+function garBaseFiltrada(){
+  const palabras=garPalabras();
+  const ent=document.getElementById('gar-filtro-ent').value;
+  return garantiasData.filter(g=>{
+    if(ent&&g.entidad!==ent)return false;
+    if(!palabras.length)return true;
+    const texto=garNorm([g.producto,g.marca,g.modelo,g.num_serie,g.tienda,g.ubicacion,g.notas,garCat(g.categoria).label,ENTS[g.entidad]?.label].join(' '));
+    return palabras.every(p=>texto.includes(p));
+  });
+}
+function garPasaEstado(g,e){
+  if(!e)return true;
+  if(e==='sinticket')return!garTieneTicket(g);
+  return garEstadoClave(g)===e;
 }
 
 function renderGarantias(){
   const el=document.getElementById('gar-content');if(!el)return;
-  const q=garNorm(document.getElementById('gar-search').value.trim());
-  const ent=document.getElementById('gar-filtro-ent').value;
-  const palabras=q.split(/\s+/).filter(Boolean);
-  const lista=garantiasData.filter(g=>{
-    if(ent&&g.entidad!==ent)return false;
-    if(!palabras.length)return true;
-    const texto=garNorm([g.producto,g.marca,g.modelo,g.num_serie,g.tienda,g.notas].join(' '));
-    return palabras.every(p=>texto.includes(p));
-  });
+  document.getElementById('gar-vista-tarjetas').classList.toggle('on',garVista==='tarjetas');
+  document.getElementById('gar-vista-lista').classList.toggle('on',garVista==='lista');
+  const base=garBaseFiltrada();
+
+  // Widgets = filtros por estado (clic para filtrar, clic otra vez para quitar)
+  const porCat=base.filter(g=>!garFiltroCat||(g.categoria||'')===garFiltroCat);
+  const cnt=e=>porCat.filter(g=>garPasaEstado(g,e)).length;
+  const W=[
+    ['','Productos',porCat.length,'var(--copper)'],
+    ['vigente','Vigentes',cnt('vigente'),'var(--green)'],
+    ['porvencer','Vencen en 30 días',cnt('porvencer'),'var(--amber)'],
+    ['vencida','Vencidas',cnt('vencida'),'var(--red)'],
+    ['sinticket','Sin ticket',cnt('sinticket'),'var(--text3)'],
+  ];
+  document.getElementById('gar-widgets').innerHTML=W.map(([k,l,n,c])=>
+    `<button class="gar-w ${garFiltroEstado===k?'on':''}" style="--gw:${c}" onclick="garSetFiltroEstado('${k}')"><span class="gar-w-val">${n}</span><span class="gar-w-lbl">${l}</span></button>`
+  ).join('');
+
+  // Chips de categoría con contador
+  const porEstado=base.filter(g=>garPasaEstado(g,garFiltroEstado));
+  const cats=[...GAR_CAT_ORDER];
+  if(porEstado.some(g=>!g.categoria))cats.push('');
+  document.getElementById('gar-cats').innerHTML=
+    `<button class="gar-cat ${!garFiltroCat?'on':''}" onclick="garFiltroCat='';renderGarantias()">Todas <span class="n">${porEstado.length}</span></button>`+
+    cats.map(k=>{
+      const n=porEstado.filter(g=>(g.categoria||'')===k).length;
+      if(!n&&garFiltroCat!==k)return'';
+      const c=garCat(k);
+      return`<button class="gar-cat ${garFiltroCat===k&&k!==''?'on':''}" onclick="garSetFiltroCat('${k}')">${c.icon} ${c.label} <span class="n">${n}</span></button>`;
+    }).join('');
+
+  let lista=porEstado.filter(g=>!garFiltroCat||(g.categoria||'')===garFiltroCat);
+  const orden=document.getElementById('gar-orden').value;
+  const cmp={
+    recientes:(a,b)=>(b.created_at||'').localeCompare(a.created_at||''),
+    az:(a,b)=>garNorm(a.producto).localeCompare(garNorm(b.producto),'es'),
+    vence:(a,b)=>(a.vence_garantia||'9999').localeCompare(b.vence_garantia||'9999'),
+    compra:(a,b)=>(b.fecha_compra||'').localeCompare(a.fecha_compra||''),
+  }[orden];
+  lista.sort(cmp);
+
   if(!garantiasData.length){
     el.innerHTML='<div class="empty"><div class="empty-ico">🛡️</div>Todavía no hay productos registrados<br><small style="color:var(--text3);font-size:11px">Usa "+ Registrar producto" para subir el primer ticket</small></div>';
     return;
   }
   if(!lista.length){
-    el.innerHTML='<div class="empty"><div class="empty-ico">🔍</div>Ningún producto coincide con la búsqueda</div>';
+    const hayFiltros=garFiltroCat||garFiltroEstado||document.getElementById('gar-filtro-ent').value;
+    el.innerHTML=`<div class="empty"><div class="empty-ico">🔍</div>Ningún producto coincide${hayFiltros?`<br><button class="btn" style="margin-top:10px" onclick="garQuitarFiltros()">Quitar filtros</button>`:''}</div>`;
     return;
   }
-  el.innerHTML=`<div style="font-size:11px;color:var(--text3);margin-bottom:8px">${lista.length} producto${lista.length!==1?'s':''}</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">${lista.map(renderGarCard).join('')}</div>`;
+  const palabras=garPalabras();
+  let html=`<div style="font-size:11px;color:var(--text3);margin-bottom:4px">${lista.length} producto${lista.length!==1?'s':''}</div>`;
+  if(garVista==='lista'){
+    html+=renderGarTabla(lista,palabras);
+  }else if(garFiltroCat||orden==='vence'){
+    // Una sola categoría, o se pidió por vencimiento: sin grupos
+    html+=`<div class="gar-grid">${lista.map(g=>renderGarCard(g,palabras)).join('')}</div>`;
+  }else{
+    // Agrupado por categoría para que se vea ordenado
+    const grupos={};
+    lista.forEach(g=>{(grupos[g.categoria||'']=grupos[g.categoria||'']||[]).push(g);});
+    [...GAR_CAT_ORDER,''].forEach(k=>{
+      const gs=grupos[k];if(!gs)return;
+      const c=garCat(k);
+      html+=`<div class="gar-grupo-hdr"><span>${c.icon} ${c.label}</span><span class="n">${gs.length}</span></div>
+        <div class="gar-grid">${gs.map(g=>renderGarCard(g,palabras)).join('')}</div>`;
+    });
+  }
+  el.innerHTML=html;
+}
+function garQuitarFiltros(){
+  garFiltroCat='';garFiltroEstado='';
+  document.getElementById('gar-filtro-ent').value='';
+  renderGarantias();
 }
 
-function renderGarCard(g){
+function garArchivoChip(a,conBorrar){
+  return`<span class="gar-file" title="${escHtml(a.nombre_archivo)}" onclick="viewFile('${escHtml(a.storage_path)}','${escHtml(a.nombre_archivo)}','garantias')">${GAR_ICONS[a.tipo]||'📎'} ${GAR_TIPOS[a.tipo]||'Archivo'}${conBorrar&&isAdmin()?`<span class="x" title="Eliminar archivo" onclick="event.stopPropagation();eliminarArchivoGarantia('${a.id}','${escHtml(a.storage_path)}')">✕</span>`:''}</span>`;
+}
+
+function renderGarCard(g,palabras){
   const e=ENTS[g.entidad];
+  const c=garCat(g.categoria);
   const est=garEstado(g);
-  const archs=g.garantias_archivos||[];
-  const detalle=[g.marca,g.modelo].filter(Boolean).map(escHtml).join(' · ');
-  const archHtml=archs.length?archs.map(a=>`<div style="display:flex;align-items:center;gap:6px">
-      <div class="hist-file" style="flex:1" onclick="viewFile('${escHtml(a.storage_path)}','${escHtml(a.nombre_archivo)}','garantias')">${GAR_ICONS[a.tipo]||'📎'} ${GAR_TIPOS[a.tipo]||'Archivo'}</div>
-      ${isAdmin()?`<button class="btn-icon" title="Eliminar archivo" onclick="eliminarArchivoGarantia('${a.id}','${escHtml(a.storage_path)}')">🗑</button>`:''}
-    </div>`).join(''):'<div style="font-size:11px;color:var(--amber)">⚠ Sin archivos — falta subir el ticket</div>';
-  return`<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${e?e.color:'var(--border2)'};border-radius:var(--rl);padding:14px">
+  const archs=(g.garantias_archivos||[]).slice().sort((a,b)=>Object.keys(GAR_TIPOS).indexOf(a.tipo)-Object.keys(GAR_TIPOS).indexOf(b.tipo));
+  const R=s=>garResaltar(s,palabras);
+  const detalle=[g.marca,g.modelo].filter(Boolean).map(R).join(' · ');
+  const meta=[];
+  if(e)meta.push(`<span class="pill ${e.pill}">${e.label}</span>`);
+  if(g.ubicacion)meta.push('📍 '+R(g.ubicacion));
+  const compra=[];
+  if(g.tienda)compra.push('🏪 '+R(g.tienda));
+  if(g.fecha_compra)compra.push(fmt(g.fecha_compra));
+  if(g.monto!=null)compra.push(fmxn(g.monto));
+  return`<div class="gar-card" style="--gc:${c.color}">
     <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
       <div style="min-width:0">
-        <div style="font-size:15px;font-weight:600">${escHtml(g.producto)}</div>
+        <div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.04em">${c.icon} ${c.label}</div>
+        <div style="font-size:15px;font-weight:600;margin-top:2px">${R(g.producto)}</div>
         ${detalle?`<div style="font-size:12px;color:var(--text2)">${detalle}</div>`:''}
       </div>
       <div style="display:flex;gap:2px;flex-shrink:0">
@@ -7598,21 +8088,91 @@ function renderGarCard(g){
         ${isAdmin()?`<button class="btn-icon" title="Eliminar" onclick="eliminarGarantia('${g.id}')">🗑</button>`:''}
       </div>
     </div>
-    <div style="display:inline-block;margin:8px 0;font-size:11px;font-weight:600;padding:3px 8px;border-radius:10px;color:${est.color};background:${est.bg}">${est.txt}</div>
-    <div style="font-size:12px;color:var(--text2);line-height:1.6">
-      ${e?`<span class="pill ${e.pill}">${e.label}</span> `:''}
-      ${g.tienda?'🏪 '+escHtml(g.tienda)+' ':''}${g.fecha_compra?'· Comprado '+fmt(g.fecha_compra)+' ':''}${g.monto!=null?'· '+fmxn(g.monto):''}
-      ${g.num_serie?`<div>Serie: <span style="font-family:var(--mono)">${escHtml(g.num_serie)}</span></div>`:''}
-      ${g.notas?`<div style="color:var(--text3)">${escHtml(g.notas)}</div>`:''}
+    <div><span class="gar-estado" style="color:${est.color};background:${est.bg}">${est.txt}</span></div>
+    <div style="font-size:12px;color:var(--text2);line-height:1.7">
+      ${meta.length?`<div>${meta.join(' ')}</div>`:''}
+      ${compra.length?`<div>${compra.join(' · ')}</div>`:''}
+      ${g.num_serie?`<div>Serie: <span style="font-family:var(--mono)">${R(g.num_serie)}</span></div>`:''}
+      ${g.notas?`<div style="color:var(--text3)">${R(g.notas)}</div>`:''}
     </div>
-    <div style="margin-top:10px;display:flex;flex-direction:column;gap:4px">${archHtml}</div>
-    <div style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--text2)">
-      + Agregar
-      <select id="gar-add-tipo-${g.id}" style="width:auto;font-size:11px;padding:2px 4px">${Object.entries(GAR_TIPOS).map(([k,v])=>`<option value="${k}" ${k===(archs.length?'factura':'ticket')?'selected':''}>${v}</option>`).join('')}</select>
-      <label class="btn" style="font-size:11px;padding:3px 10px;cursor:pointer">Elegir archivo…<input type="file" accept="image/*,.pdf" style="display:none" onchange="agregarArchivoGarantia('${g.id}',this)"></label>
+    <div class="gar-files">
+      ${archs.map(a=>garArchivoChip(a,true)).join('')}
+      ${!garTieneTicket(g)?'<span style="font-size:11px;color:var(--amber);align-self:center">⚠ Falta el ticket</span>':''}
     </div>
-    <div style="font-size:10px;color:var(--text3);margin-top:6px">Registrado por ${escHtml(g.registrado_por_nombre||'—')}</div>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:auto;padding-top:10px;font-size:11px;color:var(--text2)">
+      <select id="gar-add-tipo-${g.id}" style="width:auto;font-size:11px;padding:2px 4px">${Object.entries(GAR_TIPOS).map(([k,v])=>`<option value="${k}" ${k===(garTieneTicket(g)?'poliza':'ticket')?'selected':''}>${v}</option>`).join('')}</select>
+      <label class="btn" style="font-size:11px;padding:3px 10px;cursor:pointer">+ Subir archivo<input type="file" accept="image/*,.pdf" style="display:none" onchange="agregarArchivoGarantia('${g.id}',this)"></label>
+      <span style="margin-left:auto;font-size:10px;color:var(--text3)" title="Registrado por">${escHtml(g.registrado_por_nombre||'')}</span>
+    </div>
   </div>`;
+}
+
+function renderGarTabla(lista,palabras){
+  const R=s=>garResaltar(s,palabras);
+  const th=(k,l,cls='')=>`<th class="${cls}" onclick="document.getElementById('gar-orden').value='${k}';garGuardarPref();renderGarantias()">${l}</th>`;
+  return`<div style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--rl)"><table class="gar-tabla">
+    <thead><tr>${th('az','Producto')}<th class="opt">Categoría</th><th class="opt">Sucursal / ubicación</th>${th('compra','Compra','opt')}${th('vence','Garantía')}<th>Archivos</th><th></th></tr></thead>
+    <tbody>${lista.map(g=>{
+      const c=garCat(g.categoria),e=ENTS[g.entidad],est=garEstado(g);
+      return`<tr>
+        <td><div style="font-weight:600">${R(g.producto)}</div><div style="color:var(--text3);font-size:11px">${[g.marca,g.modelo].filter(Boolean).map(R).join(' · ')}${g.num_serie?' · S/N '+R(g.num_serie):''}</div></td>
+        <td class="opt" style="white-space:nowrap">${c.icon} ${c.label}</td>
+        <td class="opt">${e?`<span class="gar-dot" style="background:${e.color}"></span>${e.label}`:''}${g.ubicacion?`<div style="color:var(--text3);font-size:11px">📍 ${R(g.ubicacion)}</div>`:''}</td>
+        <td class="opt" style="white-space:nowrap">${fmt(g.fecha_compra)}${g.tienda?`<div style="color:var(--text3);font-size:11px">${R(g.tienda)}</div>`:''}</td>
+        <td><span class="gar-estado" style="margin:0;color:${est.color};background:${est.bg}">${est.txt}</span></td>
+        <td><div style="display:flex;gap:4px;flex-wrap:wrap">${(g.garantias_archivos||[]).map(a=>garArchivoChip(a,false)).join('')||'<span style="color:var(--amber);font-size:11px">⚠ Sin ticket</span>'}</div></td>
+        <td style="white-space:nowrap"><button class="btn-icon" title="Editar" onclick="openGarantiaModal('${g.id}')">✎</button></td>
+      </tr>`;}).join('')}</tbody></table></div>`;
+}
+
+// ── Modal ──
+function garLlenarSugerencias(){
+  const uniq=campo=>[...new Map(garantiasData.map(g=>g[campo]).filter(Boolean).map(v=>[garNorm(v).trim(),v.trim()])).values()].sort((a,b)=>a.localeCompare(b,'es'));
+  [['producto','gar-dl-producto'],['marca','gar-dl-marca'],['tienda','gar-dl-tienda'],['ubicacion','gar-dl-ubicacion']].forEach(([c,id])=>{
+    document.getElementById(id).innerHTML=uniq(c).map(v=>`<option value="${escHtml(v)}">`).join('');
+  });
+}
+function garRenderCatPick(){
+  document.getElementById('gf-cat-pick').innerHTML=GAR_CAT_ORDER.map(k=>{
+    const c=GAR_CATEGORIAS[k];
+    return`<button type="button" class="${garCatSel===k?'on':''}" onclick="garCatSel=garCatSel==='${k}'?'':'${k}';garCatManual=true;garRenderCatPick()">${c.icon} ${c.label}</button>`;
+  }).join('');
+}
+let garCatManual=false;
+// Mientras escriben el producto: sugiere la categoría (si no la eligieron
+// a mano) y avisa si ya hay uno registrado con ese nombre.
+function garSugerirCategoria(){
+  const p=garNorm(document.getElementById('gf-producto').value.trim());
+  if(!garCatManual){
+    let sug='';
+    if(p)for(const k of GAR_CAT_ORDER){if(GAR_CATEGORIAS[k].kw.some(w=>p.includes(w))){sug=k;break;}}
+    // Si ya hay uno igual registrado, usar su categoría
+    const igual=garantiasData.find(g=>garNorm(g.producto).trim()===p&&g.categoria);
+    if(igual)sug=igual.categoria;
+    garCatSel=sug;garRenderCatPick();
+  }
+  const hint=document.getElementById('gf-dup-hint');
+  const iguales=p?garantiasData.filter(g=>g.id!==garEditId&&garNorm(g.producto).trim()===p):[];
+  if(iguales.length){
+    hint.textContent=`ℹ Ya hay ${iguales.length} "${iguales[0].producto}" registrado${iguales.length>1?'s':''} (${iguales.map(g=>[ENTS[g.entidad]?.label,g.ubicacion,fmt(g.fecha_compra)].filter(Boolean).join(', ')||'sin datos').join(' / ')}). Si es otro aparato, está bien registrarlo aparte.`;
+    hint.style.display='block';
+  }else hint.style.display='none';
+}
+function garSumarMeses(fecha,m){
+  const d=new Date(fecha+'T12:00:00');const dia=d.getDate();
+  d.setMonth(d.getMonth()+m);if(d.getDate()<dia)d.setDate(0);
+  return d.toISOString().slice(0,10);
+}
+function garSetDuracion(m){
+  const fc=document.getElementById('gf-fecha-compra').value;
+  if(!fc){toast('Pon primero la fecha de compra',true);return;}
+  garDuracionSel=m;
+  document.getElementById('gf-vence').value=garSumarMeses(fc,m);
+  garMarcarDuracion();
+}
+function garRecalcVence(){if(garDuracionSel)garSetDuracion(garDuracionSel);}
+function garMarcarDuracion(){
+  document.querySelectorAll('#gf-dur button').forEach(b=>b.classList.toggle('on',Number(b.dataset.m)===garDuracionSel));
 }
 
 function openGarantiaModal(id){
@@ -7621,16 +8181,24 @@ function openGarantiaModal(id){
   const g=id?garantiasData.find(x=>x.id===id):null;
   document.getElementById('m-garantia-title').textContent=g?'Editar producto':'Registrar producto';
   document.getElementById('gf-entidad').innerHTML='<option value="">—</option>'+ENT_ORDER.map(k=>`<option value="${k}">${ENTS[k].label}</option>`).join('');
+  garLlenarSugerencias();
   document.getElementById('gf-producto').value=g?.producto||'';
   document.getElementById('gf-marca').value=g?.marca||'';
   document.getElementById('gf-modelo').value=g?.modelo||'';
   document.getElementById('gf-serie').value=g?.num_serie||'';
   document.getElementById('gf-tienda').value=g?.tienda||'';
-  document.getElementById('gf-entidad').value=g?.entidad||'';
+  // Nuevo: hereda la sucursal del filtro activo, si hay
+  document.getElementById('gf-entidad').value=g?(g.entidad||''):(document.getElementById('gar-filtro-ent').value||'');
+  document.getElementById('gf-ubicacion').value=g?.ubicacion||'';
   document.getElementById('gf-monto').value=g?.monto??'';
   document.getElementById('gf-fecha-compra').value=g?.fecha_compra||new Date().toISOString().slice(0,10);
   document.getElementById('gf-vence').value=g?.vence_garantia||'';
   document.getElementById('gf-notas').value=g?.notas||'';
+  garCatSel=g?(g.categoria||''):(garFiltroCat||'');
+  garCatManual=!!(g?.categoria||garFiltroCat);
+  garDuracionSel=null;garMarcarDuracion();
+  garRenderCatPick();
+  document.getElementById('gf-dup-hint').style.display='none';
   // Al editar, los archivos se agregan/quitan desde la tarjeta.
   document.getElementById('gf-archivos-wrap').style.display=g?'none':'block';
   resetFileZones([['fz-gar-ticket','fl-gar-ticket','🧾','Foto o PDF','ff-gar-ticket'],['fz-gar-poliza','fl-gar-poliza','🛡️','Foto o PDF','ff-gar-poliza']]);
@@ -7654,11 +8222,13 @@ async function saveGarantia(){
   const monto=document.getElementById('gf-monto').value;
   const row={
     producto,
+    categoria:garCatSel||null,
     marca:document.getElementById('gf-marca').value.trim()||null,
     modelo:document.getElementById('gf-modelo').value.trim()||null,
     num_serie:document.getElementById('gf-serie').value.trim()||null,
     tienda:document.getElementById('gf-tienda').value.trim()||null,
     entidad:document.getElementById('gf-entidad').value||null,
+    ubicacion:document.getElementById('gf-ubicacion').value.trim()||null,
     monto:monto===''?null:Number(monto),
     fecha_compra:document.getElementById('gf-fecha-compra').value||null,
     vence_garantia:document.getElementById('gf-vence').value||null,
@@ -14517,7 +15087,11 @@ function accionesNoVistas(){
 function renderAccionesVentaBadge(){
   const el=document.getElementById('av-badge');
   if(!el)return;
-  const n=accionesNoVistas().total;
+  // + solicitudes de vacaciones/finiquito por autorizar (solo admin). Éstas
+  // no se "marcan como vistas" al abrir: siguen contando hasta que se
+  // acepten o rechacen, porque requieren una acción.
+  const nSol=isAdmin()&&typeof solRhPendientes==='function'?solRhPendientes().length:0;
+  const n=accionesNoVistas().total+nSol;
   el.textContent=n>99?'99+':String(n);
   el.style.display=n>0?'flex':'none';
 }
@@ -14525,7 +15099,14 @@ function renderAccionesVentaBadge(){
 async function openAccionesFeed(){
   const {resueltas,directas}=accionesNoVistas();
   const body=document.getElementById('m-acciones-feed-body');
-  if(!resueltas.length&&!directas.length){
+  const solPend=isAdmin()?solRhPendientes():[];
+  const secSol=solPend.length?`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text2);margin-bottom:4px">🕐 Por autorizar</div>`+
+    solPend.map(s=>`<div style="border-bottom:1px solid var(--border,#e5e5e5);padding:10px 2px;font-size:12px;display:flex;gap:8px;align-items:center;justify-content:space-between">
+      <div><div style="color:var(--text3);font-size:11px">${fmtFechaHora(s.solicitado_at)} · pedida por ${escHtml(s.solicitado_por_nombre||'?')}</div>
+      <b>${s.tipo==='vacaciones'?'🏖️ Vacaciones':'🧮 Finiquito'} — ${escHtml(solRhEmpNombre(s))}</b> (${ENTS[s.entidad]?.label||s.entidad})<br><span style="color:var(--text3)">${solRhResumen(s)}</span></div>
+      <button class="btn btn-sm btn-filled" onclick="closeModal('m-acciones-feed');openRevisarSolRh('${s.id}')">Revisar</button></div>`).join('')+
+    ((resueltas.length||directas.length)?`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text2);margin:14px 0 4px">🧾 Cambios de facturación</div>`:''):'';
+  if(!resueltas.length&&!directas.length&&!solPend.length){
     body.innerHTML=`<div class="empty"><div class="empty-ico">🔔</div>Sin cambios nuevos que revisar.</div>`;
   }else{
     const fila=(fecha,html)=>`<div style="border-bottom:1px solid var(--border,#e5e5e5);padding:10px 2px;font-size:12px">
@@ -14544,7 +15125,7 @@ async function openAccionesFeed(){
         `<b>${tipoLbl} folio ${a.folio??'—'}</b> (${a.sucursal}) — hecha directo en el POS por ${a.usuario||'?'}`+
         (a.detalle?`<br><span style="color:var(--text3)">${a.detalle}</span>`:''));
     }).join('');
-    body.innerHTML=filasResueltas+filasDirectas;
+    body.innerHTML=secSol+filasResueltas+filasDirectas;
   }
   openModal('m-acciones-feed');
   // Marcar como vistas al abrir el panel -- si el usuario quería revisarlas
