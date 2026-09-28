@@ -923,6 +923,10 @@ empleado a planta o darlo de baja. */
         <span class="sb-item-icon">📋</span>
         <span class="sb-item-label">Bitácora diaria</span>
       </div>
+      <div class="sb-item" onclick="showPage('garantias')" id="si-garantias">
+        <span class="sb-item-icon">🛡️</span>
+        <span class="sb-item-label">Tickets y garantías</span>
+      </div>
       <div class="sb-section">Personal</div>
       <div class="sb-item" onclick="showPage('rh')" id="si-rh">
         <span class="sb-item-icon">👥</span>
@@ -1253,6 +1257,22 @@ empleado a planta o darlo de baja. */
           </div>
           <div style="padding:16px" id="flo-content"></div>
         </div>
+      </div>
+
+      <!-- TICKETS Y GARANTÍAS -->
+      <div class="page" id="page-garantias">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">Tickets y garantías</div>
+            <div class="page-sub">Ticket y póliza de cada producto comprado — búscalo por nombre cuando haga falta la garantía</div>
+          </div>
+          <button class="btn btn-filled" onclick="openGarantiaModal()">+ Registrar producto</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+          <input class="repo-search" type="text" id="gar-search" placeholder="🔍 Buscar producto, marca, tienda o no. de serie..." oninput="renderGarantias()" style="flex:1;min-width:220px;font-size:14px;padding:10px 16px">
+          <select id="gar-filtro-ent" onchange="renderGarantias()" style="width:auto"></select>
+        </div>
+        <div id="gar-content"></div>
       </div>
 
       <!-- CORTES DE CAJA -->
@@ -2599,6 +2619,57 @@ mismo blob ya cargado, sin volver a pedirlo. -->
 </div>
 </div>
 
+<!-- MODAL GARANTÍA -->
+<div class="modal-overlay" id="m-garantia">
+<div class="modal">
+  <div class="modal-hdr"><div class="modal-title" id="m-garantia-title">Registrar producto</div><button class="btn-icon" onclick="closeModal('m-garantia')">✕</button></div>
+  <div class="modal-body">
+    <div class="f-row"><label>Producto <span class="req">*</span></label>
+      <input type="text" id="gf-producto" placeholder="Ej. Refrigerador, Licuadora, Aire acondicionado"/>
+    </div>
+    <div class="f-grid">
+      <div class="f-row"><label>Marca</label><input type="text" id="gf-marca" placeholder="Ej. Mabe"/></div>
+      <div class="f-row"><label>Modelo</label><input type="text" id="gf-modelo"/></div>
+    </div>
+    <div class="f-grid">
+      <div class="f-row"><label>No. de serie</label><input type="text" id="gf-serie"/></div>
+      <div class="f-row"><label>Tienda / proveedor</label><input type="text" id="gf-tienda" placeholder="Ej. Home Depot"/></div>
+    </div>
+    <div class="f-grid">
+      <div class="f-row"><label>Sucursal</label><select id="gf-entidad"></select></div>
+      <div class="f-row"><label>Monto (MXN)</label><input type="number" id="gf-monto" placeholder="0.00" step="0.01"/></div>
+    </div>
+    <div class="f-grid">
+      <div class="f-row"><label>Fecha de compra</label><input type="date" id="gf-fecha-compra"/></div>
+      <div class="f-row"><label>Garantía vence</label><input type="date" id="gf-vence"/></div>
+    </div>
+    <div id="gf-archivos-wrap">
+      <div class="f-grid">
+        <div class="f-row"><label>Ticket de compra</label>
+          <div class="fzone" id="fz-gar-ticket">
+            <input type="file" id="ff-gar-ticket" accept="image/*,.pdf" onchange="handleFile(this,'fz-gar-ticket','fl-gar-ticket','gar_ticket')">
+            <span class="fzone-ico">🧾</span>
+            <div class="fzone-lbl" id="fl-gar-ticket">Foto o PDF</div>
+          </div>
+        </div>
+        <div class="f-row"><label>Póliza de garantía</label>
+          <div class="fzone" id="fz-gar-poliza">
+            <input type="file" id="ff-gar-poliza" accept="image/*,.pdf" onchange="handleFile(this,'fz-gar-poliza','fl-gar-poliza','gar_poliza')">
+            <span class="fzone-ico">🛡️</span>
+            <div class="fzone-lbl" id="fl-gar-poliza">Foto o PDF</div>
+          </div>
+        </div>
+      </div>
+      <div class="f-row" style="font-size:11px;color:var(--text3);margin-top:-4px">Puedes agregar más archivos (factura, fotos) después desde la tarjeta del producto.</div>
+    </div>
+    <div class="f-row"><label>Notas</label>
+      <textarea id="gf-notas" placeholder="Ej. dónde está instalado, teléfono de servicio..."></textarea>
+    </div>
+  </div>
+  <div class="modal-ftr"><button class="btn" onclick="closeModal('m-garantia')">Cancelar</button><button class="btn btn-filled" id="gar-save-btn" onclick="saveGarantia()">Guardar</button></div>
+</div>
+</div>
+
 <!-- FAB GASOLINA -->
 <button class="fab" id="gas-fab" style="display:none" onclick="openCargaModal()" title="Registrar carga de gasolina">⛽</button>
 
@@ -3195,6 +3266,7 @@ function showPage(id){
       renderFlotilla();
     });
   }
+  else if(id==='garantias')loadGarantias().then(renderGarantias);
   else if(id==='bitacora')renderBitacora();
   else if(id==='directorio')renderDirectorio();
   else if(id==='flotilla')renderFlotilla();
@@ -7448,6 +7520,205 @@ async function delCarga(id){
   if(!confirm('¿Eliminar esta carga?'))return;
   await sb.from('cargas_gasolina').delete().eq('id',id);
   toast('Carga eliminada');await loadCargas();renderFlotilla();
+}
+
+// ─── TICKETS Y GARANTÍAS ─────────────────────────────────────
+// Ticket + póliza de cada producto comprado, para buscarlo por nombre
+// cuando haga falta hacer válida una garantía (pedido 28-sept-2026).
+// Tablas garantias/garantias_archivos + bucket privado `garantias`.
+let garantiasData=[];
+let garEditId=null;
+const GAR_TIPOS={ticket:'Ticket',poliza:'Póliza de garantía',factura:'Factura',foto:'Foto',otro:'Otro'};
+const GAR_ICONS={ticket:'🧾',poliza:'🛡️',factura:'📄',foto:'📷',otro:'📎'};
+
+async function loadGarantias(){
+  const el=document.getElementById('gar-content');
+  if(el&&!garantiasData.length)el.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  const{data,error}=await sb.from('garantias').select('*,garantias_archivos(*)').order('created_at',{ascending:false});
+  if(error){toast('Error al cargar garantías: '+error.message,true);return;}
+  garantiasData=data||[];
+  const sel=document.getElementById('gar-filtro-ent');
+  if(sel&&!sel.options.length){
+    sel.innerHTML='<option value="">Todas las sucursales</option>'+ENT_ORDER.map(k=>`<option value="${k}">${ENTS[k].label}</option>`).join('');
+  }
+}
+
+// Sin acentos ni mayúsculas, para que "licuadora" encuentre "Licuadora" y
+// "refri" encuentre "Refrigerador" sin importar cómo lo escribieron.
+function garNorm(s){return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();}
+
+function garEstado(g){
+  if(!g.vence_garantia)return{txt:'Sin fecha de vencimiento',color:'var(--text3)',bg:'var(--surface2)'};
+  const dias=Math.round((new Date(g.vence_garantia+'T12:00:00')-TODAY)/86400000);
+  if(dias<0)return{txt:'Garantía vencida ('+fmt(g.vence_garantia)+')',color:'var(--red)',bg:'var(--red-light)'};
+  if(dias<=30)return{txt:'Vence en '+dias+' día'+(dias!==1?'s':'')+' ('+fmt(g.vence_garantia)+')',color:'var(--amber)',bg:'var(--amber-light)'};
+  return{txt:'Vigente hasta '+fmt(g.vence_garantia),color:'var(--green)',bg:'var(--green-light)'};
+}
+
+function renderGarantias(){
+  const el=document.getElementById('gar-content');if(!el)return;
+  const q=garNorm(document.getElementById('gar-search').value.trim());
+  const ent=document.getElementById('gar-filtro-ent').value;
+  const palabras=q.split(/\s+/).filter(Boolean);
+  const lista=garantiasData.filter(g=>{
+    if(ent&&g.entidad!==ent)return false;
+    if(!palabras.length)return true;
+    const texto=garNorm([g.producto,g.marca,g.modelo,g.num_serie,g.tienda,g.notas].join(' '));
+    return palabras.every(p=>texto.includes(p));
+  });
+  if(!garantiasData.length){
+    el.innerHTML='<div class="empty"><div class="empty-ico">🛡️</div>Todavía no hay productos registrados<br><small style="color:var(--text3);font-size:11px">Usa "+ Registrar producto" para subir el primer ticket</small></div>';
+    return;
+  }
+  if(!lista.length){
+    el.innerHTML='<div class="empty"><div class="empty-ico">🔍</div>Ningún producto coincide con la búsqueda</div>';
+    return;
+  }
+  el.innerHTML=`<div style="font-size:11px;color:var(--text3);margin-bottom:8px">${lista.length} producto${lista.length!==1?'s':''}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">${lista.map(renderGarCard).join('')}</div>`;
+}
+
+function renderGarCard(g){
+  const e=ENTS[g.entidad];
+  const est=garEstado(g);
+  const archs=g.garantias_archivos||[];
+  const detalle=[g.marca,g.modelo].filter(Boolean).map(escHtml).join(' · ');
+  const archHtml=archs.length?archs.map(a=>`<div style="display:flex;align-items:center;gap:6px">
+      <div class="hist-file" style="flex:1" onclick="viewFile('${escHtml(a.storage_path)}','${escHtml(a.nombre_archivo)}','garantias')">${GAR_ICONS[a.tipo]||'📎'} ${GAR_TIPOS[a.tipo]||'Archivo'}</div>
+      ${isAdmin()?`<button class="btn-icon" title="Eliminar archivo" onclick="eliminarArchivoGarantia('${a.id}','${escHtml(a.storage_path)}')">🗑</button>`:''}
+    </div>`).join(''):'<div style="font-size:11px;color:var(--amber)">⚠ Sin archivos — falta subir el ticket</div>';
+  return`<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${e?e.color:'var(--border2)'};border-radius:var(--rl);padding:14px">
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+      <div style="min-width:0">
+        <div style="font-size:15px;font-weight:600">${escHtml(g.producto)}</div>
+        ${detalle?`<div style="font-size:12px;color:var(--text2)">${detalle}</div>`:''}
+      </div>
+      <div style="display:flex;gap:2px;flex-shrink:0">
+        <button class="btn-icon" title="Editar" onclick="openGarantiaModal('${g.id}')">✎</button>
+        ${isAdmin()?`<button class="btn-icon" title="Eliminar" onclick="eliminarGarantia('${g.id}')">🗑</button>`:''}
+      </div>
+    </div>
+    <div style="display:inline-block;margin:8px 0;font-size:11px;font-weight:600;padding:3px 8px;border-radius:10px;color:${est.color};background:${est.bg}">${est.txt}</div>
+    <div style="font-size:12px;color:var(--text2);line-height:1.6">
+      ${e?`<span class="pill ${e.pill}">${e.label}</span> `:''}
+      ${g.tienda?'🏪 '+escHtml(g.tienda)+' ':''}${g.fecha_compra?'· Comprado '+fmt(g.fecha_compra)+' ':''}${g.monto!=null?'· '+fmxn(g.monto):''}
+      ${g.num_serie?`<div>Serie: <span style="font-family:var(--mono)">${escHtml(g.num_serie)}</span></div>`:''}
+      ${g.notas?`<div style="color:var(--text3)">${escHtml(g.notas)}</div>`:''}
+    </div>
+    <div style="margin-top:10px;display:flex;flex-direction:column;gap:4px">${archHtml}</div>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--text2)">
+      + Agregar
+      <select id="gar-add-tipo-${g.id}" style="width:auto;font-size:11px;padding:2px 4px">${Object.entries(GAR_TIPOS).map(([k,v])=>`<option value="${k}" ${k===(archs.length?'factura':'ticket')?'selected':''}>${v}</option>`).join('')}</select>
+      <label class="btn" style="font-size:11px;padding:3px 10px;cursor:pointer">Elegir archivo…<input type="file" accept="image/*,.pdf" style="display:none" onchange="agregarArchivoGarantia('${g.id}',this)"></label>
+    </div>
+    <div style="font-size:10px;color:var(--text3);margin-top:6px">Registrado por ${escHtml(g.registrado_por_nombre||'—')}</div>
+  </div>`;
+}
+
+function openGarantiaModal(id){
+  garEditId=id||null;
+  pendingFiles={};
+  const g=id?garantiasData.find(x=>x.id===id):null;
+  document.getElementById('m-garantia-title').textContent=g?'Editar producto':'Registrar producto';
+  document.getElementById('gf-entidad').innerHTML='<option value="">—</option>'+ENT_ORDER.map(k=>`<option value="${k}">${ENTS[k].label}</option>`).join('');
+  document.getElementById('gf-producto').value=g?.producto||'';
+  document.getElementById('gf-marca').value=g?.marca||'';
+  document.getElementById('gf-modelo').value=g?.modelo||'';
+  document.getElementById('gf-serie').value=g?.num_serie||'';
+  document.getElementById('gf-tienda').value=g?.tienda||'';
+  document.getElementById('gf-entidad').value=g?.entidad||'';
+  document.getElementById('gf-monto').value=g?.monto??'';
+  document.getElementById('gf-fecha-compra').value=g?.fecha_compra||new Date().toISOString().slice(0,10);
+  document.getElementById('gf-vence').value=g?.vence_garantia||'';
+  document.getElementById('gf-notas').value=g?.notas||'';
+  // Al editar, los archivos se agregan/quitan desde la tarjeta.
+  document.getElementById('gf-archivos-wrap').style.display=g?'none':'block';
+  resetFileZones([['fz-gar-ticket','fl-gar-ticket','🧾','Foto o PDF','ff-gar-ticket'],['fz-gar-poliza','fl-gar-poliza','🛡️','Foto o PDF','ff-gar-poliza']]);
+  openModal('m-garantia');
+  setTimeout(()=>document.getElementById('gf-producto').focus(),50);
+}
+
+async function subirArchivoGarantia(g,tipo,nombreOriginal,blob,mime,size){
+  const ext=(nombreOriginal.split('.').pop()||'bin').toLowerCase();
+  const path=`${g.id}/${tipo}_${Date.now()}.${ext}`;
+  const{error:se}=await sb.storage.from('garantias').upload(path,blob,{contentType:mime,upsert:true});
+  if(se)return se;
+  const nombre=nombreEstrategico([g.producto,g.marca,GAR_TIPOS[tipo],(g.fecha_compra||'').slice(0,7)],nombreOriginal);
+  const{error}=await sb.from('garantias_archivos').insert({garantia_id:g.id,tipo,nombre_archivo:nombre,storage_path:path,size_bytes:size,mime_type:mime});
+  return error;
+}
+
+async function saveGarantia(){
+  const producto=document.getElementById('gf-producto').value.trim();
+  if(!producto){toast('Escribe el nombre del producto',true);return;}
+  const monto=document.getElementById('gf-monto').value;
+  const row={
+    producto,
+    marca:document.getElementById('gf-marca').value.trim()||null,
+    modelo:document.getElementById('gf-modelo').value.trim()||null,
+    num_serie:document.getElementById('gf-serie').value.trim()||null,
+    tienda:document.getElementById('gf-tienda').value.trim()||null,
+    entidad:document.getElementById('gf-entidad').value||null,
+    monto:monto===''?null:Number(monto),
+    fecha_compra:document.getElementById('gf-fecha-compra').value||null,
+    vence_garantia:document.getElementById('gf-vence').value||null,
+    notas:document.getElementById('gf-notas').value.trim()||null,
+  };
+  setLoading('gar-save-btn',true);
+  let g,error;
+  if(garEditId){
+    ({data:g,error}=await sb.from('garantias').update({...row,updated_at:new Date().toISOString()}).eq('id',garEditId).select().single());
+  }else{
+    const nombre=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina';
+    ({data:g,error}=await sb.from('garantias').insert({...row,registrado_por:currentUser?.id||null,registrado_por_nombre:nombre}).select().single());
+  }
+  if(error){setLoading('gar-save-btn',false);toast('Error: '+error.message,true);return;}
+  let fallos=0;
+  for(const[key,tipo]of[['gar_ticket','ticket'],['gar_poliza','poliza']]){
+    const f=pendingFiles[key];if(!f)continue;
+    const err=await subirArchivoGarantia(g,tipo,f.name,dataURLtoBlob(f.data),f.mime,f.size);
+    if(err){fallos++;console.error('Archivo de garantía no subido:',err);}
+  }
+  setLoading('gar-save-btn',false);
+  closeModal('m-garantia');
+  toast(fallos?`Guardado, pero ${fallos} archivo(s) no se pudieron subir — agrégalos desde la tarjeta`:'✓ Producto guardado',!!fallos);
+  await loadGarantias();renderGarantias();
+}
+
+async function agregarArchivoGarantia(id,input){
+  const file=input.files[0];if(!file)return;
+  const g=garantiasData.find(x=>x.id===id);if(!g)return;
+  const tipo=document.getElementById('gar-add-tipo-'+id).value;
+  toast('Subiendo archivo...');
+  const err=await subirArchivoGarantia(g,tipo,file.name,await fileToBlob(file),file.type,file.size);
+  input.value='';
+  if(err){toast('Error al subir: '+err.message,true);return;}
+  toast('✓ Archivo agregado');
+  await loadGarantias();renderGarantias();
+}
+
+async function eliminarArchivoGarantia(archId,storagePath){
+  if(!confirm('¿Eliminar este archivo?'))return;
+  const{error:se}=await sb.storage.from('garantias').remove([storagePath]);
+  if(se){toast('Error al eliminar: '+se.message,true);return;}
+  const{error}=await sb.from('garantias_archivos').delete().eq('id',archId);
+  if(error){toast('Error: '+error.message,true);return;}
+  toast('Archivo eliminado');
+  await loadGarantias();renderGarantias();
+}
+
+async function eliminarGarantia(id){
+  const g=garantiasData.find(x=>x.id===id);if(!g)return;
+  if(!confirm(`¿Eliminar "${g.producto}" con todos sus archivos?`))return;
+  const paths=(g.garantias_archivos||[]).map(a=>a.storage_path);
+  if(paths.length){
+    const{error:se}=await sb.storage.from('garantias').remove(paths);
+    if(se){toast('Error al eliminar archivos: '+se.message,true);return;}
+  }
+  const{error}=await sb.from('garantias').delete().eq('id',id);
+  if(error){toast('Error: '+error.message,true);return;}
+  toast('Producto eliminado');
+  await loadGarantias();renderGarantias();
 }
 
 // ─── UNIFORMES ───────────────────────────────────────────────
