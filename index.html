@@ -5374,7 +5374,13 @@ function calcVacaciones(){
   if(fCalc<aniversarioEsteAño)añosCompletos--;
   if(añosCompletos<0)añosCompletos=0;
   const añoServicioActual=añosCompletos+1;
-  const diasTablaVac=vacDiasPorServicioAnio(añoServicioActual);
+  // Las vacaciones se ganan al CUMPLIR cada año de servicio (art. 76 LFT):
+  // con 4 años cumplidos le tocan los 18 días del 4° año, no los 20 del 5°
+  // que apenas está corriendo. Antes se usaba añoServicioActual y salían 2
+  // días de más (caso Ana Lilia, 28-sept-2026). El finiquito sí usa el año
+  // en curso, porque ahí se paga la parte proporcional de ese año.
+  const añoServicioPagado=Math.max(1,añosCompletos);
+  const diasTablaVac=vacDiasPorServicioAnio(añoServicioPagado);
   const antiguedadTxt=`${añosCompletos} año${añosCompletos!==1?'s':''}`;
 
   if(!vcDiasManual)document.getElementById('vc-dias').value=diasTablaVac;
@@ -5385,7 +5391,8 @@ function calcVacaciones(){
   const total=montoDias+primaVac;
 
   out.innerHTML=`
-    <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6">Antigüedad: <strong>${antiguedadTxt}</strong> · Año de servicio en curso: <strong>${añoServicioActual}°</strong> · Le corresponden <strong>${diasTablaVac} días</strong> de vacaciones por tabla LFT (vacaciones dignas)</div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6">Antigüedad: <strong>${antiguedadTxt}</strong> · Se pagan las del <strong>${añoServicioPagado}° año</strong> de servicio cumplido · Le corresponden <strong>${diasTablaVac} días</strong> por tabla LFT (vacaciones dignas)</div>
+    ${añosCompletos<1?`<div style="font-size:11px;color:var(--amber);margin:-4px 0 10px">⚠ Todavía no cumple su primer año (ingresó ${fmt(fIngStr)}); por ley las vacaciones se ganan al cumplirlo. Si se le adelantan, se toman los 12 días del 1er año.</div>`:''}
     <table style="width:100%;border-collapse:collapse;font-size:12.5px">
       <tr><td style="padding:7px 4px;border-bottom:1px solid var(--border)">Pago de ${diasTomados} día${diasTomados!==1?'s':''} de vacaciones</td><td style="padding:7px 4px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--mono)">${fmxn(montoDias)}</td></tr>
       <tr><td style="padding:7px 4px;border-bottom:1px solid var(--border)">Prima vacacional (25%)</td><td style="padding:7px 4px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--mono)">${fmxn(primaVac)}</td></tr>
@@ -5395,10 +5402,10 @@ function calcVacaciones(){
   // Años calendario que abarca el año de servicio que se está pagando (ej.
   // "del período comprendido en los años de 2025 a 2026") -- el año de
   // servicio N va de fecha_ingreso+(N-1) años a fecha_ingreso+N años.
-  const anioServicioInicio=fIng.getFullYear()+(añoServicioActual-1);
-  const anioServicioFin=fIng.getFullYear()+añoServicioActual;
+  const anioServicioInicio=fIng.getFullYear()+(añoServicioPagado-1);
+  const anioServicioFin=fIng.getFullYear()+añoServicioPagado;
 
-  return{e,fCalcStr,salario,añosCompletos,añoServicioActual,diasTablaVac,diasTomados,montoDias,primaVac,total,antiguedadTxt,anioServicioInicio,anioServicioFin};
+  return{e,fCalcStr,salario,añosCompletos,añoServicioActual,añoServicioPagado,diasTablaVac,diasTomados,montoDias,primaVac,total,antiguedadTxt,anioServicioInicio,anioServicioFin};
 }
 // Recibo de vacaciones de hoja completa, con el mismo texto legal que ya
 // se usaba en papel (BUENO POR, monto con letra, período por años,
