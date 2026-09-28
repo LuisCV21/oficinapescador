@@ -2819,7 +2819,7 @@ mismo blob ya cargado, sin volver a pedirlo. -->
 
     <!-- PASO 2 — INGRESOS -->
     <div class="bal-panel" data-step="2">
-      <div class="bal-help">💰 Tarjeta y Transferencia se jalan solas de las cortes de Florida (crédito+débito+transferencia, ya facturado + por facturar) — ajústalas a mano solo si de verdad hace falta.</div>
+      <div class="bal-help">💰 Tarjeta, Transferencia y Efectivo facturado se jalan solos de las cortes de Florida (crédito+débito+transferencia ya facturado + por facturar, y el efectivo que sí tiene factura) — ajústalos a mano solo si de verdad hace falta.</div>
       <div id="bal-ing-auto-info"></div>
       <div class="f-grid">
         <div class="f-row"><label>💳 Tarjeta</label>
@@ -2829,7 +2829,7 @@ mismo blob ya cargado, sin volver a pedirlo. -->
           <input type="number" step="0.01" id="bf-fac-transf" placeholder="0.00" oninput="updateBalancePreview()"/>
         </div>
       </div>
-      <div class="f-row"><label>💵 Efectivo <span style="font-weight:400;color:var(--text3);text-transform:none">(informativo -- no se suma a ingresos)</span></label>
+      <div class="f-row"><label>💵 Efectivo facturado <span style="font-weight:400;color:var(--text3);text-transform:none">(sí se suma a ingresos)</span></label>
         <input type="number" step="0.01" id="bf-fac-efectivo" placeholder="0.00" oninput="updateBalancePreview()"/>
       </div>
       <div class="bal-live" id="bal-live-florida"></div>
@@ -2955,14 +2955,14 @@ mismo blob ya cargado, sin volver a pedirlo. -->
 
     <!-- PASO 2 — INGRESOS -->
     <div class="bal-panel" data-step="2">
-      <div class="bal-help">💰 Tarjeta y Transferencia se jalan solas de las cortes de cada negocio (crédito+débito+transferencia, ya facturado + por facturar) — ajústalas a mano solo si de verdad hace falta.</div>
+      <div class="bal-help">💰 Tarjeta, Transferencia y Efectivo facturado se jalan solos de las cortes de cada negocio (crédito+débito+transferencia ya facturado + por facturar, y el efectivo que sí tiene factura) — ajústalos a mano solo si de verdad hace falta.</div>
       <div class="modal-sec">Av. Puebla</div>
       <div id="bal-ing-auto-info-pue"></div>
       <div class="f-grid">
         <div class="f-row"><label>💳 Tarjeta</label><input type="number" step="0.01" id="bk-pue-tarjeta" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
         <div class="f-row"><label>🏦 Transferencia</label><input type="number" step="0.01" id="bk-pue-transf" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
       </div>
-      <div class="f-row"><label>💵 Efectivo <span style="font-weight:400;color:var(--text3);text-transform:none">(informativo -- no se suma a ingresos)</span></label><input type="number" step="0.01" id="bk-pue-efectivo" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
+      <div class="f-row"><label>💵 Efectivo facturado <span style="font-weight:400;color:var(--text3);text-transform:none">(sí se suma a ingresos)</span></label><input type="number" step="0.01" id="bk-pue-efectivo" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
       <div class="bal-live" id="bal-live-puebla"></div>
       <input type="hidden" id="bk-ing-puebla"/>
 
@@ -2972,7 +2972,7 @@ mismo blob ya cargado, sin volver a pedirlo. -->
         <div class="f-row"><label>💳 Tarjeta</label><input type="number" step="0.01" id="bk-hot-tarjeta" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
         <div class="f-row"><label>🏦 Transferencia</label><input type="number" step="0.01" id="bk-hot-transf" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
       </div>
-      <div class="f-row"><label>💵 Efectivo <span style="font-weight:400;color:var(--text3);text-transform:none">(informativo -- no se suma a ingresos)</span></label><input type="number" step="0.01" id="bk-hot-efectivo" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
+      <div class="f-row"><label>💵 Efectivo facturado <span style="font-weight:400;color:var(--text3);text-transform:none">(sí se suma a ingresos)</span></label><input type="number" step="0.01" id="bk-hot-efectivo" placeholder="0.00" oninput="updateBalanceKatPreview()"/></div>
       <div class="bal-live" id="bal-live-hotel"></div>
       <input type="hidden" id="bk-ing-hotel"/>
     </div>
@@ -8972,9 +8972,14 @@ function mesCalendarioDeCorte(fechaYMD){
 // buscado por folio de pago) contra lo que todavía no. El efectivo se
 // regresa aparte solo de referencia -- nunca cuenta como "ingreso facturado".
 // Se jala de cortesData (ya en memoria), sin ir a Supabase de nuevo.
+// Efectivo: solo cuenta el que SÍ tiene CFDI vigente propio (facturado al
+// cliente) -- es ingreso facturado igual que una tarjeta. El efectivo sin
+// factura se regresa aparte (efectivoSinFacturar) solo de referencia.
+// Pedido del dueño, 28-sept-2026, al cuadrar contra el balance de Excel de
+// las chicas (antes el efectivo nunca contaba y salían ~$116k de menos).
 function ingresosFacturablesPeriodo(sucursalLabel,desdeYMD,hastaYMD){
   const ya={credito:0,debito:0,transferencia:0},falta={credito:0,debito:0,transferencia:0};
-  let efectivo=0;
+  let efectivoFacturado=0,efectivoSinFacturar=0;
   cortesData.filter(c=>corteSucLabel(c.sucursal)===sucursalLabel).forEach(c=>{
     const pagos=(c.datos&&c.datos.pagos_detalle)||[];
     const facturas=(c.datos&&c.datos.facturas_detalle)||[];
@@ -8984,24 +8989,34 @@ function ingresosFacturablesPeriodo(sucursalLabel,desdeYMD,hastaYMD){
       if(!fecha||fecha<desdeYMD||fecha>hastaYMD)return;
       const fp=normalizarFormaPagoIngreso(p.forma_pago);
       const monto=Number(p.monto||0);
-      if(fp==='efectivo'){efectivo+=monto;return;}
+      // El Hotel a veces marca el pago como timbrado (p.estado_factura) sin
+      // mandar esa factura en facturas_detalle del corte -- cuenta igual.
+      const vigente=p.estado_factura==='timbrada'||facturas.some(f=>Number(f.folio_pago)===Number(p.folio)&&f.estado==='timbrada');
+      if(fp==='efectivo'){if(vigente)efectivoFacturado+=monto;else efectivoSinFacturar+=monto;return;}
       if(!(fp in ya))return; // vales/ADO/otros no son "facturables" aquí
-      const vigente=facturas.some(f=>Number(f.folio_pago)===Number(p.folio)&&f.estado==='timbrada');
       (vigente?ya:falta)[fp]+=monto;
     });
   });
   const r2=x=>Math.round(x*100)/100;
+  const tarjeta=r2(ya.credito+ya.debito+falta.credito+falta.debito);
+  const transferencia=r2(ya.transferencia+falta.transferencia);
+  const efectivo=r2(efectivoFacturado);
   return{
-    tarjeta:r2(ya.credito+ya.debito+falta.credito+falta.debito),
-    transferencia:r2(ya.transferencia+falta.transferencia),
-    efectivo:r2(efectivo),
-    yaFacturado:r2(ya.credito+ya.debito+ya.transferencia),
+    tarjeta,transferencia,
+    efectivo, // solo el efectivo facturado -- SÍ se suma a ingresos
+    efectivoSinFacturar:r2(efectivoSinFacturar),
+    total:r2(tarjeta+transferencia+efectivo),
+    yaFacturado:r2(ya.credito+ya.debito+ya.transferencia+efectivoFacturado),
     faltaFacturar:r2(falta.credito+falta.debito+falta.transferencia),
   };
 }
 
 // Nómina ya timbrada (CFDI vía factura.com) de una entidad (FLO/PUE/HOT) en
-// un rango de fechas, por periodo semanal cuyo cierre cae en el rango. Los
+// un rango de fechas, por periodo semanal cuyo cierre cae en el rango.
+// Se toma el sueldo BRUTO (subtotal: salario×días + prima dominical, antes
+// de retener ISR/IMSS al trabajador), que es lo que se deduce -- las
+// retenciones también las paga el patrón, solo que al SAT/IMSS en vez de al
+// empleado. Antes se tomaba el neto (pedido del dueño, 28-sept-2026). Los
 // empleados de recibo simple (nomina_fiscal=false) nunca se mandan a
 // timbrar, así que jamás llegan a facturacom_status='timbrada' -- quedan
 // fuera solos, sin necesidad de filtrarlos aparte por empleado.
@@ -9010,14 +9025,19 @@ async function nominaFacturadaPeriodo(ent,desdeYMD,hastaYMD){
   if(!periodos||!periodos.length)return 0;
   const {data:lineas}=await sb.from('nomina_lineas').select('salario_diario,dias_pagados,trabajo_domingo,retencion_isr,retencion_imss')
     .in('periodo_id',periodos.map(p=>p.id)).eq('facturacom_status','timbrada');
-  return Math.round((lineas||[]).reduce((s,l)=>s+nominaCalc(l).total,0)*100)/100;
+  return Math.round((lineas||[]).reduce((s,l)=>s+nominaCalc(l).subtotal,0)*100)/100;
 }
 
+function balEfectivoFacturadoGuardado(total,tarjeta,transf){
+  const e=Math.round((Number(total||0)-Number(tarjeta||0)-Number(transf||0))*100)/100;
+  return e>0.004?e:0;
+}
 function renderIngAutoInfo(containerId,r,desde,hasta,onRecalcFnName){
   const el=document.getElementById(containerId);
   if(!el)return;
   el.innerHTML=`<div style="font-size:11.5px;color:var(--text2);background:var(--surface2);border-radius:6px;padding:6px 10px;margin:4px 0 10px">
-    📅 ${fmtFechaCorta(desde)} – ${fmtFechaCorta(hasta)} · Ya facturado: <b>${fmxn(r.yaFacturado)}</b> · Falta facturar: <b style="color:${r.faltaFacturar>0.5?'var(--amber)':'inherit'}">${fmxn(r.faltaFacturar)}</b>
+    📅 ${fmtFechaCorta(desde)} – ${fmtFechaCorta(hasta)} · Ya facturado: <b>${fmxn(r.yaFacturado)}</b> (incl. ${fmxn(r.efectivo)} de efectivo facturado) · Falta facturar: <b style="color:${r.faltaFacturar>0.5?'var(--amber)':'inherit'}">${fmxn(r.faltaFacturar)}</b>
+    <span style="color:var(--text3)">· Efectivo sin factura (no cuenta): ${fmxn(r.efectivoSinFacturar||0)}</span>
     <span class="btn-text" style="font-size:11px;cursor:pointer;margin-left:6px" onclick="${onRecalcFnName}()">🔄 recalcular</span>
   </div>`;
 }
@@ -9025,7 +9045,7 @@ function renderNomAutoInfo(containerId,monto,ent){
   const el=document.getElementById(containerId);
   if(!el)return;
   el.innerHTML=`<div style="font-size:11.5px;color:var(--text2);background:var(--surface2);border-radius:6px;padding:6px 10px;margin:4px 0">
-    🧾 Nómina ya timbrada este mes (${ENT_LABELS[ent]||ent}): <b>${fmxn(monto)}</b> — se suma sola a egresos.
+    🧾 Nómina ya timbrada este mes (${ENT_LABELS[ent]||ent}), sueldo bruto antes de retenciones: <b>${fmxn(monto)}</b> — se suma sola a egresos.
   </div>`;
 }
 // Para un balance ya guardado (editBalance) -- no recalcula solo al abrir
@@ -9125,7 +9145,7 @@ async function renderBalancePreviewLuis(){
   if(!imssOk)faltantes.push(['imss','IMSS KM']);
 
   const v={
-    ingresos_florida_total:r.tarjeta+r.transferencia,
+    ingresos_florida_total:r.total,
     ingresos_nextel_total:bal?Number(bal.ingresos_nextel_total||0):0,
     ingresos_nextel_iva:bal?Number(bal.ingresos_nextel_iva||0):0,
     ingresos_florida_iva:bal?bal.ingresos_florida_iva:null,
@@ -9178,8 +9198,8 @@ async function renderBalancePreviewKat(){
   if(!imssHotOk)faltantes.push(['imss_hotel','IMSS Hotel']);
 
   const v={
-    ingresos_puebla_total:rPue.tarjeta+rPue.transferencia,
-    ingresos_hotel_total:rHot.tarjeta+rHot.transferencia,
+    ingresos_puebla_total:rPue.total,
+    ingresos_hotel_total:rHot.total,
     ado_pagadas_total:bal?Number(bal.ado_pagadas_total||0):0,
     ado_credito_total:bal?Number(bal.ado_credito_total||0):0,
     egresos_gastos_total:gastosOk?Number(bal.egresos_gastos_total):0,
@@ -10258,7 +10278,7 @@ async function openBalanceModal(){
   document.getElementById('bal-fecha-corte').value=useDraft?(draft.fecha_corte||todayLocalISO()):todayLocalISO();
   document.getElementById('bf-fac-tarjeta').value=useDraft?(draft.facturacion_tarjeta||''):'';
   document.getElementById('bf-fac-transf').value=useDraft?(draft.facturacion_transferencia||''):'';
-  document.getElementById('bf-fac-efectivo').value=useDraft?(draft.facturacion_efectivo||''):'';
+  document.getElementById('bf-fac-efectivo').value=useDraft?(balEfectivoFacturadoGuardado(draft.ingresos_florida_total,draft.facturacion_tarjeta,draft.facturacion_transferencia)||''):'';
   document.getElementById('bf-notas-pendientes').value=useDraft?(draft.facturacion_notas_pendientes||''):'';
   document.getElementById('bf-ventas-totales').value=useDraft?(draft.ventas_totales||''):'';
   document.getElementById('bf-ing-nextel').value=useDraft&&draft.ingresos_nextel_total?draft.ingresos_nextel_total:BAL_NEXTEL_TOTAL_DEFAULT.toFixed(2);
@@ -10296,7 +10316,11 @@ async function editBalance(id){
   document.getElementById('bal-fecha-corte').value=b.fecha_corte||todayLocalISO();
   document.getElementById('bf-fac-tarjeta').value=b.facturacion_tarjeta||'';
   document.getElementById('bf-fac-transf').value=b.facturacion_transferencia||'';
-  document.getElementById('bf-fac-efectivo').value=b.facturacion_efectivo||'';
+  // El campo de efectivo ahora es "efectivo facturado" (sí suma). Los
+  // balances viejos guardaban ahí TODO el efectivo como dato informativo, así
+  // que se deriva del total guardado (total − tarjeta − transferencia; 0 en
+  // los viejos) para no sumarles de golpe todo el efectivo al editarlos.
+  document.getElementById('bf-fac-efectivo').value=balEfectivoFacturadoGuardado(b.ingresos_florida_total,b.facturacion_tarjeta,b.facturacion_transferencia)||'';
   document.getElementById('bf-notas-pendientes').value=b.facturacion_notas_pendientes||'';
   document.getElementById('bf-ventas-totales').value=b.ventas_totales||'';
   document.getElementById('bf-ing-nextel').value=b.ingresos_nextel_total!=null?b.ingresos_nextel_total:BAL_NEXTEL_TOTAL_DEFAULT.toFixed(2);
@@ -10333,7 +10357,7 @@ function getBalanceFormValues(){
     facturacion_efectivo:efectivo,
     facturacion_notas_pendientes:Number(document.getElementById('bf-notas-pendientes').value)||0,
     ventas_totales:Number(document.getElementById('bf-ventas-totales').value)||0,
-    ingresos_florida_total:tarjeta+transferencia,
+    ingresos_florida_total:tarjeta+transferencia+efectivo,
     ingresos_nextel_total:Number(document.getElementById('bf-ing-nextel').value)||0,
     ingresos_nextel_iva:Number(document.getElementById('bf-ing-nextel-iva').value)||0,
     ingresos_florida_iva:balFloridaIvaManual?(Number(document.getElementById('bf-ing-florida-iva').value)||0):null,
@@ -14206,8 +14230,8 @@ function recalcularCorteHotelJson(d){
 
   // ventas_por_forma: igual que en restaurante, siempre derivado de
   // pagos_detalle -- aquí SÍ incluye efectivo (el checksum del corte del
-  // Hotel lo necesita; es el balance mensual de Oficina el que aparte lo
-  // excluye de "ingresos", ver ingresosFacturablesPeriodo).
+  // Hotel lo necesita; el balance mensual de Oficina solo cuenta el efectivo
+  // que sí está facturado, ver ingresosFacturablesPeriodo).
   // ventas_por_forma (desglose de folios, SIEMPRE de este turno -- eso sí es
   // seguro) se deriva de pagos_detalle igual que en restaurante. Pero
   // "Ventas" y "Gastos" a nivel CHECKSUM (rr.ventas/rr.gastos) NO se tocan
@@ -15436,10 +15460,10 @@ async function openBalanceKatModal(){
   document.getElementById('bk-fecha').value=useDraft?(draft.fecha_corte||todayLocalISO()):todayLocalISO();
   document.getElementById('bk-pue-tarjeta').value=useDraft?(draft.facturacion_puebla_tarjeta||''):'';
   document.getElementById('bk-pue-transf').value=useDraft?(draft.facturacion_puebla_transferencia||''):'';
-  document.getElementById('bk-pue-efectivo').value=useDraft?(draft.facturacion_puebla_efectivo||''):'';
+  document.getElementById('bk-pue-efectivo').value=useDraft?(balEfectivoFacturadoGuardado(draft.ingresos_puebla_total,draft.facturacion_puebla_tarjeta,draft.facturacion_puebla_transferencia)||''):'';
   document.getElementById('bk-hot-tarjeta').value=useDraft?(draft.facturacion_hotel_tarjeta||''):'';
   document.getElementById('bk-hot-transf').value=useDraft?(draft.facturacion_hotel_transferencia||''):'';
-  document.getElementById('bk-hot-efectivo').value=useDraft?(draft.facturacion_hotel_efectivo||''):'';
+  document.getElementById('bk-hot-efectivo').value=useDraft?(balEfectivoFacturadoGuardado(draft.ingresos_hotel_total,draft.facturacion_hotel_tarjeta,draft.facturacion_hotel_transferencia)||''):'';
   document.getElementById('bk-egr-gastos').value=useDraft?(draft.egresos_gastos_total||''):'';
   document.getElementById('bk-egr-camioneta').value=useDraft&&draft.egresos_camioneta_total?draft.egresos_camioneta_total:BAL_NISSAN_DEFAULT.toFixed(2);
   document.getElementById('bk-egr-imss-pue').value=useDraft?(draft.egresos_imss_puebla_total||''):'';
@@ -15479,10 +15503,11 @@ async function editBalanceKat(id){
   document.getElementById('bk-fecha').value=b.fecha_corte||todayLocalISO();
   document.getElementById('bk-pue-tarjeta').value=b.facturacion_puebla_tarjeta||'';
   document.getElementById('bk-pue-transf').value=b.facturacion_puebla_transferencia||'';
-  document.getElementById('bk-pue-efectivo').value=b.facturacion_puebla_efectivo||'';
+  // Ver nota en editBalance (Florida) sobre el campo de efectivo.
+  document.getElementById('bk-pue-efectivo').value=balEfectivoFacturadoGuardado(b.ingresos_puebla_total,b.facturacion_puebla_tarjeta,b.facturacion_puebla_transferencia)||'';
   document.getElementById('bk-hot-tarjeta').value=b.facturacion_hotel_tarjeta||'';
   document.getElementById('bk-hot-transf').value=b.facturacion_hotel_transferencia||'';
-  document.getElementById('bk-hot-efectivo').value=b.facturacion_hotel_efectivo||'';
+  document.getElementById('bk-hot-efectivo').value=balEfectivoFacturadoGuardado(b.ingresos_hotel_total,b.facturacion_hotel_tarjeta,b.facturacion_hotel_transferencia)||'';
   document.getElementById('bk-egr-gastos').value=b.egresos_gastos_total||'';
   document.getElementById('bk-egr-camioneta').value=b.egresos_camioneta_total!=null?b.egresos_camioneta_total:BAL_NISSAN_DEFAULT.toFixed(2);
   document.getElementById('bk-egr-imss-pue').value=b.egresos_imss_puebla_total||'';
@@ -15527,11 +15552,11 @@ function getBalanceKatFormValues(){
     facturacion_puebla_tarjeta:puebla.tarjeta,
     facturacion_puebla_transferencia:puebla.transf,
     facturacion_puebla_efectivo:puebla.efectivo,
-    ingresos_puebla_total:puebla.tarjeta+puebla.transf,
+    ingresos_puebla_total:puebla.tarjeta+puebla.transf+puebla.efectivo,
     facturacion_hotel_tarjeta:hotel.tarjeta,
     facturacion_hotel_transferencia:hotel.transf,
     facturacion_hotel_efectivo:hotel.efectivo,
-    ingresos_hotel_total:hotel.tarjeta+hotel.transf,
+    ingresos_hotel_total:hotel.tarjeta+hotel.transf+hotel.efectivo,
     ado_pagadas_total:adoPagadasEntries.reduce((s,a)=>s+Number(a.cantidad),0),
     ado_credito_total:adoCreditoEntries.reduce((s,a)=>s+Number(a.cantidad),0),
     egresos_gastos_total:Number(document.getElementById('bk-egr-gastos').value)||0,
