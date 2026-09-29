@@ -224,6 +224,50 @@ async function eliminarBorrador(apiKey: string, secretKey: string, cfdiUid: stri
   return await resp.json();
 }
 
+// Serie por nombre (ej. "FH", "AF") -- para que un CFDI sustituto de una
+// autofactura salga en la MISMA serie que el original y conserve el
+// consecutivo de esa serie. null si no existe o no está activa.
+async function obtenerSeriePorNombre(apiKey: string, secretKey: string, nombre: string): Promise<number | null> {
+  const resp = await fetch(`${HOST}/v4/series`, { headers: facturacomHeaders(apiKey, secretKey) });
+  await fcCheck(resp);
+  const data = await resp.json();
+  const serie = (data.data || []).find((s: any) =>
+    s.SerieType === "factura" && s.SerieStatus === "Activa" && String(s.SerieName).trim() === String(nombre).trim());
+  return serie ? Number(serie.SerieID) : null;
+}
+
+async function consultarCfdiPorUuid(apiKey: string, secretKey: string, uuid: string) {
+  const resp = await fetch(`${HOST}/v4/cfdi/uuid/${uuid}`, { headers: facturacomHeaders(apiKey, secretKey) });
+  if (!resp.ok) throw new Error(`Factura.com [${resp.status}] al consultar UUID ${uuid}`);
+  const data = (await resp.json())?.data;
+  if (!data) throw new Error(`Factura.com no devolvió datos para el UUID ${uuid}`);
+  return data;
+}
+
+function xmlAttr(xml: string, tag: string, name: string): string | null {
+  const m = xml.match(new RegExp(`<${tag}\\b[^>]*?\\s${name}="([^"]*)"`));
+  return m ? m[1].replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">") : null;
+}
+
+// Datos de un CFDI ya timbrado, leídos de su XML.
+function datosDeCfdi(cfdi: any) {
+  const xml = String(cfdi?.XML ?? "");
+  return {
+    status: cfdi?.Status ?? null,
+    folio_pac: cfdi?.Folio ?? null,
+    uuid: cfdi?.UUID ?? null,
+    total: Number(cfdi?.Total ?? xmlAttr(xml, "cfdi:Comprobante", "Total") ?? 0),
+    serie: xmlAttr(xml, "cfdi:Comprobante", "Serie"),
+    forma_pago: xmlAttr(xml, "cfdi:Comprobante", "FormaPago"),
+    metodo_pago: xmlAttr(xml, "cfdi:Comprobante", "MetodoPago"),
+    rfc: xmlAttr(xml, "cfdi:Receptor", "Rfc"),
+    razon_social: xmlAttr(xml, "cfdi:Receptor", "Nombre"),
+    cp: xmlAttr(xml, "cfdi:Receptor", "DomicilioFiscalReceptor"),
+    regimen_fiscal: xmlAttr(xml, "cfdi:Receptor", "RegimenFiscalReceptor"),
+    uso_cfdi: xmlAttr(xml, "cfdi:Receptor", "UsoCFDI"),
+  };
+}
+
 function folioRealDe(result: any): number | null {
   const folio = result?.INV?.Folio;
   return folio != null ? Number(folio) : null;
@@ -468,9 +512,75 @@ Deno.serve(async (req) => {
       accion, entidad, mes, anio, forma_pago, factura_global_id,
       folio, rfc, razon_social, cp, regimen_fiscal, uso_cfdi, email, metodo_pago,
       uuid_original, descripcion: descripcionCustom, forma_pago_nueva,
+      uuid, serie_nombre, monto_total, af_folio,
     } = body ?? {};
 
     if (!entidad || !KEYWORD[entidad]) return json({ error: "entidad inválida (usa HOT, PUE o FLO)" }, 400);
+
+    // ── datos_cfdi: lee de Factura.com un CFDI ya timbrado (receptor, forma
+    // de pago, serie, total) -- para prellenar el sustituto de una
+    // autofactura sin pedirle otra vez al cliente sus datos fiscales ─────
+    if (accion === "datos_cfdi") {
+      if (!uuid) return json({ error: "uuid es obligatorio" }, 400);
+      const { data: cred } = await db.from("facturacom_credenciales").select("api_key, secret_key").eq("entidad", entidad).maybeSingle();
+      if (!cred?.api_key || !cred?.secret_key) return json({ error: `Faltan las llaves de factura.com para ${entidad}.` }, 500);
+      try {
+        return json({ cfdi: datosDeCfdi(await consultarCfdiPorUuid(cred.api_key, cred.secret_key, String(uuid))) });
+      } catch (e) {
+        return json({ error: String(e instanceof Error ? e.message : e) }, 502);
+      }
+    }
+
+    // ── revisar_formas_autofacturas: compara la forma de pago con la que
+    // salió cada autofactura YA usada contra la forma de pago real de la
+    // venta (el portal deja al cliente cambiarla). Solo lectura. ──────────
+    if (accion === "revisar_formas_autofacturas") {
+      const { data: cred } = await db.from("facturacom_credenciales").select("api_key, secret_key").eq("entidad", entidad).maybeSingle();
+      if (!cred?.api_key || !cred?.secret_key) return json({ error: `Faltan las llaves de factura.com para ${entidad}.` }, 500);
+      const { data: cortes, error: errC } = await db.from("cortes_caja")
+        .select("id, sucursal, turno_id, datos").ilike("sucursal", `%${KEYWORD[entidad]}%`);
+      if (errC) return json({ error: `No se pudo leer cortes_caja: ${errC.message}` }, 500);
+      const SAT_DE: Record<string, string> = {
+        credito: "04", tarjeta_credito: "04", debito: "28", tarjeta_debito: "28", transferencia: "03",
+      };
+      const NO_FACT = ["efectivo", "ado", "vales"];
+      const items: any[] = [];
+      for (const corte of cortes ?? []) {
+        for (const cuenta of corte?.datos?.cuentas ?? []) {
+          const a = cuenta?.autofactura;
+          if (!a?.facturado || !a?.uuid_fiscal || a?.sustituye) continue;
+          const formas = Object.keys(cuenta?.pagos_por_forma ?? {}).map((f) => f.trim().toLowerCase()).filter((f) => !NO_FACT.includes(f));
+          if (formas.length !== 1 || !SAT_DE[formas[0]]) continue; // mixto/otro: no se puede juzgar
+          items.push({
+            corte, cuenta, a, forma_venta: SAT_DE[formas[0]],
+          });
+        }
+      }
+      const resultado: any[] = [];
+      const errores: string[] = [];
+      for (let i = 0; i < items.length; i += 8) {
+        await Promise.all(items.slice(i, i + 8).map(async (it) => {
+          try {
+            const d = datosDeCfdi(await consultarCfdiPorUuid(cred.api_key, cred.secret_key, it.a.uuid_fiscal));
+            if (String(d.status).toLowerCase() === "cancelada") return;
+            if (d.forma_pago && d.forma_pago !== it.forma_venta) {
+              resultado.push({
+                af_folio: it.a.folio, importe: it.a.importe, fecha: it.a.fecha, uuid_fiscal: it.a.uuid_fiscal,
+                folio_pac: d.folio_pac, forma_cfdi: d.forma_pago, forma_venta: it.forma_venta,
+                sucursal: it.corte.sucursal, turno_id: it.corte.turno_id, cuenta_id: it.cuenta.id,
+                folios_venta: (it.cuenta.pagos_detalle ?? [])
+                  .filter((p: any) => !NO_FACT.includes(String(p?.forma_pago ?? "").trim().toLowerCase()))
+                  .map((p: any) => Number(p.folio)),
+              });
+            }
+          } catch (e) {
+            errores.push(`${it.a.folio}: ${e instanceof Error ? e.message : e}`);
+          }
+        }));
+      }
+      resultado.sort((x, y) => String(y.fecha).localeCompare(String(x.fecha)));
+      return json({ revisadas: items.length, distintas: resultado, errores });
+    }
 
     // ── pendientes: calcula lo que falta facturar por forma de pago ──────
     if (accion === "pendientes") {
@@ -531,7 +641,11 @@ Deno.serve(async (req) => {
       const { data: fiscal } = await db.from("entidades_fiscales").select("cp").eq("entidad", entidad).maybeSingle();
       if (!fiscal?.cp) return json({ error: `Falta el código postal de facturación de ${entidad}.` }, 500);
 
-      const { subtotal, iva, ish } = calcularImpuestos(pago.monto, entidad);
+      // Autofactura: cubre TODA la parte no-efectivo de la cuenta, que puede ser
+      // más que el monto de un solo folio de pago -- el sustituto debe
+      // sumar exactamente lo mismo que el original (monto_total).
+      const montoUse = (monto_total != null && Number(monto_total) > 0) ? round2(Number(monto_total)) : pago.monto;
+      const { subtotal, iva, ish } = calcularImpuestos(montoUse, entidad);
       const claveProdServ = entidad === "HOT" ? "90111800" : "90101501";
       const claveUnidad = "E48";
       // Descripción del concepto en el CFDI -- cada empresa vende algo
@@ -558,7 +672,10 @@ Deno.serve(async (req) => {
       const clienteUid = await buscarOCrearCliente(cred.api_key, cred.secret_key, {
         rfc: rfcUpper, razonSocial: razon_social, cp, regimen: regimen_fiscal, usoCfdi: uso_cfdi,
       });
-      const serieId = await obtenerSerieFactura(cred.api_key, cred.secret_key);
+      // Un sustituto de autofactura conserva la serie del original (y con ello
+      // su consecutivo); si no se pide o no existe, la serie normal de siempre.
+      const serieId = (serie_nombre ? await obtenerSeriePorNombre(cred.api_key, cred.secret_key, String(serie_nombre)) : null)
+        ?? await obtenerSerieFactura(cred.api_key, cred.secret_key);
 
       const payload = {
         Receptor: { UID: clienteUid },
@@ -593,7 +710,7 @@ Deno.serve(async (req) => {
 
       const row = {
         entidad, folio: Number(folio), cuenta: pago.cuenta, fecha_venta: pago.fecha,
-        subtotal, iva: iva + ish, total: pago.monto,
+        subtotal, iva: iva + ish, total: montoUse,
         forma_pago: formaPagoSat, metodo_pago: metodo,
         rfc_receptor: rfcUpper, razon_social, regimen_fiscal, uso_cfdi,
         cp_receptor: cp, email_receptor: email || null,
@@ -619,7 +736,42 @@ Deno.serve(async (req) => {
           factura: { ...row, uuid_fiscal: uuidFiscal },
         });
       }
-      return json({ ok: true, factura: guardada });
+      // Autofactura: el corte sigue apuntando al CFDI original (ya cancelado
+      // o por cancelar) -- se actualiza para que Oficina muestre el nuevo
+      // folio y no vuelva a marcar esta autofactura como "con forma distinta".
+      let autofacturaActualizada = false;
+      if (af_folio || uuid_original) {
+        try {
+          let folioPacNuevo: string | null = folioPac != null ? String(folioPac) : null;
+          try {
+            const c2 = await consultarCfdiPorUuid(cred.api_key, cred.secret_key, uuidFiscal);
+            if (c2?.Folio) folioPacNuevo = String(c2.Folio);
+          } catch (_e) { /* se queda con el folio numérico */ }
+          const { data: cortesAF } = await db.from("cortes_caja").select("id, datos").ilike("sucursal", `%${KEYWORD[entidad]}%`);
+          for (const c of cortesAF ?? []) {
+            let cambio = false;
+            const portadores = [
+              ...(c.datos?.cuentas ?? []),
+              ...(c.datos?.autofacturas_huerfanas ?? []).map((h: any) => ({ autofactura: h })),
+            ];
+            for (const q of portadores) {
+              const a = q?.autofactura;
+              if (!a || a.sustituye) continue;
+              if (a.uuid_fiscal !== uuid_original && !(af_folio && String(a.folio) === String(af_folio))) continue;
+              a.sustituye = { uuid_fiscal: a.uuid_fiscal ?? null, folio_pac: a.folio_pac ?? null, fecha: new Date().toISOString() };
+              a.uuid_fiscal = uuidFiscal;
+              a.folio_pac = folioPacNuevo;
+              a.facturado = true;
+              cambio = true;
+            }
+            if (cambio) {
+              await db.from("cortes_caja").update({ datos: c.datos }).eq("id", c.id);
+              autofacturaActualizada = true;
+            }
+          }
+        } catch (_e) { /* el CFDI ya está timbrado; no bloquear la respuesta por esto */ }
+      }
+      return json({ ok: true, factura: guardada, autofactura_actualizada: autofacturaActualizada });
     }
 
     // ── timbrar_individual: factura + timbra directo (sin borrador, igual

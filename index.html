@@ -1444,6 +1444,7 @@ empleado a planta o darlo de baja. */
               <button class="btn btn-sm" id="af-reporte-btn" onclick="openReporteFacturacion()" style="display:none">📋 Reporte de facturación</button>
             </div>
             <div class="toolbar-r" style="display:flex;gap:8px">
+              <button class="btn" id="af-formas-btn" onclick="revisarFormasAutofacturas()" title="Compara la forma de pago con la que salió cada autofactura contra la de la venta">⚖ Revisar formas de pago</button>
               <button class="btn btn-filled" id="af-verificar-btn" onclick="verificarAutofacturas()">🔄 Verificar autofacturas</button>
             </div>
           </div>
@@ -1653,6 +1654,14 @@ y "Crear CFDI sustituto". -->
   <div class="modal-hdr"><div class="modal-title" id="m-accion-venta-title">Acción sobre factura</div><button class="btn-icon" onclick="closeModal('m-accion-venta')">✕</button></div>
   <div class="modal-body" id="m-accion-venta-body"></div>
   <div class="modal-ftr" id="m-accion-venta-ftr"></div>
+</div>
+</div>
+
+<!-- MODAL AUTOFACTURAS CON FORMA DE PAGO DISTINTA -->
+<div class="modal-overlay" id="m-af-formas">
+<div class="modal" style="max-width:680px">
+  <div class="modal-hdr"><div class="modal-title">Autofacturas con forma de pago distinta a la venta</div><button class="btn-icon" onclick="closeModal('m-af-formas')">✕</button></div>
+  <div class="modal-body" id="m-af-formas-body"></div>
 </div>
 </div>
 
@@ -15156,6 +15165,136 @@ async function confirmarCrearSustituto(entidad,folio,uuidOriginal){
   }catch(e){
     toast('Error: '+e.message,true);
     btn.disabled=false;btn.textContent='Timbrar sustituto';
+  }
+}
+
+// ─── AUTOFACTURAS CON FORMA DE PAGO DISTINTA: REVISAR Y SUSTITUIR ─────────
+// El portal de autofacturación deja al cliente cambiar la forma de pago
+// (captura del dueño, 29-sept-2026), así que una venta cobrada con tarjeta
+// puede salir facturada como efectivo. "Revisar formas de pago" compara, contra
+// Factura.com, la forma del CFDI con la de la venta; "Sustituir" timbra un CFDI
+// nuevo con la forma correcta (misma serie/consecutivo que el original,
+// mismo cliente) y luego cancela el original con motivo 01.
+let afFormasItems=[];
+const AF_FORMA_NOMBRE={'01':'Efectivo','03':'Transferencia','04':'Tarjeta de crédito','28':'Tarjeta de débito'};
+const AF_FORMA_CLAVE={'04':'credito','28':'debito','03':'transferencia','01':'efectivo'};
+
+async function revisarFormasAutofacturas(){
+  const entidad=afEntidadActual();
+  if(!entidad){toast('No se reconoce la sucursal seleccionada',true);return;}
+  const btn=document.getElementById('af-formas-btn');
+  btn.disabled=true;btn.textContent='Revisando...';
+  try{
+    const out=await gpLlamarFuncion({accion:'revisar_formas_autofacturas',entidad});
+    afFormasItems=out.distintas||[];
+    const filas=afFormasItems.map((it,i)=>`<tr>
+      <td>${it.af_folio}</td><td>${it.folio_pac||''}</td><td>${fmt(it.fecha)}</td>
+      <td class="num">${fmxn(it.importe)}</td>
+      <td>${AF_FORMA_NOMBRE[it.forma_venta]||it.forma_venta}</td>
+      <td style="color:var(--red)">${AF_FORMA_NOMBRE[it.forma_cfdi]||it.forma_cfdi}</td>
+      <td><button class="btn btn-sm" onclick="openSustituirAutofactura(${i})">Sustituir</button></td></tr>`).join('');
+    document.getElementById('m-af-formas-body').innerHTML=
+      `<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Revisadas ${out.revisadas} autofacturas ya usadas de ${corteSucLabel(currentAFSuc)}. `+
+      (afFormasItems.length?`<b>${afFormasItems.length}</b> salieron con una forma de pago distinta a la de la venta.`:'Todas coinciden con la forma de pago de la venta.')+
+      (out.errores&&out.errores.length?` (${out.errores.length} no se pudieron consultar)`:'')+`</div>`+
+      (afFormasItems.length?`<div style="overflow-x:auto"><table class="corte-tbl">
+        <thead><tr><th>Folio AF</th><th>Folio fiscal</th><th>Fecha</th><th class="num">Importe</th><th>Forma en la venta</th><th>Forma en la factura</th><th></th></tr></thead>
+        <tbody>${filas}</tbody></table></div>`:'');
+    openModal('m-af-formas');
+  }catch(e){
+    toast('Error al revisar: '+e.message,true);
+  }finally{
+    btn.disabled=false;btn.textContent='⚖ Revisar formas de pago';
+  }
+}
+
+async function openSustituirAutofactura(i){
+  const it=afFormasItems[i];
+  const entidad=afEntidadActual();
+  if(!it||!entidad)return;
+  if(!it.folios_venta||!it.folios_venta.length){toast('Esta autofactura no tiene un folio de venta ligado.',true);return;}
+  document.getElementById('m-crear-sustituto-title').textContent=`Sustituir autofactura ${it.af_folio} · ${it.folio_pac||''}`;
+  document.getElementById('m-crear-sustituto-body').innerHTML=`<div class="loading"><div class="spinner"></div>Leyendo la factura en Factura.com...</div>`;
+  document.getElementById('m-crear-sustituto-ftr').innerHTML='';
+  openModal('m-crear-sustituto');
+  let cfdi;
+  try{cfdi=(await gpLlamarFuncion({accion:'datos_cfdi',entidad,uuid:it.uuid_fiscal})).cfdi;}
+  catch(e){document.getElementById('m-crear-sustituto-body').innerHTML=`<div class="empty"><div class="empty-ico">⚠️</div>${e.message}</div>`;return;}
+  const claveForma=AF_FORMA_CLAVE[it.forma_venta]||'efectivo';
+  const opt=(arr,val,def)=>arr.map(([c,l])=>`<option value="${c}" ${c===(val||def)?'selected':''}>${l}</option>`).join('');
+  const aviso1000=Number(it.importe)>1000?`<div style="background:var(--red-light,#fdecea);color:var(--red,#c0392b);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px">El importe pasa de $1,000: para cancelar el original el SAT pide que el cliente acepte la cancelación. Puede quedar "en proceso" hasta que responda.</div>`:'';
+  document.getElementById('m-crear-sustituto-body').innerHTML=`
+    <div style="background:var(--amber-light,#fdf3e0);color:var(--amber,#b8860b);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px">
+      Se timbra un CFDI real ante el SAT con la forma de pago correcta, relacionado como sustituto del original, y después se cancela el original (motivo 01). El cliente recibirá la factura nueva si pones su correo.
+    </div>${aviso1000}
+    <div class="bal-live-row" style="margin-bottom:10px;font-size:13px"><span>Venta folio ${it.folios_venta.join(', ')} · factura salió como <b style="color:var(--red)">${AF_FORMA_NOMBRE[it.forma_cfdi]||it.forma_cfdi}</b></span><strong>${fmxn(it.importe)}</strong></div>
+    <div class="f-row"><label>Forma de pago correcta</label>
+      <select id="sa-forma"><option value="efectivo" ${claveForma==='efectivo'?'selected':''}>Efectivo</option><option value="debito" ${claveForma==='debito'?'selected':''}>Tarjeta de débito</option><option value="credito" ${claveForma==='credito'?'selected':''}>Tarjeta de crédito</option><option value="transferencia" ${claveForma==='transferencia'?'selected':''}>Transferencia</option></select></div>
+    <div class="f-row"><label>RFC <span class="req">*</span></label><input type="text" id="sa-rfc" value="${(cfdi.rfc||'').replace(/"/g,'&quot;')}"/></div>
+    <div class="f-row"><label>Razón social <span class="req">*</span></label><input type="text" id="sa-razon" value="${(cfdi.razon_social||'').replace(/"/g,'&quot;')}"/></div>
+    <div class="f-row"><label>Código postal fiscal <span class="req">*</span></label><input type="text" id="sa-cp" maxlength="5" value="${cfdi.cp||''}"/></div>
+    <div class="f-row"><label>Régimen fiscal <span class="req">*</span></label><select id="sa-regimen">${opt(REGIMENES_FISCALES_OFI,cfdi.regimen_fiscal,'601')}</select></div>
+    <div class="f-row"><label>Uso CFDI <span class="req">*</span></label><select id="sa-uso">${opt(USOS_CFDI_OFI,cfdi.uso_cfdi,'G03')}</select></div>
+    <div class="f-row"><label>Correo (opcional)</label><input type="email" id="sa-email" placeholder="cliente@correo.com"/></div>
+    <div class="f-row"><label>Serie del original (el sustituto sale en la misma)</label><input type="text" id="sa-serie" value="${cfdi.serie||''}"/></div>
+    <div id="sa-paso2" style="display:none;margin-top:12px"></div>`;
+  document.getElementById('m-crear-sustituto-ftr').innerHTML=
+    `<button class="btn" onclick="closeModal('m-crear-sustituto')">Cerrar</button>`+
+    `<button class="btn btn-filled" id="sa-timbrar-btn" onclick="confirmarSustituirAutofactura(${i},'${entidad}')">Timbrar sustituto</button>`;
+}
+
+async function confirmarSustituirAutofactura(i,entidad){
+  const it=afFormasItems[i];
+  const rfc=document.getElementById('sa-rfc').value.trim().toUpperCase();
+  const razon_social=document.getElementById('sa-razon').value.trim();
+  const cp=document.getElementById('sa-cp').value.trim();
+  if(!rfc||!razon_social||!cp){toast('RFC, razón social y CP son obligatorios',true);return;}
+  const forma=document.getElementById('sa-forma').value;
+  if(!confirm(`Esto timbra un CFDI real ante el SAT a nombre de ${razon_social} (${rfc}) por ${fmxn(it.importe)}, con forma de pago ${forma}, como sustituto de ${it.folio_pac||it.af_folio}. ¿Confirmas?`))return;
+  const btn=document.getElementById('sa-timbrar-btn');
+  btn.disabled=true;btn.textContent='Timbrando...';
+  try{
+    const out=await gpLlamarFuncion({
+      accion:'timbrar_sustituto',entidad,folio:it.folios_venta[0],uuid_original:it.uuid_fiscal,
+      rfc,razon_social,cp,regimen_fiscal:document.getElementById('sa-regimen').value,
+      uso_cfdi:document.getElementById('sa-uso').value,email:document.getElementById('sa-email').value.trim(),
+      metodo_pago:'PUE',descripcion:entidad==='HOT'?'Servicio de hospedaje':'Alimentos y bebidas',
+      forma_pago_nueva:forma,serie_nombre:document.getElementById('sa-serie').value.trim()||null,
+      monto_total:it.importe,af_folio:it.af_folio,
+    });
+    const nuevoUuid=out.factura.uuid_fiscal;
+    btn.style.display='none';
+    const p2=document.getElementById('sa-paso2');
+    p2.style.display='block';
+    p2.innerHTML=`<div style="background:var(--green-light,#e6f4ea);color:var(--green,#2e7d32);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:8px">✓ Sustituto timbrado (UUID ${nuevoUuid.slice(0,8)}…). ${out.aviso||''} Falta cancelar el original ante el SAT.</div>
+      <button class="btn btn-filled" id="sa-cancelar-btn" style="background:var(--red,#c0392b);border-color:var(--red,#c0392b)" onclick="cancelarOriginalAutofactura(${i},'${entidad}','${nuevoUuid}')">Cancelar el original (motivo 01)</button>`;
+    toast('✓ Sustituto timbrado. Ahora cancela el original.');
+  }catch(e){
+    toast('Error: '+e.message,true);
+    btn.disabled=false;btn.textContent='Timbrar sustituto';
+  }
+}
+
+async function cancelarOriginalAutofactura(i,entidad,nuevoUuid){
+  const it=afFormasItems[i];
+  if(!confirm(`Esto cancela ante el SAT la factura original ${it.folio_pac||it.af_folio} (motivo 01, sustituida por la nueva). No se puede deshacer. ¿Confirmas?`))return;
+  const btn=document.getElementById('sa-cancelar-btn');
+  btn.disabled=true;btn.textContent='Cancelando…';
+  try{
+    const{data:{session}}=await sb.auth.getSession();
+    const resp=await fetch(SUPA_URL+'/functions/v1/cancelar-cfdi',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+      body:JSON.stringify({entidad,uuid_fiscal:it.uuid_fiscal,motivo:'01',folio_sustituto:nuevoUuid,sucursal:it.sucursal,folio:it.folios_venta[0],turno_id:it.turno_id}),
+    });
+    const out=await resp.json().catch(()=>({error:'Respuesta inválida del servidor'}));
+    if(!resp.ok||out.error)throw new Error(out.error||'Error desconocido');
+    toast(out.aviso||'Original cancelado ante el SAT');
+    closeModal('m-crear-sustituto');closeModal('m-af-formas');
+    await loadCortes();await loadCancelacionesCfdi();renderAutofacturas();
+  }catch(e){
+    btn.disabled=false;btn.textContent='Cancelar el original (motivo 01)';
+    toast('No se pudo cancelar: '+e.message+' — el sustituto ya está timbrado; puedes reintentar la cancelación.',true);
   }
 }
 
