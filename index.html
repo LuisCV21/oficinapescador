@@ -11253,6 +11253,25 @@ async function gpLlamarFuncion(payload){
   return out;
 }
 
+// Refresca contra Factura.com cuáles autofacturas ya se usaron, ANTES de
+// calcular pendientes / crear borrador -- así la Global nunca depende de que
+// alguien haya dado clic en "Verificar autofacturas" en la otra pantalla.
+// Si falla (Factura.com caído, etc.) no bloquea: sigue con lo que hay.
+async function gpRefrescarAutofacturas(entidad){
+  try{
+    const{data:{session}}=await sb.auth.getSession();
+    const resp=await fetch(SUPA_URL+'/functions/v1/verificar-autofacturas',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+      body:JSON.stringify({entidad}),
+    });
+    if(!resp.ok)return null;
+    const out=await resp.json().catch(()=>null);
+    if(out&&(out.nuevas_facturadas||out.folios_completados))await loadCortes();
+    return out;
+  }catch(e){return null;}
+}
+
 async function renderVistaPreviaGlobales(){
   const el=document.getElementById('gp-content');
   if(!el)return;
@@ -11265,9 +11284,10 @@ async function renderVistaPreviaGlobales(){
     el.innerHTML=`<div class="empty"><div class="empty-ico">📦</div>No se reconoce la sucursal "${currentGPSuc}" (debe contener hotel/puebla/florida en el nombre)</div>`;
     return;
   }
-  el.innerHTML=`<div class="loading"><div class="spinner"></div>Calculando pendientes...</div>`;
+  el.innerHTML=`<div class="loading"><div class="spinner"></div>Verificando autofacturas y calculando pendientes...</div>`;
   gpCargando=true;
   try{
+    await gpRefrescarAutofacturas(entidad);
     const out=await gpLlamarFuncion({accion:'pendientes',entidad,mes,anio});
     gpUltimoResultado=out;
   }catch(e){
@@ -11646,6 +11666,7 @@ async function gpCrearBorrador(satCode){
   gpCargando=true;
   try{
     toast('Creando borrador en Factura.com...');
+    await gpRefrescarAutofacturas(entidad);
     await gpLlamarFuncion({accion:'crear_borrador',entidad,mes,anio,forma_pago:satCode});
     toast('✓ Borrador creado -- revísalo antes de timbrar');
     await renderVistaPreviaGlobales();
