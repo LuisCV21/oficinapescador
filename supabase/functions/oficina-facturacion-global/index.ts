@@ -236,7 +236,10 @@ function periodoDe(mes: number, anio: number) {
   return { inicio, fin };
 }
 
-type Pago = { folio: number; monto: number; fecha: string; cuenta: string | null; sat_code: string; sat_nombre: string };
+// dia_turno = día del turno (apertura del corte) en que se cobró -- es el día
+// que usa la oficina en su cuadre diario; fecha es la hora real del pago y un
+// cobro de madrugada cae en el día calendario siguiente al de su turno.
+type Pago = { folio: number; monto: number; fecha: string; cuenta: string | null; sat_code: string; sat_nombre: string; dia_turno?: string };
 
 // Folios cuya autofactura ya fue usada por el cliente (verificada contra
 // Factura.com). verificar-autofacturas solo marca datos.cuentas[].autofactura
@@ -286,6 +289,7 @@ async function candidatosPendientes(
       candidatos.push({
         folio: Number(p.folio), monto: round2(Number(p.monto || 0)), fecha: p.fecha,
         cuenta: p.cuenta ?? null, sat_code: sat[0], sat_nombre: sat[1],
+        dia_turno: String(corte?.datos?.apertura ?? corte?.datos?.cierre ?? p.fecha).slice(0, 10),
       });
     }
   }

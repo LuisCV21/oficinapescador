@@ -11564,7 +11564,7 @@ function gpDatosDiariosPendiente(){
   grupos.forEach(g=>{
     const col=GP_SAT_A_COL[g.sat_code]||'otro';
     (g.folios||[]).forEach(p=>{
-      const f=(p.fecha||'').slice(0,10);
+      const f=(p.dia_turno||p.fecha||'').slice(0,10);
       if(!f)return;
       const acc=dias.get(f)||{efectivo:0,credito:0,debito:0,transferencia:0,otro:0};
       acc[col]+=Number(p.monto||0);
@@ -11583,8 +11583,9 @@ function gpDatosDiarios(){
   cortesData.filter(c=>c.sucursal===currentGPSuc).forEach(c=>{
     const pagos=(c.datos&&c.datos.pagos_detalle)||[];
     const corteFecha=(c.cierre||c.apertura||'').slice(0,10);
+    const diaTurno=String((c.datos&&c.datos.apertura)||corteFecha).slice(0,10);
     pagos.forEach(p=>{
-      const f=(p.fecha||corteFecha||'').slice(0,10);
+      const f=(p.fecha?diaTurno:corteFecha).slice(0,10);
       if(!f||f<desde||f>hasta)return;
       const forma=(p.forma_pago||'').toLowerCase();
       const col=forma==='efectivo'?'efectivo'
