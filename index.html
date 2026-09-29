@@ -3409,7 +3409,7 @@ function showPage(id){
   else if(id==='flotilla')renderFlotilla();
   else if(id==='balance')switchBalTab(balActiveTab);
   else if(id==='cortes')renderCortes();
-  else if(id==='ventasmes')renderVentasMes();
+  else if(id==='ventasmes'){renderVentasMes();cargarFacturasIndividuales().then(()=>{if(document.getElementById('page-ventasmes')&&document.getElementById('page-ventasmes').classList.contains('active'))renderVentasMes();});}
   else if(id==='globalespreview')renderVistaPreviaGlobales();
   else if(id==='autofacturas')renderAutofacturas();
   else if(id==='controlgastos')renderControlGastos();
@@ -10792,7 +10792,40 @@ function ventasMesFilas(){
     // todavía no: lo de HOY de la sucursal atrasada saldría ordenado como
     // si fuera de hace semanas.
     const corteFecha=c.cierre||c.apertura||'';
-    pagos.forEach(p=>filas.push({sucursal:c.sucursal,turno_id:c.turno_id,corteFecha,...p}));
+    // Autofacturas YA usadas por el cliente: el POS no siempre las manda en
+    // pagos_detalle (y las que Oficina encontró/ligó o sustituyó viven solo en
+    // cuentas[].autofactura), así que se reflejan aquí. Cubren todos los
+    // folios de pago no-efectivo de su cuenta.
+    const afPorFolio=new Map();
+    ((c.datos&&c.datos.cuentas)||[]).forEach(q=>{
+      const a=q.autofactura;
+      if(!(a&&a.facturado))return;
+      if(q.folio!=null)afPorFolio.set(Number(q.folio),a);
+      (q.pagos_detalle||[]).forEach(pq=>{if(pq.folio!=null)afPorFolio.set(Number(pq.folio),a);});
+    });
+    pagos.forEach(p=>{
+      let fila={sucursal:c.sucursal,turno_id:c.turno_id,corteFecha,...p};
+      const a=p.folio!=null?afPorFolio.get(Number(p.folio)):null;
+      const fk=String(p.forma_pago||'').toLowerCase();
+      if(a&&!['efectivo','ado','vales'].includes(fk)){
+        const fp=a.folio_pac?String(a.folio_pac):('AF '+String(a.folio||'').replace(/^AF/i,''));
+        fila={...fila,facturado:true,folio_pac:fp,uuid_fiscal:a.uuid_fiscal||fila.uuid_fiscal,es_autofactura:true};
+      }
+      filas.push(fila);
+    });
+  });
+  // Facturas individuales timbradas desde Oficina (incluye los CFDI
+  // sustitutos de una factura cancelada): mandan sobre lo que traiga el corte,
+  // que sigue con el folio/UUID original.
+  const entVM=entidadCodigoDe(currentVMSuc);
+  const indVM=new Map();
+  facturasIndData.filter(fi=>fi.entidad===entVM&&fi.estado==='timbrada').forEach(fi=>indVM.set(Number(fi.folio),fi));
+  filas=filas.map(p=>{
+    const fi=p.folio!=null?indVM.get(Number(p.folio)):null;
+    if(!fi)return p;
+    // mismo folio pero de otro mes (los folios se reiniciaron): no es esta venta
+    if(fi.fecha_venta&&p.fecha&&String(fi.fecha_venta).slice(0,10)!==String(p.fecha).slice(0,10))return p;
+    return {...p,facturado:true,folio_pac:fi.folio_pac||p.folio_pac,uuid_fiscal:fi.uuid_fiscal||p.uuid_fiscal,sustituida:true};
   });
   if(soloNoFact)filas=filas.filter(p=>!p.facturado);
   if(formaPago)filas=filas.filter(p=>(p.forma_pago||'').toLowerCase()===formaPago);
@@ -15010,8 +15043,11 @@ function entidadCodigoDe(sucursal){
   return Object.keys(ENTS).find(k=>ENTS[k]===ent)||null;
 }
 
-function cancelacionCfdiDe(sucursal,folio){
-  return cancelacionesCfdiData.find(c=>c.sucursal===sucursal&&c.folio===folio)||null;
+function cancelacionCfdiDe(sucursal,folio,uuidFiscal){
+  // Con UUID solo cuenta la cancelación de ESE CFDI: un folio que se sustituyó
+  // tiene la cancelación del original y un CFDI nuevo vigente, y no debe
+  // seguir viéndose como "cancelado".
+  return cancelacionesCfdiData.find(c=>c.sucursal===sucursal&&c.folio===folio&&(!uuidFiscal||!c.uuid_fiscal||c.uuid_fiscal===uuidFiscal))||null;
 }
 
 // Guarda el pago_detalle completo (rfc_receptor, razon_social, montos...)
@@ -15029,7 +15065,7 @@ function accionBtnsVenta(sucursal,folio,turnoId,uuidFiscal,pago){
   const btnVer=uuidFiscal
     ?`<button class="corte-iconbtn" title="Ver factura (PDF)" onclick="openFacturaPreviewModal('${sucursal.replace(/'/g,"\\'")}','${uuidFiscal.replace(/'/g,"\\'")}')">👁</button>`
     :'';
-  const cancelada=cancelacionCfdiDe(sucursal,folio);
+  const cancelada=cancelacionCfdiDe(sucursal,folio,uuidFiscal);
   if(cancelada){
     const motivoTxt=(MOTIVOS_CANCELACION.find(m=>m[0]===cancelada.motivo)||[])[1]||cancelada.motivo;
     return `<span class="corte-badge" style="background:var(--red-light);color:var(--red)" title="Motivo ${cancelada.motivo} — ${motivoTxt}">✕ cancelada ante el SAT</span> ${btnVer}`;
@@ -15372,7 +15408,9 @@ async function cancelarOriginalAutofactura(i,entidad,nuevoUuid){
     if(!resp.ok||out.error)throw new Error(out.error||'Error desconocido');
     toast(out.aviso||'Original cancelado ante el SAT');
     closeModal('m-crear-sustituto');closeModal('m-af-formas');
-    await loadCortes();await loadCancelacionesCfdi();renderAutofacturas();
+    // Que Ventas del mes, la Póliza y la Global vean el CFDI nuevo y la cancelación.
+    await loadCortes();await loadCancelacionesCfdi();await cargarFacturasIndividuales();
+    renderAutofacturas();renderVentasMes();
   }catch(e){
     btn.disabled=false;btn.textContent='Cancelar el original (motivo 01)';
     toast('No se pudo cancelar: '+e.message+' — el sustituto ya está timbrado; puedes reintentar la cancelación.',true);
