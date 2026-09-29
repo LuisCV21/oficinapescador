@@ -1657,6 +1657,14 @@ y "Crear CFDI sustituto". -->
 </div>
 </div>
 
+<!-- MODAL HISTORIAL DE FACTURAS DE UN FOLIO -->
+<div class="modal-overlay" id="m-hist-folio">
+<div class="modal" style="max-width:560px">
+  <div class="modal-hdr"><div class="modal-title" id="m-hist-folio-title">Historial de facturas</div><button class="btn-icon" onclick="closeModal('m-hist-folio')">✕</button></div>
+  <div class="modal-body" id="m-hist-folio-body"></div>
+</div>
+</div>
+
 <!-- MODAL AUTOFACTURAS CON FORMA DE PAGO DISTINTA -->
 <div class="modal-overlay" id="m-af-formas">
 <div class="modal" style="max-width:680px">
@@ -12554,7 +12562,7 @@ function switchPBSuc(s){currentPBSuc=s;renderPolizaBanco();}
 let facturasIndData=[];
 let pbUuidsCancelados=new Set();
 async function cargarFacturasIndividuales(){
-  const{data}=await sb.from('facturas_individuales').select('entidad,folio,estado,forma_pago,total,fecha_venta,uuid_fiscal,folio_pac,razon_social');
+  const{data}=await sb.from('facturas_individuales').select('entidad,folio,estado,forma_pago,total,fecha_venta,fecha_creacion,uuid_fiscal,folio_pac,razon_social');
   facturasIndData=data||[];
 }
 function pbCalcularDatos(){
@@ -14950,9 +14958,10 @@ function corteConFolio(sucursal,folio,turnoId){
   return candidatos.find(c=>c.datos.pagos_detalle.some(p=>p.folio===folio))||null;
 }
 
-function openCorreccionModal(sucursal,folio,turnoId){
+function openCorreccionModal(sucursal,folio,turnoId,yaFacturado){
   document.getElementById('m-correccion-pago-title').textContent=`Corregir folio ${folio} — ${sucursal}`;
   document.getElementById('m-correccion-pago-body').innerHTML=`
+    ${yaFacturado?`<div style="background:var(--amber-light,#fdf3e0);color:var(--amber,#b8860b);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px">Este folio ya tiene factura. Esto corrige solo el registro de la venta en Oficina (bauchers, Póliza, cuadre); <b>no cambia la factura</b>, y el POS de la sucursal no lo aplica porque bloquea folios facturados.</div>`:''}
     <div class="f-row"><label>Forma de pago correcta <span class="req">*</span></label>
       <select id="cp-forma">${FORMAS_PAGO_POS.map(f=>`<option value="${f}">${f}</option>`).join('')}</select>
     </div>
@@ -14960,20 +14969,24 @@ function openCorreccionModal(sucursal,folio,turnoId){
   `;
   document.getElementById('m-correccion-pago-ftr').innerHTML=
     `<button class="btn" onclick="closeModal('m-correccion-pago')">Cancelar</button>`+
-    `<button class="btn btn-filled" id="cp-save-btn" onclick="guardarCorreccionPago('${sucursal}',${folio},${turnoId==null?'null':turnoId})">Guardar</button>`;
+    `<button class="btn btn-filled" id="cp-save-btn" onclick="guardarCorreccionPago('${sucursal}',${folio},${turnoId==null?'null':turnoId},${yaFacturado?'true':'false'})">Guardar</button>`;
   openModal('m-correccion-pago');
 }
 
-async function guardarCorreccionPago(sucursal,folio,turnoId){
+async function guardarCorreccionPago(sucursal,folio,turnoId,soloOficina){
   const btn=document.getElementById('cp-save-btn');
   btn.disabled=true;
   const forma=document.getElementById('cp-forma').value;
   const motivo=document.getElementById('cp-motivo').value.trim()||null;
   const creadaPor=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina';
-  const {error}=await sb.from('correcciones_pago_pendientes').insert({
-    sucursal,folio,turno_id:turnoId,forma_pago_correcta:forma,motivo,creada_por:creadaPor,
-  });
-  if(error){btn.disabled=false;toast('No se pudo guardar: '+error.message,true);return;}
+  // Folio ya facturado: el POS lo rechazaría, así que no se le manda -- solo se
+  // corrige el registro de Oficina.
+  if(!soloOficina){
+    const {error}=await sb.from('correcciones_pago_pendientes').insert({
+      sucursal,folio,turno_id:turnoId,forma_pago_correcta:forma,motivo,creada_por:creadaPor,
+    });
+    if(error){btn.disabled=false;toast('No se pudo guardar: '+error.message,true);return;}
+  }
 
   // Además de dejarla para el POS, si el corte de este folio ya está aquí se
   // corrige de una vez -- para que el cuadre de Oficina no se quede
@@ -15012,7 +15025,7 @@ async function guardarCorreccionPago(sucursal,folio,turnoId){
   }
 
   closeModal('m-correccion-pago');
-  toast('Corrección guardada — se aplicará en el POS al abrir turno'+avisoLocal);
+  toast((soloOficina?'Corrección guardada en Oficina (la factura no cambia)':'Corrección guardada — se aplicará en el POS al abrir turno')+avisoLocal);
   await Promise.all([loadCorrecciones(),loadCortes()]);
   renderCortes();renderVentasMes(); // ambas se guardan solas si su página no está en pantalla
   if(document.getElementById('m-corte-detail').classList.contains('open')&&corte)openCorteDetail(corte.id);
@@ -15070,33 +15083,102 @@ const pagosParaAccion={};
 
 function accionBtnsVenta(sucursal,folio,turnoId,uuidFiscal,pago){
   if(pago)pagosParaAccion[sucursal+'|'+folio]=pago;
+  const suc=sucursal.replace(/'/g,"\\'");
+  const uuid=(uuidFiscal||'').replace(/'/g,"\\'");
+  const turnoArg=turnoId==null?'null':turnoId;
   // Botón "Ver factura" (vista previa + descarga del PDF, ver
   // openFacturaPreviewModal) -- se ofrece en cualquier estado mientras haya
   // UUID fiscal, incluida una ya cancelada (el PDF timbrado sigue existiendo
   // en Factura.com aunque el CFDI ya no esté vigente).
   const btnVer=uuidFiscal
-    ?`<button class="corte-iconbtn" title="Ver factura (PDF)" onclick="openFacturaPreviewModal('${sucursal.replace(/'/g,"\\'")}','${uuidFiscal.replace(/'/g,"\\'")}')">👁</button>`
+    ?`<button class="corte-iconbtn" title="Ver factura (PDF)" onclick="openFacturaPreviewModal('${suc}','${uuid}')">👁</button>`
+    :'';
+  // Historial: qué factura tenía antes este folio (originales canceladas y
+  // sustitutos). Solo informativo -- no toca la factura vigente.
+  const tieneHist=cancelacionesCfdiData.some(c=>c.sucursal===sucursal&&c.folio===folio)||!!(pago&&pago.sustituida);
+  const btnHist=tieneHist
+    ?`<button class="corte-iconbtn" title="Historial de facturas de este folio" onclick="openHistorialFolio('${suc}',${folio})">🕘</button>`
+    :'';
+  // Corregir la forma de pago de la VENTA aunque ya esté facturada: el POS lo
+  // bloquea ("hay que cancelar/sustituir la factura"), así que aquí solo se
+  // corrige el registro de Oficina; la factura no cambia.
+  const btnCorr=(pago&&pago.facturado)
+    ?`<button class="corte-iconbtn" title="Corregir la forma de pago de la venta (no cambia la factura)" onclick="openCorreccionModal('${suc}',${folio},${turnoArg},true)">✎</button>`
     :'';
   const cancelada=cancelacionCfdiDe(sucursal,folio,uuidFiscal);
   if(cancelada){
     const motivoTxt=(MOTIVOS_CANCELACION.find(m=>m[0]===cancelada.motivo)||[])[1]||cancelada.motivo;
-    return `<span class="corte-badge" style="background:var(--red-light);color:var(--red)" title="Motivo ${cancelada.motivo} — ${motivoTxt}">✕ cancelada ante el SAT</span> ${btnVer}`;
+    return `<span class="corte-badge" style="background:var(--red-light);color:var(--red)" title="Motivo ${cancelada.motivo} — ${motivoTxt}">✕ cancelada ante el SAT</span> ${btnVer}${btnHist}${btnCorr}`;
   }
-  // Solicitud vieja (de antes de este cambio) que quedó pendiente de que la
-  // sucursal la confirmara -- se deja poder retirarla, pero ya no se puede
-  // crear una nueva así.
+  // Solicitud pendiente hacia el POS de la sucursal. Si es una cancelación que
+  // Oficina ya hizo directo ante el SAT ('cancelacion_directa'), solo es un
+  // aviso de que el POS todavía no la aplica -- ya NO oculta los demás botones.
+  let aviso='';
   const accion=accionVentaDe(sucursal,folio);
   if(accion&&accion.estado==='pendiente'){
-    const tipoLbl=accion.tipo==='sustitucion'?'sustituir/cambiar pago':'cancelar';
-    return `<span class="corte-badge pend">⏳ pedido ${tipoLbl} (antiguo)</span> `+
-      `<button class="corte-iconbtn" title="Retirar solicitud vieja" onclick="cancelarAccionVenta('${accion.id}')">✕</button> ${btnVer}`;
+    if(accion.tipo==='cancelacion_directa'){
+      aviso=`<span class="corte-badge pend" title="Oficina ya canceló/sustituyó esta factura ante el SAT; el POS de la sucursal lo aplicará al abrir turno">⏳ pendiente en el POS</span> `;
+    }else{
+      const tipoLbl=accion.tipo==='sustitucion'?'sustituir/cambiar pago':'cancelar';
+      return `<span class="corte-badge pend">⏳ pedido ${tipoLbl} (antiguo)</span> `+
+        `<button class="corte-iconbtn" title="Retirar solicitud vieja" onclick="cancelarAccionVenta('${accion.id}')">✕</button> ${btnVer}${btnHist}${btnCorr}`;
+    }
   }
   if(!uuidFiscal){
-    return `<span class="corte-badge" style="background:var(--surface2);color:var(--text3)" title="Este corte no trae el UUID fiscal del CFDI todavía">Sin UUID</span>`;
+    return `${aviso}<span class="corte-badge" style="background:var(--surface2);color:var(--text3)" title="Este corte no trae el UUID fiscal del CFDI todavía">Sin UUID</span> ${btnHist}${btnCorr}`;
   }
-  const suc=sucursal.replace(/'/g,"\\'");
-  const uuid=uuidFiscal.replace(/'/g,"\\'");
-  return `${btnVer}<button class="corte-iconbtn" title="Cancelar este CFDI ante el SAT" onclick="openCancelarCfdiModal('${suc}',${folio},${turnoId==null?'null':turnoId},'${uuid}')">🗑</button>`;
+  return `${aviso}${btnVer}${btnHist}${btnCorr}<button class="corte-iconbtn" title="Cancelar este CFDI ante el SAT" onclick="openCancelarCfdiModal('${suc}',${folio},${turnoArg},'${uuid}')">🗑</button>`;
+}
+
+// ─── HISTORIAL DE FACTURAS DE UN FOLIO ────────────────────────────────────
+// Solo lectura: junta la factura que trajo el corte (la original), las
+// cancelaciones hechas desde Oficina y el CFDI vigente que la sustituye, para
+// ver qué factura tenía antes un folio sin que estorbe a la vigente.
+function openHistorialFolio(sucursal,folio){
+  const entidad=entidadCodigoDe(sucursal);
+  const corte=corteConFolio(sucursal,folio,null);
+  const raw=corte?corte.datos.pagos_detalle.find(p=>p.folio===folio):null;
+  const cancels=cancelacionesCfdiData.filter(c=>c.sucursal===sucursal&&c.folio===folio);
+  const fi=facturasIndData.find(x=>x.entidad===entidad&&Number(x.folio)===Number(folio)&&x.estado==='timbrada'
+    &&!(x.fecha_venta&&raw&&raw.fecha&&String(x.fecha_venta).slice(0,10)!==String(raw.fecha).slice(0,10)));
+  const nombreForma=c=>({'01':'Efectivo','03':'Transferencia','04':'Tarjeta de crédito','28':'Tarjeta de débito'}[c]||c||'—');
+  const fila=(titulo,est,o)=>`<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;${est==='vigente'?'background:var(--green-light,#e6f4ea)':'background:var(--surface2)'}">
+      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <b>${titulo}</b>
+        <span class="corte-badge ${est==='vigente'?'ok':''}" ${est==='cancelada'?'style="background:var(--red-light);color:var(--red)"':''}>${est==='vigente'?'✓ vigente':'✕ cancelada'}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-top:4px">
+        Folio fiscal: <b>${o.folio_pac||'—'}</b>${o.uuid?` · UUID ${String(o.uuid).slice(0,8)}…`:''}<br>
+        Forma de pago en la factura: <b>${nombreForma(o.forma)}</b>${o.total!=null?` · Total ${fmxn(o.total)}`:''}${o.cliente?`<br>Cliente: ${o.cliente}`:''}${o.nota?`<br><i>${o.nota}</i>`:''}
+      </div></div>`;
+  let html=`<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Folio <b>${folio}</b> · ${corteSucLabel(sucursal)}${raw?` · venta registrada como <b>${raw.forma_pago}</b> por ${fmxn(raw.monto)}`:''}</div>`;
+  const uuidsCancelados=new Set(cancels.map(c=>c.uuid_fiscal));
+  if(raw&&raw.uuid_fiscal){
+    const c=cancels.find(x=>x.uuid_fiscal===raw.uuid_fiscal);
+    html+=fila('Factura original (la del corte)',c?'cancelada':'vigente',{
+      folio_pac:raw.folio_pac,uuid:raw.uuid_fiscal,forma:raw.clave_forma_pago,total:raw.total_factura??raw.monto,cliente:raw.razon_social,
+      nota:c?`Cancelada ante el SAT el ${String(c.cancelado_at||'').slice(0,10)} · motivo ${c.motivo}${c.folio_sustituto?' (con sustitución)':''}`:'',
+    });
+  }
+  cancels.filter(c=>!raw||c.uuid_fiscal!==raw.uuid_fiscal).forEach(c=>{
+    html+=fila('Factura cancelada','cancelada',{uuid:c.uuid_fiscal,nota:`Cancelada ante el SAT el ${String(c.cancelado_at||'').slice(0,10)} · motivo ${c.motivo}`});
+  });
+  if(fi){
+    html+=fila('Factura vigente (sustituto emitido desde Oficina)','vigente',{
+      folio_pac:fi.folio_pac,uuid:fi.uuid_fiscal,forma:fi.forma_pago,total:fi.total,cliente:fi.razon_social,
+      nota:fi.fecha_creacion?`Timbrada el ${String(fi.fecha_creacion).slice(0,10)}`:'',
+    });
+  }
+  const cuentaAF=corte&&(corte.datos.cuentas||[]).find(q=>q.autofactura&&q.autofactura.sustituye&&(q.folio===folio||(q.pagos_detalle||[]).some(pq=>pq.folio===folio)));
+  const aS=cuentaAF?cuentaAF.autofactura:null;
+  if(aS&&aS.sustituye){
+    html+=fila(`Autofactura ${aS.folio} — factura anterior`,'cancelada',{folio_pac:aS.sustituye.folio_pac,uuid:aS.sustituye.uuid_fiscal,nota:'Sustituida desde Oficina'});
+    html+=fila(`Autofactura ${aS.folio} — factura vigente`,'vigente',{folio_pac:aS.folio_pac,uuid:aS.uuid_fiscal});
+  }
+  if(!raw&&!cancels.length&&!fi&&!aS)html+=`<div class="empty"><div class="empty-ico">📋</div>Este folio no tiene historial de facturas.</div>`;
+  document.getElementById('m-hist-folio-title').textContent=`Historial de facturas — folio ${folio}`;
+  document.getElementById('m-hist-folio-body').innerHTML=html;
+  openModal('m-hist-folio');
 }
 
 // ─── VISTA PREVIA DE FACTURA (PDF) ───────────────────────────────────────
