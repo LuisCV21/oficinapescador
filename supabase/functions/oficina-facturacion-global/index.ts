@@ -383,11 +383,17 @@ async function candidatosPendientes(
   // en lo individual se seguía ofreciendo para la Global, duplicando CFDI.
   const { data: individuales, error: errInd } = await db
     .from("facturas_individuales")
-    .select("folio")
+    .select("folio, fecha_venta")
     .eq("entidad", entidad)
     .neq("estado", "cancelada");
   if (errInd) throw new Error(`No se pudo leer facturas_individuales: ${errInd.message}`);
-  for (const row of individuales ?? []) cubiertos.add(Number(row.folio));
+  // Solo cuenta si la venta es de ESTE periodo: los folios se reiniciaron
+  // tras reinstalaciones/renumeraciones, así que el mismo número puede existir
+  // en otro mes y no debe ocultar un pago distinto de este.
+  for (const row of individuales ?? []) {
+    const fv = String(row.fecha_venta ?? "").slice(0, 10);
+    if (!fv || (fv >= periodoInicio && fv <= periodoFin)) cubiertos.add(Number(row.folio));
+  }
 
   return candidatos.filter((c) => !cubiertos.has(c.folio));
 }

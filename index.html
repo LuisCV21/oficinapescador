@@ -3413,7 +3413,7 @@ function showPage(id){
   else if(id==='globalespreview')renderVistaPreviaGlobales();
   else if(id==='autofacturas')renderAutofacturas();
   else if(id==='controlgastos')renderControlGastos();
-  else if(id==='polizabanco')renderPolizaBanco();
+  else if(id==='polizabanco'){renderPolizaBanco();cargarFacturasIndividuales().then(()=>{if(document.getElementById('page-polizabanco').classList.contains('active'))renderPolizaBanco();});}
   else if(id==='nominayasist')reloadModuloActivo();
   else if(id==='config'){
     if(configTabCurrent==='cuentas')renderConfigCuentas();
@@ -12469,7 +12469,14 @@ function switchPBSuc(s){currentPBSuc=s;renderPolizaBanco();}
 
 // Calcula todo lo que necesita tanto renderPolizaBanco (pantalla) como las
 // exportaciones -- una sola fuente de verdad, guardada en pbUltimoDatos.
+let facturasIndData=[];
+let pbUuidsCancelados=new Set();
+async function cargarFacturasIndividuales(){
+  const{data}=await sb.from('facturas_individuales').select('entidad,folio,estado,forma_pago,total,fecha_venta,uuid_fiscal,folio_pac,razon_social');
+  facturasIndData=data||[];
+}
 function pbCalcularDatos(){
+  pbUuidsCancelados=new Set((cancelacionesCfdiData||[]).map(x=>x.uuid_fiscal).filter(Boolean));
   const{desde,hasta}=pbRangoMes();
   const cortes=cortesData.filter(c=>c.sucursal===currentPBSuc&&(c.cierre||c.apertura||'').slice(0,10)>=desde&&(c.cierre||c.apertura||'').slice(0,10)<=hasta);
 
@@ -12492,6 +12499,9 @@ function pbCalcularDatos(){
     const facturas=(c.datos&&c.datos.facturas_detalle)||[];
     facturas.forEach(f=>{
       if(f.estado!=='timbrada')return;
+      // El corte puede seguir diciendo "timbrada" de una factura que ya se
+      // canceló desde Oficina (el POS no se entera) -- no debe contar.
+      if(f.uuid_fiscal&&pbUuidsCancelados.has(f.uuid_fiscal))return;
       const clave=f.clave_forma_pago;
       if(clave!=='04'&&clave!=='28')return;
       const dk=String(f.fecha_venta||dkCorte).slice(0,10);
@@ -12506,8 +12516,15 @@ function pbCalcularDatos(){
     // efectivamente facturadas, no las que nomás tienen el link emitido.
     // La forma de pago y la fecha de la venta salen de pagos_detalle
     // (restaurantes traen la autofactura en cuentas[], mismo folio).
+    // Una autofactura cubre TODA la parte no-efectivo de su cuenta, que
+    // puede traer varios folios de pago -- se liga cada uno (no solo el
+    // folio de la cuenta).
     const afPorFolio=new Map();
-    ((c.datos&&c.datos.cuentas)||[]).forEach(q=>{if(q.autofactura&&q.autofactura.facturado&&q.folio!=null)afPorFolio.set(Number(q.folio),q.autofactura);});
+    ((c.datos&&c.datos.cuentas)||[]).forEach(q=>{
+      if(!(q.autofactura&&q.autofactura.facturado))return;
+      if(q.folio!=null)afPorFolio.set(Number(q.folio),q.autofactura);
+      (q.pagos_detalle||[]).forEach(pq=>{if(pq.folio!=null)afPorFolio.set(Number(pq.folio),q.autofactura);});
+    });
     const pagosDet=(c.datos&&c.datos.pagos_detalle)||[];
     pagosDet.forEach(p=>{if(p.autofactura&&p.autofactura.facturado&&p.folio!=null)afPorFolio.set(Number(p.folio),p.autofactura);});
     const afYaContados=new Set();
@@ -12526,6 +12543,30 @@ function pbCalcularDatos(){
       const fp=af.folio_pac?('F-'+String(af.folio_pac).replace(/^[Ff]/,'').trim().replace(/^-/,'')):'';
       bucket.items.push({folio:fp||('AF '+(af.folio||p.folio)),monto,quien:'Autofactura'});
     });
+  });
+
+  // Facturas individuales timbradas desde Oficina (incluye los CFDI
+  // sustitutos de una factura cancelada): no viajan en el corte del POS, así
+  // que se suman aparte. Cuentan en la forma de pago de la VENTA (no la que
+  // haya quedado en el CFDI) y en el día de la venta, igual que el resto.
+  const entCod=entidadCodigoDe(currentPBSuc);
+  const pagoPorFolio=new Map();
+  cortesData.filter(cc=>cc.sucursal===currentPBSuc).forEach(cc=>{
+    ((cc.datos&&cc.datos.pagos_detalle)||[]).forEach(p=>{if(p.folio!=null)pagoPorFolio.set(Number(p.folio),p);});
+  });
+  facturasIndData.filter(fi=>fi.entidad===entCod&&fi.estado==='timbrada').forEach(fi=>{
+    if(fi.uuid_fiscal&&pbUuidsCancelados.has(fi.uuid_fiscal))return;
+    const p=pagoPorFolio.get(Number(fi.folio));
+    const fk=String((p&&p.forma_pago)||'').toLowerCase();
+    const forma=(fk==='credito'||fk==='tarjeta_credito')?'credito':(fk==='debito'||fk==='tarjeta_debito')?'debito'
+      :(!p&&fi.forma_pago==='04')?'credito':(!p&&fi.forma_pago==='28')?'debito':null;
+    if(!forma)return;
+    const dk=String(fi.fecha_venta||'').slice(0,10);
+    if(!dk||dk<desde||dk>hasta)return;
+    const bucket=diaDe(dk)[forma];
+    const monto=Number(fi.total)||0;
+    bucket.facturado=Math.round((bucket.facturado+monto)*100)/100;
+    bucket.items.push({folio:fi.folio_pac?('F-'+String(fi.folio_pac).replace(/^[A-Za-z]*[ -]*/,'')):'',monto,quien:fi.razon_social||''});
   });
 
   const diasOrdenados=[...dias.keys()].sort();
