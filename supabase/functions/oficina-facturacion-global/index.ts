@@ -238,6 +238,21 @@ function periodoDe(mes: number, anio: number) {
 
 type Pago = { folio: number; monto: number; fecha: string; cuenta: string | null; sat_code: string; sat_nombre: string };
 
+// Folios cuya autofactura ya fue usada por el cliente (verificada contra
+// Factura.com). verificar-autofacturas solo marca datos.cuentas[].autofactura
+// .facturado / pagos_detalle[].autofactura.facturado, NO pagos_detalle[].facturado,
+// así que sin esto la Global las volvía a ofrecer.
+function foliosAutofacturados(datos: any): Set<number> {
+  const s = new Set<number>();
+  for (const c of datos?.cuentas ?? []) {
+    if (c?.autofactura?.facturado && c.folio != null) s.add(Number(c.folio));
+  }
+  for (const p of datos?.pagos_detalle ?? []) {
+    if (p?.autofactura?.facturado && p.folio != null) s.add(Number(p.folio));
+  }
+  return s;
+}
+
 async function candidatosPendientes(
   db: any, entidad: string, periodoInicio: string, periodoFin: string,
 ): Promise<Pago[]> {
@@ -251,8 +266,10 @@ async function candidatosPendientes(
   const candidatos: Pago[] = [];
   for (const corte of cortes ?? []) {
     const pagos = corte?.datos?.pagos_detalle ?? [];
+    const foliosAutofact = foliosAutofacturados(corte?.datos);
     for (const p of pagos) {
       if (!p?.fecha || p?.folio == null) continue;
+      if (p.autofactura?.facturado || foliosAutofact.has(Number(p.folio))) continue;
       const fechaYMD = String(p.fecha).slice(0, 10);
       if (fechaYMD < periodoInicio || fechaYMD > periodoFin) continue;
       const formaKey = String(p.forma_pago || "").toLowerCase();
@@ -311,7 +328,7 @@ async function buscarPagoPorFolio(db: any, entidad: string, folio: number): Prom
       if (Number(p?.folio) !== folio) continue;
       const formaKey = String(p.forma_pago || "").toLowerCase();
       const sat = FORMA_SAT[formaKey] || ["01", "Efectivo"];
-      if (p.facturado) return null;
+      if (p.facturado || p.autofactura?.facturado || foliosAutofacturados(corte?.datos).has(folio)) return null;
       const { count: enGlobal } = await db.from("facturas_globales")
         .select("id", { count: "exact", head: true })
         .eq("entidad", entidad).neq("estado", "cancelada")
