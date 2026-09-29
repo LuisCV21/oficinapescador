@@ -331,10 +331,17 @@ async function candidatosPendientes(
   db: any, entidad: string, periodoInicio: string, periodoFin: string,
 ): Promise<Pago[]> {
   const keyword = KEYWORD[entidad];
+  // Solo los cortes que pueden traer cobros de este periodo (un turno que
+  // abrió el último día del mes anterior cobra ya en este) -- leer todo el
+  // historial hacía lenta la pantalla de Global.
+  const antes = new Date(`${periodoInicio}T12:00:00Z`); antes.setUTCDate(antes.getUTCDate() - 1);
+  const despues = new Date(`${periodoFin}T12:00:00Z`); despues.setUTCDate(despues.getUTCDate() + 1);
   const { data: cortes, error } = await db
     .from("cortes_caja")
     .select("datos")
-    .ilike("sucursal", `%${keyword}%`);
+    .ilike("sucursal", `%${keyword}%`)
+    .gte("apertura", antes.toISOString().slice(0, 10))
+    .lte("apertura", despues.toISOString().slice(0, 10) + "T23:59:59");
   if (error) throw new Error(`No se pudo leer cortes_caja: ${error.message}`);
 
   const candidatos: Pago[] = [];
@@ -544,7 +551,7 @@ Deno.serve(async (req) => {
       const { data: cred } = await db.from("facturacom_credenciales").select("api_key, secret_key").eq("entidad", entidad).maybeSingle();
       if (!cred?.api_key || !cred?.secret_key) return json({ error: `Faltan las llaves de factura.com para ${entidad}.` }, 500);
       const { data: cortes, error: errC } = await db.from("cortes_caja")
-        .select("id, sucursal, turno_id, datos").ilike("sucursal", `%${KEYWORD[entidad]}%`);
+        .select("id, sucursal, turno_id, datos").ilike("sucursal", `%${KEYWORD[entidad]}%`).gte("apertura", "2026-08-31");
       if (errC) return json({ error: `No se pudo leer cortes_caja: ${errC.message}` }, 500);
       const SAT_DE: Record<string, string> = {
         credito: "04", tarjeta_credito: "04", debito: "28", tarjeta_debito: "28", transferencia: "03",
@@ -555,6 +562,7 @@ Deno.serve(async (req) => {
         for (const cuenta of corte?.datos?.cuentas ?? []) {
           const a = cuenta?.autofactura;
           if (!a?.facturado || !a?.uuid_fiscal || a?.sustituye) continue;
+          if (String(a?.fecha ?? "") < "2026-09-01") continue; // solo septiembre en adelante
           const formas = Object.keys(cuenta?.pagos_por_forma ?? {}).map((f) => f.trim().toLowerCase()).filter((f) => !NO_FACT.includes(f));
           if (formas.length !== 1 || !SAT_DE[formas[0]]) continue; // mixto/otro: no se puede juzgar
           items.push({

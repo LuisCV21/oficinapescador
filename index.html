@@ -11266,22 +11266,30 @@ async function gpLlamarFuncion(payload){
 // calcular pendientes / crear borrador -- así la Global nunca depende de que
 // alguien haya dado clic en "Verificar autofacturas" en la otra pantalla.
 // Si falla (Factura.com caído, etc.) no bloquea: sigue con lo que hay.
+let gpUltimaVerif={};   // entidad -> última vez que se verificó (ms)
+const GP_VERIF_TTL=5*60*1000; // no volver a verificar antes de 5 min al abrir la pantalla
+let gpVerificando=false;
 async function gpRefrescarAutofacturas(entidad){
+  const ctl=new AbortController();
+  const timer=setTimeout(()=>ctl.abort(),120000);
   try{
     const{data:{session}}=await sb.auth.getSession();
     const resp=await fetch(SUPA_URL+'/functions/v1/verificar-autofacturas',{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
       body:JSON.stringify({entidad}),
+      signal:ctl.signal,
     });
     if(!resp.ok)return null;
     const out=await resp.json().catch(()=>null);
-    if(out&&(out.nuevas_facturadas||out.folios_completados))await loadCortes();
+    if(out)gpUltimaVerif[entidad]=Date.now();
+    if(out&&(out.nuevas_facturadas||out.folios_completados||out.descubiertas))await loadCortes();
     return out;
   }catch(e){return null;}
+  finally{clearTimeout(timer);}
 }
 
-async function renderVistaPreviaGlobales(){
+async function renderVistaPreviaGlobales(opts){
   const el=document.getElementById('gp-content');
   if(!el)return;
   renderGPTabs();
@@ -11293,10 +11301,9 @@ async function renderVistaPreviaGlobales(){
     el.innerHTML=`<div class="empty"><div class="empty-ico">📦</div>No se reconoce la sucursal "${currentGPSuc}" (debe contener hotel/puebla/florida en el nombre)</div>`;
     return;
   }
-  el.innerHTML=`<div class="loading"><div class="spinner"></div>Verificando autofacturas y calculando pendientes...</div>`;
+  el.innerHTML=`<div class="loading"><div class="spinner"></div>Calculando pendientes...</div>`;
   gpCargando=true;
   try{
-    await gpRefrescarAutofacturas(entidad);
     const out=await gpLlamarFuncion({accion:'pendientes',entidad,mes,anio});
     gpUltimoResultado=out;
   }catch(e){
@@ -11306,6 +11313,24 @@ async function renderVistaPreviaGlobales(){
   }
   gpCargando=false;
   gpRenderResultado();
+  // Las autofacturas se verifican contra Factura.com EN SEGUNDO PLANO (antes
+  // se esperaba a que terminara antes de mostrar nada, y en Puebla tardaba
+  // mucho). Se muestran ya los pendientes y, si la verificación cambia algo,
+  // se recalculan solos. Máximo una vez cada 5 min por sucursal.
+  const yaReciente=gpUltimaVerif[entidad]&&(Date.now()-gpUltimaVerif[entidad]<GP_VERIF_TTL);
+  if(!(opts&&opts.sinVerificar)&&!yaReciente&&!gpVerificando){
+    gpVerificando=true;
+    gpRenderResultado();
+    gpRefrescarAutofacturas(entidad).then(async out=>{
+      gpVerificando=false;
+      if(gpEntidadActual()!==entidad)return;
+      if(out&&(out.nuevas_facturadas||out.folios_completados||out.descubiertas)){
+        await renderVistaPreviaGlobales({sinVerificar:true});
+      }else{
+        gpRenderResultado();
+      }
+    });
+  }
 }
 
 function gpRenderResultado(){
@@ -11380,6 +11405,7 @@ function gpRenderResultado(){
   }
 
   el.innerHTML=`
+    ${gpVerificando?`<div style="font-size:11px;color:var(--text3);margin-bottom:8px">⏳ Verificando autofacturas en segundo plano… los pendientes pueden cambiar en unos segundos.</div>`:''}
     <div class="bal-live-row" style="margin-bottom:14px;font-size:14px"><span>Total pendiente de ${corteSucLabel(currentGPSuc)}</span><strong>${fmxn(totalPendiente)}</strong></div>
     ${existentesHtml}
     ${pendientesHtml}
@@ -11442,8 +11468,12 @@ function afCuentasDe(corte){
     })),
   ];
 }
+// Solo septiembre-2026 en adelante: lo anterior ya no importa (pedido del
+// dueño, 29-sept-2026).
+const AF_FECHA_MIN='2026-09-01';
 function afFilasSucursalActual(){
   return cortesData.filter(c=>c.sucursal===currentAFSuc).flatMap(afCuentasDe)
+    .filter(f=>String(f.fecha||'')>=AF_FECHA_MIN)
     .sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
 }
 
@@ -11452,21 +11482,31 @@ async function verificarAutofacturas(){
   if(!entidad){toast('No se reconoce la sucursal seleccionada',true);return;}
   const btn=document.getElementById('af-verificar-btn');
   btn.disabled=true;btn.textContent='Verificando...';
+  // Si el servidor no contesta (Factura.com lento), no dejar el botón
+  // colgado: se corta a los 2 min y se avisa.
+  const ctl=new AbortController();
+  const timer=setTimeout(()=>ctl.abort(),120000);
   try{
     const{data:{session}}=await sb.auth.getSession();
     const resp=await fetch(SUPA_URL+'/functions/v1/verificar-autofacturas',{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
       body:JSON.stringify({entidad}),
+      signal:ctl.signal,
     });
     const out=await resp.json().catch(()=>({error:'Respuesta inválida del servidor'}));
     if(!resp.ok)throw new Error(out.error||resp.statusText);
+    gpUltimaVerif[entidad]=Date.now();
     await loadCortes();
     renderAutofacturas();
-    toast(`Revisadas ${out.revisadas}. ${out.nuevas_facturadas} ya se autofacturaron.`+(out.errores&&out.errores.length?` (${out.errores.length} con error)`:''), !!(out.errores&&out.errores.length));
+    toast(`Revisadas ${out.revisadas}. ${out.nuevas_facturadas} ya se autofacturaron.`
+      +(out.descubiertas?` ${out.descubiertas} nuevas encontradas en Factura.com.`:'')
+      +(out.incompleto?' (se alcanzó el tiempo máximo: vuelve a dar clic para seguir)':'')
+      +(out.errores&&out.errores.length?` (${out.errores.length} con error)`:''), !!(out.errores&&out.errores.length));
   }catch(e){
-    toast('Error al verificar: '+e.message,true);
+    toast(e.name==='AbortError'?'Factura.com tardó demasiado en responder. Intenta de nuevo en un momento.':'Error al verificar: '+e.message,true);
   }finally{
+    clearTimeout(timer);
     btn.disabled=false;btn.textContent='🔄 Verificar autofacturas';
   }
 }
