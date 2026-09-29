@@ -12477,7 +12477,7 @@ function pbCalcularDatos(){
       if(dk<desde||dk>hasta)return;
       const bucket=clave==='04'?diaDe(dk).credito:diaDe(dk).debito;
       bucket.facturado=Math.round((bucket.facturado+(Number(f.total)||0))*100)/100;
-      bucket.items.push({folio:f.folio_interno||f.folio_cfdi||f.folio_pago||'',monto:Number(f.total)||0,quien:f.razon_social||''});
+      bucket.items.push({folio:(folioFiscalDisplay(f)!=='—'?folioFiscalDisplay(f):(f.folio_interno||f.folio_pago||'')),monto:Number(f.total)||0,quien:f.razon_social||''});
     });
   });
 
