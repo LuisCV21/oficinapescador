@@ -11425,6 +11425,12 @@ function afCuentasDe(corte){
       sucursal:corte.sucursal, turno_id:corte.turno_id,
       folio_venta:p.folio, ...p.autofactura,
     })),
+    // Órdenes que el POS nunca mandó: las encontró "Verificar autofacturas"
+    // directo en Factura.com y no pudo ligarlas a una sola venta.
+    ...((corte.datos&&corte.datos.autofacturas_huerfanas)||[]).map(h=>({
+      sucursal:corte.sucursal, turno_id:corte.turno_id,
+      folio_venta:h.motivo_sin_liga==='ambigua'?'(varias ventas posibles)':'(sin venta ligada)', ...h,
+    })),
   ];
 }
 function afFilasSucursalActual(){

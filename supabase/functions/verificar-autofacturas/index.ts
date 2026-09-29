@@ -92,14 +92,105 @@ Deno.serve(async (req) => {
     if (error) return json({ error: `No se pudo leer cortes_caja: ${error.message}` }, 500);
 
     let revisadas = 0, nuevas_facturadas = 0, folios_completados = 0;
+    let descubiertas = 0, ligadas = 0;
     const errores: string[] = [];
+    const cortesSucios = new Set<string>();
+
+    // ── Fase 1: descubrir órdenes que el POS nunca mandó ────────────────
+    // Si la sucursal corre una versión vieja del POS, o el corte no trae la
+    // autofactura de una cuenta, la orden existe en Factura.com pero Oficina
+    // no se entera. Aquí se recorren los folios AF1, AF2, ... directo en
+    // Factura.com y las que no estén en ningún corte se ligan a la venta
+    // (mismo día + mismo importe no-efectivo) o, si no hay una sola
+    // coincidencia, se guardan en datos.autofacturas_huerfanas del corte de
+    // ese día para que al menos se vean y cuenten como ya facturadas.
+    const NO_FACTURABLE = ["efectivo", "ado", "vales"];
+    const conocidos = new Set<string>();
+    for (const corte of cortes ?? []) {
+      const d = corte?.datos ?? {};
+      for (const q of [...(d.cuentas ?? []), ...(d.pagos_detalle ?? [])]) {
+        if (q?.autofactura?.folio) conocidos.add(String(q.autofactura.folio));
+      }
+      for (const a of [...(d.autofacturas_detalle ?? []), ...(d.autofacturas_huerfanas ?? [])]) {
+        if (a?.folio) conocidos.add(String(a.folio));
+      }
+    }
+    if (KEYWORD[entidad] !== "hotel") {
+      let fallosSeguidos = 0;
+      for (let n = 1; n <= 300 && fallosSeguidos < 6; n++) {
+        const folioAF = `AF${n}`;
+        if (conocidos.has(folioAF)) { fallosSeguidos = 0; continue; }
+        let orden;
+        try {
+          orden = await buscarOrdenAutofactura(cred.api_key, cred.secret_key, folioAF);
+        } catch (_e) {
+          fallosSeguidos++;
+          continue;
+        }
+        if (!orden) { fallosSeguidos++; continue; }
+        fallosSeguidos = 0;
+
+        const yaFact = ["si", "sí", "yes", "1"].includes(String(orden.facturado ?? "").trim().toLowerCase());
+        const uuidFiscal = (orden.uuid || "").trim();
+        let folioPac: string | null = null;
+        if (yaFact && uuidFiscal) {
+          try {
+            const cfdi = await consultarCfdiPorUuid(cred.api_key, cred.secret_key, uuidFiscal);
+            folioPac = cfdi?.data?.Folio || null;
+          } catch (e) {
+            errores.push(`${folioAF}: se autofacturó pero no se pudo recuperar el folio (${e})`);
+          }
+        }
+        const af: any = {
+          folio: folioAF, importe: Number(orden.importe), fecha: String(orden.fecha || "").slice(0, 10),
+          vencimiento: orden.vencimiento ?? null, facturado: yaFact,
+          uuid_fiscal: uuidFiscal || null, folio_pac: folioPac, estado: "subida", error_msg: null,
+          origen: "factura.com",
+        };
+        descubiertas++;
+
+        // Cuentas candidatas: mismo día, sin autofactura, y cuya parte
+        // no-efectivo suma exactamente el importe de la orden.
+        const candidatas: { corte: any; cuenta: any }[] = [];
+        for (const corte of cortes ?? []) {
+          for (const cuenta of corte?.datos?.cuentas ?? []) {
+            if (cuenta?.autofactura) continue;
+            const pagos = cuenta?.pagos_detalle ?? [];
+            if (!pagos.some((p: any) => String(p?.fecha ?? "").slice(0, 10) === af.fecha)) continue;
+            const importe = Object.entries(cuenta?.pagos_por_forma ?? {})
+              .filter(([forma]) => !NO_FACTURABLE.includes(String(forma).trim().toLowerCase()))
+              .reduce((s, [, m]) => s + Number(m || 0), 0);
+            if (Math.abs(importe - af.importe) < 0.015) candidatas.push({ corte, cuenta });
+          }
+        }
+        if (candidatas.length === 1) {
+          candidatas[0].cuenta.autofactura = af;
+          cortesSucios.add(candidatas[0].corte.id);
+          ligadas++;
+        } else {
+          const corteDia = (cortes ?? []).find((c: any) =>
+            String(c?.datos?.apertura ?? "").slice(0, 10) === af.fecha);
+          if (corteDia) {
+            af.motivo_sin_liga = candidatas.length ? "ambigua" : "sin_coincidencia";
+            (corteDia.datos.autofacturas_huerfanas ??= []).push(af);
+            cortesSucios.add(corteDia.id);
+          } else {
+            errores.push(`${folioAF}: no hay corte del ${af.fecha} donde guardarla`);
+          }
+        }
+      }
+    }
 
     for (const corte of cortes ?? []) {
       // Restaurantes (Florida/Puebla): la autofactura viaja en cuentas[].
       // Hotel: no tiene "cuentas", viaja en pagos_detalle[] -- ver
-      // src/oficina/sync_corte.py en cada repo.
-      const portadores = [...(corte?.datos?.cuentas ?? []), ...(corte?.datos?.pagos_detalle ?? [])];
-      let cambio = false;
+      // src/oficina/sync_corte.py en cada repo. Las huérfanas (Fase 1) se
+      // revisan igual: se envuelven para que `.autofactura` apunte a ellas.
+      const portadores = [
+        ...(corte?.datos?.cuentas ?? []), ...(corte?.datos?.pagos_detalle ?? []),
+        ...(corte?.datos?.autofacturas_huerfanas ?? []).map((h: any) => ({ autofactura: h })),
+      ];
+      let cambio = cortesSucios.has(corte.id);
 
       for (const portador of portadores) {
         const af = portador?.autofactura;
@@ -148,7 +239,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return json({ revisadas, nuevas_facturadas, folios_completados, errores });
+    return json({ revisadas, nuevas_facturadas, folios_completados, descubiertas, ligadas, errores });
   } catch (e) {
     return json({ error: String(e) }, 500);
   }

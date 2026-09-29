@@ -248,7 +248,15 @@ type Pago = { folio: number; monto: number; fecha: string; cuenta: string | null
 function foliosAutofacturados(datos: any): Set<number> {
   const s = new Set<number>();
   for (const c of datos?.cuentas ?? []) {
-    if (c?.autofactura?.facturado && c.folio != null) s.add(Number(c.folio));
+    if (!c?.autofactura?.facturado) continue;
+    if (c.folio != null) s.add(Number(c.folio));
+    // Una cuenta con pago mixto o dividido trae varios folios de pago; la
+    // autofactura cubre toda su parte no-efectivo, no solo el folio de la
+    // cuenta (nunca cubre efectivo/ADO/vales).
+    for (const p of c?.pagos_detalle ?? []) {
+      const forma = String(p?.forma_pago ?? "").trim().toLowerCase();
+      if (p?.folio != null && !["efectivo", "ado", "vales"].includes(forma)) s.add(Number(p.folio));
+    }
   }
   for (const p of datos?.pagos_detalle ?? []) {
     if (p?.autofactura?.facturado && p.folio != null) s.add(Number(p.folio));
