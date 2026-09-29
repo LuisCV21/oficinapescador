@@ -3421,7 +3421,7 @@ function showPage(id){
   else if(id==='globalespreview')renderVistaPreviaGlobales();
   else if(id==='autofacturas')renderAutofacturas();
   else if(id==='controlgastos')renderControlGastos();
-  else if(id==='polizabanco'){renderPolizaBanco();cargarFacturasIndividuales().then(()=>{if(document.getElementById('page-polizabanco').classList.contains('active'))renderPolizaBanco();});}
+  else if(id==='polizabanco'){renderPolizaBanco();Promise.all([cargarFacturasIndividuales(),cargarFacturasGlobales()]).then(()=>{if(document.getElementById('page-polizabanco').classList.contains('active'))renderPolizaBanco();});}
   else if(id==='nominayasist')reloadModuloActivo();
   else if(id==='config'){
     if(configTabCurrent==='cuentas')renderConfigCuentas();
@@ -12565,23 +12565,48 @@ async function cargarFacturasIndividuales(){
   const{data}=await sb.from('facturas_individuales').select('entidad,folio,estado,forma_pago,total,fecha_venta,fecha_creacion,uuid_fiscal,folio_pac,razon_social');
   facturasIndData=data||[];
 }
+let facturasGlobData=[];
+async function cargarFacturasGlobales(){
+  const{data}=await sb.from('facturas_globales').select('entidad,forma_pago,total,estado,periodo_inicio,periodo_fin,folio_cfdi');
+  facturasGlobData=data||[];
+}
+// Formas que maneja la póliza (ADO y otras quedan fuera). El hotel manda
+// tarjeta_credito/tarjeta_debito, los restaurantes credito/debito.
+const PB_FORMAS=['credito','debito','transferencia','efectivo'];
+const PB_CLAVE_FORMA={'04':'credito','28':'debito','03':'transferencia','01':'efectivo'};
+const PB_FORMA_NOMBRE={credito:'Tarjeta de crédito',debito:'Tarjeta de débito',transferencia:'Transferencia',efectivo:'Efectivo'};
+function pbFormaDe(fk){
+  fk=String(fk||'').toLowerCase();
+  if(fk==='credito'||fk==='tarjeta_credito')return'credito';
+  if(fk==='debito'||fk==='tarjeta_debito')return'debito';
+  if(fk==='transferencia')return'transferencia';
+  if(fk==='efectivo'||fk==='vales')return'efectivo';
+  return null;
+}
 function pbCalcularDatos(){
   pbUuidsCancelados=new Set((cancelacionesCfdiData||[]).map(x=>x.uuid_fiscal).filter(Boolean));
+  const r2=x=>Math.round((Number(x)||0)*100)/100;
   const{desde,hasta}=pbRangoMes();
   const cortes=cortesData.filter(c=>c.sucursal===currentPBSuc&&(c.cierre||c.apertura||'').slice(0,10)>=desde&&(c.cierre||c.apertura||'').slice(0,10)<=hasta);
 
-  const dias=new Map(); // diaKey -> {credito:{pos,facturado,items:[]}, debito:{pos,facturado,items:[]}}
+  const dias=new Map(); // diaKey -> {credito|debito|transferencia|efectivo:{pos,facturado,items:[]}}
   const diaDe=(dk)=>{
-    if(!dias.has(dk))dias.set(dk,{credito:{pos:0,facturado:0,items:[]},debito:{pos:0,facturado:0,items:[]}});
+    if(!dias.has(dk)){
+      const d={};
+      PB_FORMAS.forEach(f=>{d[f]={pos:0,facturado:0,items:[]};});
+      dias.set(dk,d);
+    }
     return dias.get(dk);
   };
   cortes.forEach(c=>{
-    // Lado terminal/POS: lo que este corte reporta que entró de Crédito/Débito.
+    // Lado terminal/POS: lo que este corte reporta que entró por cada forma.
     const dkCorte=(c.cierre||c.apertura||'').slice(0,10);
     const vpf=(c.datos&&c.datos.ventas_por_forma)||{};
     const dPos=diaDe(dkCorte);
-    dPos.credito.pos+=Number(vpf.credito||0);
-    dPos.debito.pos+=Number(vpf.debito||0);
+    dPos.credito.pos+=Number(vpf.credito||0)+Number(vpf.tarjeta_credito||0);
+    dPos.debito.pos+=Number(vpf.debito||0)+Number(vpf.tarjeta_debito||0);
+    dPos.transferencia.pos+=Number(vpf.transferencia||0);
+    dPos.efectivo.pos+=Number(vpf.efectivo||0)+Number(vpf.vales||0);
     // Lado facturado: cada factura ya timbrada por el POS trae su propia
     // fecha_venta -- puede ser de un día distinto al del corte donde se
     // generó (ej. una factura global de días anteriores), así que se
@@ -12592,23 +12617,20 @@ function pbCalcularDatos(){
       // El corte puede seguir diciendo "timbrada" de una factura que ya se
       // canceló desde Oficina (el POS no se entera) -- no debe contar.
       if(f.uuid_fiscal&&pbUuidsCancelados.has(f.uuid_fiscal))return;
-      const clave=f.clave_forma_pago;
-      if(clave!=='04'&&clave!=='28')return;
+      const forma=PB_CLAVE_FORMA[f.clave_forma_pago];
+      if(!forma)return;
       const dk=String(f.fecha_venta||dkCorte).slice(0,10);
       if(dk<desde||dk>hasta)return;
-      const bucket=clave==='04'?diaDe(dk).credito:diaDe(dk).debito;
-      bucket.facturado=Math.round((bucket.facturado+(Number(f.total)||0))*100)/100;
+      const bucket=diaDe(dk)[forma];
+      bucket.facturado=r2(bucket.facturado+(Number(f.total)||0));
       bucket.items.push({folio:(folioFiscalDisplay(f)!=='—'?folioFiscalDisplay(f):(f.folio_interno||f.folio_pago||'')),monto:Number(f.total)||0,quien:f.razon_social||''});
     });
     // Autofacturas YA usadas por el cliente (verificadas contra Factura.com):
     // no pasan por facturas_detalle del POS pero sí conforman el total
-    // facturado de tarjeta, así que cuentan igual que las demás. Solo las
-    // efectivamente facturadas, no las que nomás tienen el link emitido.
-    // La forma de pago y la fecha de la venta salen de pagos_detalle
-    // (restaurantes traen la autofactura en cuentas[], mismo folio).
-    // Una autofactura cubre TODA la parte no-efectivo de su cuenta, que
-    // puede traer varios folios de pago -- se liga cada uno (no solo el
-    // folio de la cuenta).
+    // facturado, así que cuentan igual que las demás. Solo las efectivamente
+    // facturadas, no las que nomás tienen el link emitido. La forma de pago y
+    // la fecha de la venta salen de pagos_detalle. Una autofactura cubre TODA
+    // la parte no-efectivo de su cuenta, que puede traer varios folios de pago.
     const afPorFolio=new Map();
     ((c.datos&&c.datos.cuentas)||[]).forEach(q=>{
       if(!(q.autofactura&&q.autofactura.facturado))return;
@@ -12621,15 +12643,14 @@ function pbCalcularDatos(){
     pagosDet.forEach(p=>{
       const af=p.folio!=null?afPorFolio.get(Number(p.folio)):null;
       if(!af||afYaContados.has(Number(p.folio)))return;
-      const fk=String(p.forma_pago||'').toLowerCase();
-      const forma=(fk==='credito'||fk==='tarjeta_credito')?'credito':(fk==='debito'||fk==='tarjeta_debito')?'debito':null;
-      if(!forma)return;
+      const forma=pbFormaDe(p.forma_pago);
+      if(!forma||forma==='efectivo')return; // la autofactura nunca cubre efectivo
       const dk=String(p.fecha||dkCorte).slice(0,10);
       if(dk<desde||dk>hasta)return;
       afYaContados.add(Number(p.folio));
       const bucket=diaDe(dk)[forma];
       const monto=Number(p.monto)||0;
-      bucket.facturado=Math.round((bucket.facturado+monto)*100)/100;
+      bucket.facturado=r2(bucket.facturado+monto);
       const fp=af.folio_pac?('F-'+String(af.folio_pac).replace(/^[Ff]/,'').trim().replace(/^-/,'')):'';
       bucket.items.push({folio:fp||('AF '+(af.folio||p.folio)),monto,quien:'Autofactura'});
     });
@@ -12647,20 +12668,37 @@ function pbCalcularDatos(){
   facturasIndData.filter(fi=>fi.entidad===entCod&&fi.estado==='timbrada').forEach(fi=>{
     if(fi.uuid_fiscal&&pbUuidsCancelados.has(fi.uuid_fiscal))return;
     const p=pagoPorFolio.get(Number(fi.folio));
-    const fk=String((p&&p.forma_pago)||'').toLowerCase();
-    const forma=(fk==='credito'||fk==='tarjeta_credito')?'credito':(fk==='debito'||fk==='tarjeta_debito')?'debito'
-      :(!p&&fi.forma_pago==='04')?'credito':(!p&&fi.forma_pago==='28')?'debito':null;
+    const forma=p?pbFormaDe(p.forma_pago):PB_CLAVE_FORMA[fi.forma_pago];
     if(!forma)return;
     const dk=String(fi.fecha_venta||'').slice(0,10);
     if(!dk||dk<desde||dk>hasta)return;
     const bucket=diaDe(dk)[forma];
     const monto=Number(fi.total)||0;
-    bucket.facturado=Math.round((bucket.facturado+monto)*100)/100;
+    bucket.facturado=r2(bucket.facturado+monto);
     bucket.items.push({folio:fi.folio_pac?('F-'+String(fi.folio_pac).replace(/^[A-Za-z]*[ -]*/,'')):'',monto,quien:fi.razon_social||''});
   });
 
+  // Facturas GLOBALES ya timbradas del mes (las de verdad, con su folio): se
+  // ven solo en el cuadre final -- el pendiente diario sigue siendo la parte
+  // que la Global va a cubrir, no se inventa ningún folio por día.
+  const glob={credito:0,debito:0,transferencia:0,efectivo:0};
+  facturasGlobData.filter(g=>g.entidad===entCod&&g.estado==='timbrada'
+    &&String(g.periodo_inicio).slice(0,10)>=desde&&String(g.periodo_inicio).slice(0,10)<=hasta).forEach(g=>{
+    const k=PB_CLAVE_FORMA[g.forma_pago];
+    if(k)glob[k]=r2(glob[k]+Number(g.total||0));
+  });
+
+  // Cuadre final: total de banco contra total de facturación por forma de pago.
+  const cuadre=PB_FORMAS.map(k=>{
+    let banco=0,fac=0;
+    dias.forEach(d=>{banco+=d[k].pos;fac+=d[k].facturado;});
+    banco=r2(banco);fac=r2(fac);
+    const totFac=r2(fac+glob[k]);
+    return{k,nombre:PB_FORMA_NOMBRE[k],banco,fac,glob:glob[k],totFac,dif:r2(banco-totFac)};
+  });
+
   const diasOrdenados=[...dias.keys()].sort();
-  const datos={desde,hasta,cortes,dias,diasOrdenados};
+  const datos={desde,hasta,cortes,dias,diasOrdenados,cuadre};
   pbUltimoDatos=datos;
   return datos;
 }
@@ -12669,12 +12707,13 @@ function renderPolizaBanco(){
   const el=document.getElementById('pb-content');
   if(!el)return;
   renderPBTabs();
-  const{cortes,dias,diasOrdenados}=pbCalcularDatos();
+  const{cortes,dias,diasOrdenados,cuadre}=pbCalcularDatos();
   pbItemsPorCeldaActual=new Map();
   diasOrdenados.forEach(dk=>{
     const d=dias.get(dk);
     pbItemsPorCeldaActual.set(dk+'|credito',d.credito.items);
     pbItemsPorCeldaActual.set(dk+'|debito',d.debito.items);
+    pbItemsPorCeldaActual.set(dk+'|transferencia',d.transferencia.items);
   });
   if(!cortes.length&&!diasOrdenados.length){
     el.innerHTML=`<div class="empty"><div class="empty-ico">🏦</div>Sin cortes ni facturas en este rango para ${corteSucLabel(currentPBSuc)}</div>`;
@@ -12715,6 +12754,37 @@ function renderPolizaBanco(){
   }).join('');
   const tot=diasOrdenados.reduce((a,dk)=>{const d=dias.get(dk);a.cPos+=d.credito.pos;a.cFac+=d.credito.facturado;a.dPos+=d.debito.pos;a.dFac+=d.debito.facturado;return a;},{cPos:0,cFac:0,dPos:0,dFac:0});
   const totPos=Math.round((tot.cPos+tot.dPos)*100)/100;
+  // ── Transferencias: cada día, lo recibido por transferencia contra lo ya
+  // facturado a clientes (el resto lo cubre la Global). ──
+  const rowsT=diasOrdenados.map(dk=>{
+    const t=dias.get(dk).transferencia;
+    if(!t.pos&&!t.facturado)return'';
+    return`<tr><td>${fmtDiaMes(dk)}</td><td class="num">${fmxn(t.pos)}</td>${celdaFacturado(dk,'transferencia',t.facturado)}${celdaPendiente(t.pos,t.facturado)}</tr>`;
+  }).join('');
+  const cT=cuadre.find(x=>x.k==='transferencia');
+  const transfHtml=`<div class="sec-lbl" style="margin-top:22px">Transferencias</div>
+    <div style="overflow-x:auto"><table class="corte-tbl">
+      <thead><tr><th>Día</th><th class="num">Transferencias recibidas</th><th class="num">Transferencia facturada</th><th class="num">Transferencia pendiente (Global)</th></tr></thead>
+      <tbody>${rowsT||'<tr><td colspan="4" style="text-align:center;color:var(--text3)">Sin transferencias en este mes</td></tr>'}</tbody>
+      <tfoot style="font-weight:700;background:var(--surface2)"><tr><td>Total</td><td class="num">${fmxn(cT.banco)}</td><td class="num">${fmxn(cT.fac)}</td>${celdaPendiente(cT.banco,cT.fac)}</tr></tfoot>
+    </table></div>
+    <div style="font-size:11px;color:var(--text2);margin-top:8px">Clic en "Transferencia facturada" para ver el folio de cada factura de ese día.</div>`;
+
+  // ── Cuadre final: total de banco contra total de facturación. ──
+  const celdaDif=(v)=>{
+    if(v>0.01)return`<td class="num" style="color:var(--copper)" title="Falta por facturar (lo cubre la Global)">${fmxn(v)}</td>`;
+    if(v<-0.01)return`<td class="num" style="color:var(--red)" title="Se facturó más de lo que entró">⚠ ${fmxn(v)}</td>`;
+    return`<td class="num" style="color:var(--green)">${fmxn(v)}</td>`;
+  };
+  const totC=cuadre.reduce((a,x)=>({banco:a.banco+x.banco,fac:a.fac+x.fac,glob:a.glob+x.glob,totFac:a.totFac+x.totFac,dif:a.dif+x.dif}),{banco:0,fac:0,glob:0,totFac:0,dif:0});
+  const cuadreHtml=`<div class="sec-lbl" style="margin-top:22px">Cuadre final — banco contra facturación</div>
+    <div style="overflow-x:auto"><table class="corte-tbl">
+      <thead><tr><th>Forma de pago</th><th class="num">Total de banco</th><th class="num">Facturado a clientes</th><th class="num">Global timbrada</th><th class="num">Total de facturación</th><th class="num">Diferencia</th></tr></thead>
+      <tbody>${cuadre.map(x=>`<tr><td>${x.nombre}${x.k==='efectivo'?' <span style="color:var(--text3);font-weight:400">(caja)</span>':''}</td><td class="num">${fmxn(x.banco)}</td><td class="num">${fmxn(x.fac)}</td><td class="num">${fmxn(x.glob)}</td><td class="num">${fmxn(x.totFac)}</td>${celdaDif(x.dif)}</tr>`).join('')}</tbody>
+      <tfoot style="font-weight:700;background:var(--surface2)"><tr><td>Total</td><td class="num">${fmxn(totC.banco)}</td><td class="num">${fmxn(totC.fac)}</td><td class="num">${fmxn(totC.glob)}</td><td class="num">${fmxn(totC.totFac)}</td>${celdaDif(Math.round(totC.dif*100)/100)}</tr></tfoot>
+    </table></div>
+    <div style="font-size:11px;color:var(--text2);margin-top:8px">"Diferencia" es lo que todavía falta por facturar: se cubre con la Global del mes y debe quedar en $0 (±centavos) cuando la Global de cada forma de pago ya esté timbrada. "Total de banco" es lo que reporta el corte por cada forma; el efectivo es lo cobrado en caja.</div>`;
+
   el.innerHTML=`<div style="overflow-x:auto"><table class="corte-tbl">
     <thead><tr><th>Día</th><th class="num">Crédito (terminal)</th><th class="num">Crédito facturado</th><th class="num">Crédito pendiente (Global)</th><th class="num">Débito (terminal)</th><th class="num">Débito facturado</th><th class="num">Débito pendiente (Global)</th><th class="num">Total del día</th></tr></thead>
     <tbody>${rows}</tbody>
@@ -12722,13 +12792,15 @@ function renderPolizaBanco(){
       <td>Total</td><td class="num">${fmxn(tot.cPos)}</td><td class="num">${fmxn(tot.cFac)}</td>${celdaPendiente(tot.cPos,tot.cFac)}<td class="num">${fmxn(tot.dPos)}</td><td class="num">${fmxn(tot.dFac)}</td>${celdaPendiente(tot.dPos,tot.dFac)}<td class="num">${fmxn(totPos)}</td>
     </tr></tfoot>
   </table></div>
-  <div style="font-size:11px;color:var(--text2);margin-top:10px">Clic en "Crédito facturado" o "Débito facturado" para ver el detalle de folios de ese día. "Pendiente (Global)" es lo que todavía no se factura individual -- se cubre con la Global del mes; junto con lo facturado, siempre suma exacto el total de la terminal.</div>`;
+  <div style="font-size:11px;color:var(--text2);margin-top:10px">Clic en "Crédito facturado" o "Débito facturado" para ver el detalle de folios de ese día. "Pendiente (Global)" es lo que todavía no se factura individual -- se cubre con la Global del mes; junto con lo facturado, siempre suma exacto el total de la terminal.</div>
+  ${transfHtml}
+  ${cuadreHtml}`;
 }
 
 function abrirDetallePolizaBanco(dk,forma){
   const items=pbItemsPorCeldaActual.get(dk+'|'+forma)||[];
   const total=items.reduce((s,i)=>s+i.monto,0);
-  document.getElementById('m-pb-detalle-title').textContent=`${forma==='credito'?'Crédito':'Débito'} facturado · ${fmtDiaMes(dk)}`;
+  document.getElementById('m-pb-detalle-title').textContent=`${({credito:'Crédito',debito:'Débito',transferencia:'Transferencia'})[forma]||forma} facturado · ${fmtDiaMes(dk)}`;
   document.getElementById('m-pb-detalle-body').innerHTML=items.length?`
     <div style="overflow-x:auto"><table class="corte-tbl">
       <thead><tr><th>Folio</th><th>Cliente</th><th class="num">Monto</th></tr></thead>
@@ -12744,14 +12816,14 @@ function abrirDetallePolizaBanco(dk,forma){
 // que el Excel se vea parecido. Pedido del dueño, 19-sept-2026.
 async function exportarPolizaBancoXLSX(){
   if(!pbUltimoDatos||!pbUltimoDatos.diasOrdenados.length){toast('No hay datos para exportar.',true);return;}
-  const{dias,diasOrdenados}=pbUltimoDatos;
+  const{dias,diasOrdenados,cuadre}=pbUltimoDatos;
   const pend=(pos,fac)=>Math.round((pos-fac)*100)/100;
   const NAVY='FF0F3D52',TEAL='FF1A5F7A',LIGHT='FFE2F0F1',WHITE='FFFFFFFF',GRAY='FF7F8C8D';
   const MONEY='"$"#,##0.00';
 
   const wb=new ExcelJS.Workbook();
   const ws=wb.addWorksheet('Póliza Banco');
-  ws.columns=[{width:12},{width:36},{width:14}];
+  ws.columns=[{width:12},{width:36},{width:16},{width:18},{width:16},{width:18},{width:16}];
 
   const banda=(texto,fill,font={})=>{
     const r=ws.addRow([texto]);
@@ -12811,6 +12883,32 @@ async function exportarPolizaBancoXLSX(){
   });
   banda(`TOTAL  ·  Terminal: ${fmxn(gTotPos)}  ·  Facturado: ${fmxn(gTotFac)}  ·  Pendiente (Global): ${fmxn(pend(gTotPos,gTotFac))}`,NAVY,{size:12});
 
+  // Transferencias, día por día (mismo formato que crédito/débito).
+  ws.addRow([]);
+  banda('TRANSFERENCIAS',NAVY,{size:12});
+  diasOrdenados.forEach(dk=>{
+    const t=dias.get(dk).transferencia;
+    if(!t.pos&&!t.facturado)return;
+    bloqueForma(`${fmtDiaMes(dk)} — TRANSFERENCIA`,t.pos,t.facturado,t.items);
+    ws.addRow([]);
+  });
+
+  // Cuadre final: total de banco contra total de facturación.
+  ws.addRow([]);
+  banda('CUADRE FINAL — BANCO CONTRA FACTURACIÓN',NAVY,{size:12});
+  const hdrC=ws.addRow(['Forma de pago','','Total de banco','Facturado a clientes','Global timbrada','Total de facturación','Diferencia']);
+  hdrC.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:LIGHT}};c.font={bold:true,color:{argb:NAVY},size:9.5};});
+  let tB=0,tF=0,tG=0,tT=0;
+  cuadre.forEach(x=>{
+    const r=ws.addRow([x.nombre+(x.k==='efectivo'?' (caja)':''),'',x.banco,x.fac,x.glob,x.totFac,x.dif]);
+    for(let i=3;i<=7;i++){r.getCell(i).numFmt=MONEY;r.getCell(i).alignment={horizontal:'right'};}
+    tB+=x.banco;tF+=x.fac;tG+=x.glob;tT+=x.totFac;
+  });
+  const rt=ws.addRow(['TOTAL','',tB,tF,tG,tT,Math.round((tB-tT)*100)/100]);
+  for(let i=1;i<=7;i++){rt.getCell(i).font={bold:true};if(i>=3){rt.getCell(i).numFmt=MONEY;rt.getCell(i).alignment={horizontal:'right'};}}
+  const nota=ws.addRow(['La diferencia es lo que falta por facturar (lo cubre la Global del mes); debe quedar en $0 cuando la Global esté timbrada.']);
+  nota.getCell(1).font={italic:true,color:{argb:GRAY},size:9};
+
   const buf=await wb.xlsx.writeBuffer();
   const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const url=URL.createObjectURL(blob);
@@ -12823,7 +12921,7 @@ async function exportarPolizaBancoXLSX(){
 
 function imprimirPolizaBancoPDF(){
   if(!pbUltimoDatos||!pbUltimoDatos.diasOrdenados.length){toast('No hay datos para exportar.',true);return;}
-  const{dias,diasOrdenados}=pbUltimoDatos;
+  const{dias,diasOrdenados,cuadre}=pbUltimoDatos;
 
   const tablaFacturas=(items)=>{
     if(!items.length)return'<p class="pb-empty">Sin facturas.</p>';
@@ -12855,6 +12953,20 @@ function imprimirPolizaBancoPDF(){
     </div>`;
   }).join('');
   const gPend=pend(gTotPos,gTotFac);
+  const bloquesT=diasOrdenados.map(dk=>{
+    const t=dias.get(dk).transferencia;
+    if(!t.pos&&!t.facturado)return'';
+    return`<div class="pb-dia">
+      <div class="pb-dia-hdr">${fmtDiaMes(dk)} &nbsp;·&nbsp; Transferencias: ${fmxn(t.pos)} &nbsp;·&nbsp; Facturado: ${fmxn(t.facturado)} &nbsp;·&nbsp; Pendiente (Global): ${fmxn(pend(t.pos,t.facturado))}</div>
+      <div class="pb-dia-cols"><div class="pb-col">${tablaFacturas(t.items)}</div></div>
+    </div>`;
+  }).join('');
+  const tCu=cuadre.reduce((a,x)=>({b:a.b+x.banco,f:a.f+x.fac,g:a.g+x.glob,t:a.t+x.totFac}),{b:0,f:0,g:0,t:0});
+  const cuadreTabla=`<table class="pb-tbl pb-cuadre"><thead><tr><th>Forma de pago</th><th>Total de banco</th><th>Facturado a clientes</th><th>Global timbrada</th><th>Total de facturación</th><th>Diferencia</th></tr></thead><tbody>
+    ${cuadre.map(x=>`<tr><td class="tc">${x.nombre}${x.k==='efectivo'?' (caja)':''}</td><td class="tn">${fmxn(x.banco)}</td><td class="tn">${fmxn(x.fac)}</td><td class="tn">${fmxn(x.glob)}</td><td class="tn">${fmxn(x.totFac)}</td><td class="tn">${fmxn(x.dif)}</td></tr>`).join('')}
+    <tr style="font-weight:700"><td class="tc">TOTAL</td><td class="tn">${fmxn(tCu.b)}</td><td class="tn">${fmxn(tCu.f)}</td><td class="tn">${fmxn(tCu.g)}</td><td class="tn">${fmxn(tCu.t)}</td><td class="tn">${fmxn(Math.round((tCu.b-tCu.t)*100)/100)}</td></tr>
+  </tbody></table>
+  <p class="pb-empty">La diferencia es lo que falta por facturar (lo cubre la Global del mes); debe quedar en $0 cuando la Global esté timbrada.</p>`;
 
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Póliza Banco ${corteSucLabel(currentPBSuc)}</title>
 <style>
@@ -12877,6 +12989,8 @@ table.pb-tbl{border-collapse:collapse;width:100%;table-layout:fixed}
 .pb-tbl td.tc{text-align:left}
 .pb-tbl td.tn{text-align:right;font-family:'DM Mono',Consolas,monospace}
 .pb-empty{font-size:9px;color:#7f8c8d;margin:2px 0}
+.pb-sec{background:#1a5f7a;color:#fff;font-weight:700;font-size:12px;padding:6px 12px;border-radius:6px;margin:14px 0 8px}
+table.pb-cuadre{table-layout:auto}
 .grand-tot{display:flex;justify-content:flex-end;gap:20px;font-weight:700;font-size:11px;background:#0f3d52;color:#fff;padding:8px 14px;border-radius:6px;margin-top:6px}
 .print-btn{position:fixed;top:12px;right:12px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:'DM Sans',Arial,sans-serif;font-weight:600}
 @media print{.print-btn{display:none}body{padding:0;background:#fff}.pb-body{border:none}}
@@ -12892,6 +13006,10 @@ table.pb-tbl{border-collapse:collapse;width:100%;table-layout:fixed}
 <div class="pb-body">
   ${bloques}
   <div class="grand-tot"><span>TERMINAL: ${fmxn(gTotPos)}</span><span>FACTURADO: ${fmxn(gTotFac)}</span><span>PENDIENTE (GLOBAL): ${fmxn(gPend)}</span></div>
+  <div class="pb-sec">TRANSFERENCIAS</div>
+  ${bloquesT||'<p class="pb-empty">Sin transferencias en este mes.</p>'}
+  <div class="pb-sec">CUADRE FINAL — BANCO CONTRA FACTURACIÓN</div>
+  ${cuadreTabla}
 </div>
 </body></html>`;
   const w=window.open('','_blank');
