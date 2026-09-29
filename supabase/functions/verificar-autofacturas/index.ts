@@ -163,9 +163,27 @@ Deno.serve(async (req) => {
             if (Math.abs(importe - af.importe) < 0.015) candidatas.push({ corte, cuenta });
           }
         }
-        if (candidatas.length === 1) {
-          candidatas[0].cuenta.autofactura = af;
-          cortesSucios.add(candidatas[0].corte.id);
+        // Si hay varias del mismo día e importe, se desempata con la forma
+        // de pago de la orden (04 crédito, 28 débito, 03 transferencia; 99 =
+        // mixto, no desempata): dos cuentas de $440, una con débito y otra
+        // con crédito, ya no quedan como ambiguas.
+        const SAT_DE: Record<string, string> = {
+          credito: "04", tarjeta_credito: "04", debito: "28", tarjeta_debito: "28", transferencia: "03",
+        };
+        const formaOrden = String(orden.formaDePago ?? "").trim();
+        let elegidas = candidatas;
+        if (candidatas.length > 1 && formaOrden && formaOrden !== "99") {
+          const porForma = candidatas.filter(({ cuenta }) => {
+            const formas = Object.keys(cuenta?.pagos_por_forma ?? {})
+              .map((f) => f.trim().toLowerCase())
+              .filter((f) => !NO_FACTURABLE.includes(f));
+            return formas.length === 1 && SAT_DE[formas[0]] === formaOrden;
+          });
+          if (porForma.length === 1) elegidas = porForma;
+        }
+        if (elegidas.length === 1) {
+          elegidas[0].cuenta.autofactura = af;
+          cortesSucios.add(elegidas[0].corte.id);
           ligadas++;
         } else {
           const corteDia = (cortes ?? []).find((c: any) =>
