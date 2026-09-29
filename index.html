@@ -12479,6 +12479,32 @@ function pbCalcularDatos(){
       bucket.facturado=Math.round((bucket.facturado+(Number(f.total)||0))*100)/100;
       bucket.items.push({folio:(folioFiscalDisplay(f)!=='—'?folioFiscalDisplay(f):(f.folio_interno||f.folio_pago||'')),monto:Number(f.total)||0,quien:f.razon_social||''});
     });
+    // Autofacturas YA usadas por el cliente (verificadas contra Factura.com):
+    // no pasan por facturas_detalle del POS pero sí conforman el total
+    // facturado de tarjeta, así que cuentan igual que las demás. Solo las
+    // efectivamente facturadas, no las que nomás tienen el link emitido.
+    // La forma de pago y la fecha de la venta salen de pagos_detalle
+    // (restaurantes traen la autofactura en cuentas[], mismo folio).
+    const afPorFolio=new Map();
+    ((c.datos&&c.datos.cuentas)||[]).forEach(q=>{if(q.autofactura&&q.autofactura.facturado&&q.folio!=null)afPorFolio.set(Number(q.folio),q.autofactura);});
+    const pagosDet=(c.datos&&c.datos.pagos_detalle)||[];
+    pagosDet.forEach(p=>{if(p.autofactura&&p.autofactura.facturado&&p.folio!=null)afPorFolio.set(Number(p.folio),p.autofactura);});
+    const afYaContados=new Set();
+    pagosDet.forEach(p=>{
+      const af=p.folio!=null?afPorFolio.get(Number(p.folio)):null;
+      if(!af||afYaContados.has(Number(p.folio)))return;
+      const fk=String(p.forma_pago||'').toLowerCase();
+      const forma=(fk==='credito'||fk==='tarjeta_credito')?'credito':(fk==='debito'||fk==='tarjeta_debito')?'debito':null;
+      if(!forma)return;
+      const dk=String(p.fecha||dkCorte).slice(0,10);
+      if(dk<desde||dk>hasta)return;
+      afYaContados.add(Number(p.folio));
+      const bucket=diaDe(dk)[forma];
+      const monto=Number(p.monto)||0;
+      bucket.facturado=Math.round((bucket.facturado+monto)*100)/100;
+      const fp=af.folio_pac?('F-'+String(af.folio_pac).replace(/^[Ff]/,'').trim().replace(/^-/,'')):'';
+      bucket.items.push({folio:fp||('AF '+(af.folio||p.folio)),monto,quien:'Autofactura'});
+    });
   });
 
   const diasOrdenados=[...dias.keys()].sort();
