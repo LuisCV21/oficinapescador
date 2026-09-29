@@ -561,7 +561,7 @@ Deno.serve(async (req) => {
       for (const corte of cortes ?? []) {
         for (const cuenta of corte?.datos?.cuentas ?? []) {
           const a = cuenta?.autofactura;
-          if (!a?.facturado || !a?.uuid_fiscal || a?.sustituye) continue;
+          if (!a?.facturado || a?.sustituye) continue; // sin UUID en el corte: se resuelve abajo por el folio AF
           if (String(a?.fecha ?? "") < "2026-09-01") continue; // solo septiembre en adelante
           const formas = Object.keys(cuenta?.pagos_por_forma ?? {}).map((f) => f.trim().toLowerCase()).filter((f) => !NO_FACT.includes(f));
           if (formas.length !== 1 || !SAT_DE[formas[0]]) continue; // mixto/otro: no se puede juzgar
@@ -575,11 +575,20 @@ Deno.serve(async (req) => {
       for (let i = 0; i < items.length; i += 8) {
         await Promise.all(items.slice(i, i + 8).map(async (it) => {
           try {
-            const d = datosDeCfdi(await consultarCfdiPorUuid(cred.api_key, cred.secret_key, it.a.uuid_fiscal));
+            // Algunas autofacturas quedaron marcadas facturadas por el POS sin
+            // UUID (solo con folio): se busca en la orden de Factura.com.
+            let uuidAF = it.a.uuid_fiscal as string | null;
+            if (!uuidAF) {
+              const r = await fetch(`${HOST}/v4/autofacturacion/folio/${it.a.folio}`, { headers: facturacomHeaders(cred.api_key, cred.secret_key) });
+              if (r.ok) uuidAF = String((await r.json())?.data?.uuid ?? "").trim() || null;
+            }
+            if (!uuidAF) return;
+            it.a.uuid_fiscal = uuidAF;
+            const d = datosDeCfdi(await consultarCfdiPorUuid(cred.api_key, cred.secret_key, uuidAF));
             if (String(d.status).toLowerCase() === "cancelada") return;
             if (d.forma_pago && d.forma_pago !== it.forma_venta) {
               resultado.push({
-                af_folio: it.a.folio, importe: it.a.importe, fecha: it.a.fecha, uuid_fiscal: it.a.uuid_fiscal,
+                af_folio: it.a.folio, importe: it.a.importe, fecha: it.a.fecha, uuid_fiscal: uuidAF,
                 folio_pac: d.folio_pac, forma_cfdi: d.forma_pago, forma_venta: it.forma_venta,
                 sucursal: it.corte.sucursal, turno_id: it.corte.turno_id, cuenta_id: it.cuenta.id,
                 folios_venta: (it.cuenta.pagos_detalle ?? [])

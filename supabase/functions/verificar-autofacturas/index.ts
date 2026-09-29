@@ -267,7 +267,7 @@ Deno.serve(async (req) => {
         const af = portador?.autofactura;
         if (!af || !af.folio) continue;
         if (String(af.fecha ?? "") < FECHA_MIN) continue;
-        if (af.facturado && af.folio_pac) continue;
+        if (af.facturado && af.folio_pac && af.uuid_fiscal) continue; // completa también las que no traen UUID
         // Una autofactura pendiente que ya venció hace días no la va a usar
         // nadie: no se sigue consultando en cada verificación.
         if (!af.facturado && af.vencimiento && hoy > sumarDias(String(af.vencimiento).slice(0, 10), 7)) continue;
