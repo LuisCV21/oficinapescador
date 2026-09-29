@@ -256,6 +256,25 @@ function foliosAutofacturados(datos: any): Set<number> {
   return s;
 }
 
+// Folios que YA tienen una factura timbrada en datos.facturas_detalle del
+// corte aunque pagos_detalle[].facturado siga en false (pasa cuando la
+// bandera no se actualizó). Solo cuenta si el total coincide con el monto
+// del pago, para no ocultar el resto de un cobro dividido.
+function foliosConFacturaTimbrada(datos: any): Set<number> {
+  const montos = new Map<number, number>();
+  for (const p of datos?.pagos_detalle ?? []) {
+    if (p?.folio != null) montos.set(Number(p.folio), Number(p.monto || 0));
+  }
+  const s = new Set<number>();
+  for (const f of datos?.facturas_detalle ?? []) {
+    if (f?.estado !== "timbrada" || f?.folio_pago == null) continue;
+    const folio = Number(f.folio_pago);
+    const monto = montos.get(folio);
+    if (monto != null && Math.abs(Number(f.total || 0) - monto) < 0.01) s.add(folio);
+  }
+  return s;
+}
+
 async function candidatosPendientes(
   db: any, entidad: string, periodoInicio: string, periodoFin: string,
 ): Promise<Pago[]> {
@@ -270,9 +289,11 @@ async function candidatosPendientes(
   for (const corte of cortes ?? []) {
     const pagos = corte?.datos?.pagos_detalle ?? [];
     const foliosAutofact = foliosAutofacturados(corte?.datos);
+    const foliosTimbrados = foliosConFacturaTimbrada(corte?.datos);
     for (const p of pagos) {
       if (!p?.fecha || p?.folio == null) continue;
       if (p.autofactura?.facturado || foliosAutofact.has(Number(p.folio))) continue;
+      if (foliosTimbrados.has(Number(p.folio))) continue;
       const fechaYMD = String(p.fecha).slice(0, 10);
       if (fechaYMD < periodoInicio || fechaYMD > periodoFin) continue;
       const formaKey = String(p.forma_pago || "").toLowerCase();
