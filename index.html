@@ -12681,7 +12681,8 @@ function pbCalcularDatos(){
   // Cuadre final: total de banco contra total de facturación por forma de
   // pago. "Global" es lo que no se factura individual a clientes (banco menos
   // facturado a clientes): lo cubre la Global, no se le pone folio por día.
-  const cuadre=PB_FORMAS.map(k=>{
+  // Solo bancos (tarjetas y transferencia): el efectivo no entra al cuadre.
+  const cuadre=PB_FORMAS.filter(k=>k!=='efectivo').map(k=>{
     let banco=0,fac=0;
     dias.forEach(d=>{banco+=d[k].pos;fac+=d[k].facturado;});
     banco=r2(banco);fac=r2(fac);
@@ -12775,7 +12776,7 @@ function renderPolizaBanco(){
       <tbody>${cuadre.map(x=>`<tr><td>${x.nombre}${x.k==='efectivo'?' <span style="color:var(--text3);font-weight:400">(caja)</span>':''}</td><td class="num">${fmxn(x.banco)}</td><td class="num">${fmxn(x.fac)}</td><td class="num">${fmxn(x.glob)}</td><td class="num">${fmxn(x.totFac)}</td>${celdaDif(x.dif)}</tr>`).join('')}</tbody>
       <tfoot style="font-weight:700;background:var(--surface2)"><tr><td>Total</td><td class="num">${fmxn(totC.banco)}</td><td class="num">${fmxn(totC.fac)}</td><td class="num">${fmxn(totC.glob)}</td><td class="num">${fmxn(totC.totFac)}</td>${celdaDif(Math.round(totC.dif*100)/100)}</tr></tfoot>
     </table></div>
-    <div style="font-size:11px;color:var(--text2);margin-top:8px">"Global" es lo que no se factura individual a clientes; junto con lo facturado a clientes suma el total de banco. Solo se marca la diferencia si se facturó de más. "Total de banco" es lo que reporta el corte por cada forma; el efectivo es lo cobrado en caja.</div>`;
+    <div style="font-size:11px;color:var(--text2);margin-top:8px">"Global" es lo que no se factura individual a clientes; junto con lo facturado a clientes suma el total de banco. Solo se marca la diferencia si se facturó de más. "Total de banco" es lo que reporta el corte por cada forma.</div>`;
 
   el.innerHTML=`<div style="overflow-x:auto"><table class="corte-tbl">
     <thead><tr><th>Día</th><th class="num">Crédito (terminal)</th><th class="num">Crédito facturado</th><th class="num">Crédito pendiente (Global)</th><th class="num">Débito (terminal)</th><th class="num">Débito facturado</th><th class="num">Débito pendiente (Global)</th><th class="num">Total del día</th></tr></thead>
