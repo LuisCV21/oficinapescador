@@ -12216,7 +12216,13 @@ function cgCalcularDatos(){
     acc.debito+=Number(vpf.debito||0)+Number(vpf.tarjeta_debito||0);
     acc.transferencia+=Number(vpf.transferencia||0);
     acc.efectivo+=Number(vpf.efectivo||0);
-    acc.diferencia+=Number(c.datos&&c.datos.cuadre&&c.datos.cuadre.diferencia_cuadre||0);
+    // Misma diferencia que muestra Cortes (columna diferencia_cuadre). El hotel
+    // tiene 2 turnos por día y solo el ÚLTIMO trae el checksum del día
+    // completo (el del primero es parcial): ahí se toma el último, no la suma.
+    const difCorte=Number(c.diferencia_cuadre!=null?c.diferencia_cuadre:(c.datos&&c.datos.cuadre&&c.datos.cuadre.diferencia_cuadre)||0);
+    if(esHotel){
+      if((c.apertura||'')>=(acc._apDif||'')){acc.diferencia=difCorte;acc._apDif=c.apertura||'';}
+    }else acc.diferencia+=difCorte;
     dias.set(diaKey,acc);
     const movs=(c.datos&&c.datos.movimientos_desglose)||[];
     movs.forEach(m=>{
