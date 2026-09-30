@@ -12196,7 +12196,10 @@ function cgCalcularDatos(){
   const entKey=(Object.entries(ENTS).find(([,e])=>String(currentCGSuc||'').toLowerCase().includes(e.label.toLowerCase()))||[])[0];
   const esHotel=entKey==='HOT';
   const{desde,hasta}=cgRangoMes();
-  const cortes=cortesData.filter(c=>c.sucursal===currentCGSuc&&(c.cierre||c.apertura||'').slice(0,10)>=desde&&(c.cierre||c.apertura||'').slice(0,10)<=hasta);
+  // Día del TURNO (apertura, hora local), no la fecha de cierre en UTC: los
+  // turnos nocturnos del hotel cierran de madrugada y caían al día siguiente.
+  const diaTurnoCG=c=>String((c.datos&&c.datos.apertura)||c.cierre||c.apertura||'').slice(0,10);
+  const cortes=cortesData.filter(c=>c.sucursal===currentCGSuc&&diaTurnoCG(c)>=desde&&diaTurnoCG(c)<=hasta);
   const dias=new Map(); // diaKey -> {venta,credito,debito,transferencia,efectivo,diferencia}
   const merc=new Map(); // diaKey -> {CATKEY: monto}
   const div=new Map();
@@ -12204,12 +12207,13 @@ function cgCalcularDatos(){
   const itemsPorCelda=new Map(); // "grupo|diaKey|catKey" -> [items] (para el detalle/corrección)
   const celdasDifusas=new Set(); // "grupo|diaKey|catKey" con al menos un gasto clasificado por parecido
   cortes.forEach(c=>{
-    const diaKey=(c.cierre||c.apertura||'').slice(0,10);
+    const diaKey=diaTurnoCG(c);
     const{vpf}=plegarValesEnEfectivo((c.datos&&c.datos.ventas_por_forma)||{});
     const acc=dias.get(diaKey)||{venta:0,credito:0,debito:0,transferencia:0,efectivo:0,diferencia:0};
     acc.venta+=Number(c.datos&&c.datos.total_ventas||0);
-    acc.credito+=Number(vpf.credito||0);
-    acc.debito+=Number(vpf.debito||0);
+    // El hotel manda tarjeta_credito/tarjeta_debito; los restaurantes credito/debito.
+    acc.credito+=Number(vpf.credito||0)+Number(vpf.tarjeta_credito||0);
+    acc.debito+=Number(vpf.debito||0)+Number(vpf.tarjeta_debito||0);
     acc.transferencia+=Number(vpf.transferencia||0);
     acc.efectivo+=Number(vpf.efectivo||0);
     acc.diferencia+=Number(c.datos&&c.datos.cuadre&&c.datos.cuadre.diferencia_cuadre||0);
