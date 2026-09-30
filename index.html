@@ -12156,7 +12156,7 @@ async function loadGastosOverrides(){
   gastosOverridesData=data||[];
 }
 function cgCategoriaFinal(m,entKey){
-  const ov=gastosOverridesData.find(o=>o.sucursal===m.sucursal&&o.turno_id===m.turno_id&&o.fecha===m.fecha);
+  const ov=gastosOverridesData.find(o=>o.sucursal===m.sucursal&&o.turno_id===m.turno_id&&o.fecha===(m.fechaKey||m.fecha));
   if(ov)return{key:ov.categoria_final,tipo:'manual'};
   return cgClasificar(m.concepto,m.categoria,entKey);
 }
@@ -12233,7 +12233,7 @@ function cgCalcularDatos(){
     }else acc.diferencia+=difCorte;
     dias.set(diaKey,acc);
     const movs=(c.datos&&c.datos.movimientos_desglose)||[];
-    movs.forEach(m=>{
+    movs.forEach((m,mi)=>{
       // El hotel manda TODOS sus gastos sin "medio", con tipo='RETIRO' (en
       // mayúsculas) y categoria='General' -- nunca decide mercancía/diverso
       // al capturar, a diferencia del restaurante donde eso lo elige la
@@ -12258,7 +12258,10 @@ function cgCalcularDatos(){
       }
       if(categoria!=='gasto_mercancia'&&categoria!=='gasto_diverso')return;
       const mDiaKey=(m.fecha||diaKey).slice(0,10);
-      const item={...m,categoria,concepto:m.concepto||m.descripcion,sucursal:c.sucursal,turno_id:c.turno_id,diaKey:mDiaKey};
+      // Cortes viejos (ej. Puebla turno #8, 8-sep) traen movimientos SIN fecha:
+      // se les da una llave estable por posición para poder clasificarlos
+      // (antes se guardaba 'undefined' y la clasificación nunca los encontraba).
+      const item={...m,categoria,concepto:m.concepto||m.descripcion,sucursal:c.sucursal,turno_id:c.turno_id,diaKey:mDiaKey,fechaKey:m.fecha||('sin-fecha-'+mi)};
       const clas=cgCategoriaFinal(item,entKey);
       const mapa=categoria==='gasto_mercancia'?merc:div;
       if(!clas.key){sinClasificar.push(item);return;}
@@ -12329,7 +12332,7 @@ async function renderControlGastos(){
   }
   function seccionSinClasificar(){
     if(!sinClasificar.length)return'';
-    const filas=sinClasificar.sort((a,b)=>b.fecha.localeCompare(a.fecha)).map((m,i)=>{
+    const filas=sinClasificar.sort((a,b)=>String(b.fechaKey).localeCompare(String(a.fechaKey))).map((m,i)=>{
       const opciones=cgListaGrupo(m.categoria,entKey).map(([key,label])=>`<option value="${key}">${label}</option>`).join('');
       return`<tr>
         <td>${fmtDiaMes(m.diaKey)}</td>
@@ -12337,7 +12340,7 @@ async function renderControlGastos(){
         <td>${m.categoria==='gasto_mercancia'?'Mercancía':'Diverso'}</td>
         <td class="num">${fmxn(m.monto)}</td>
         <td><select id="cg-sc-${i}" style="font-size:11px">${opciones}</select></td>
-        <td><button class="btn-text" style="font-size:11px" onclick="cgGuardarClasificacion('${m.sucursal.replace(/'/g,"\\'")}',${m.turno_id},'${m.fecha}',document.getElementById('cg-sc-${i}').value)">Asignar</button></td>
+        <td><button class="btn-text" style="font-size:11px" onclick="cgGuardarClasificacion('${m.sucursal.replace(/'/g,"\\'")}',${m.turno_id},'${m.fechaKey}',document.getElementById('cg-sc-${i}').value)">Asignar</button></td>
       </tr>`;
     }).join('');
     const totalSC=sinClasificar.reduce((s,m)=>s+Number(m.monto||0),0);
@@ -12515,7 +12518,7 @@ function abrirDetalleCeldaGastos(grupoKey,diaKey,catKey){
       <td>${m.concepto}${marcaTipo?'<br>'+marcaTipo:''}</td>
       <td class="num">${fmxn(m.monto)}</td>
       <td><select id="cg-det-${i}" style="font-size:11px">${opciones}</select></td>
-      <td><button class="btn-text" style="font-size:11px" onclick="cgReasignarDesdeDetalle('${m.sucursal.replace(/'/g,"\\'")}',${m.turno_id},'${m.fecha}',document.getElementById('cg-det-${i}').value)">Reasignar</button></td>
+      <td><button class="btn-text" style="font-size:11px" onclick="cgReasignarDesdeDetalle('${m.sucursal.replace(/'/g,"\\'")}',${m.turno_id},'${m.fechaKey||m.fecha}',document.getElementById('cg-det-${i}').value)">Reasignar</button></td>
     </tr>`;
   }).join('');
   document.getElementById('m-cg-detalle-title').textContent=`${cgLabel(catKey,grupoKey,entKey)} · ${fmtDiaMes(diaKey)}`;
