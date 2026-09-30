@@ -1348,6 +1348,7 @@ empleado a planta o darlo de baja. */
         <div class="tabs-wrap">
           <div class="tabs-bar" id="cortes-tabs-bar"></div>
           <div id="cortes-anterior-panel" style="padding:14px 16px 0"></div>
+          <div id="cortes-reinicio-panel" style="padding:0 16px"></div>
           <div class="toolbar">
             <div class="toolbar-l" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
               <select id="corte-mes" onchange="switchCorteMes(this.value)" style="font-size:12px"></select>
@@ -1749,6 +1750,18 @@ mismo blob ya cargado, sin volver a pedirlo. -->
   <div class="modal-hdr"><div class="modal-title" id="m-cg-detalle-title">Detalle</div><button class="btn-icon" onclick="closeModal('m-cg-detalle')">✕</button></div>
   <div class="modal-body" id="m-cg-detalle-body"></div>
   <div class="modal-ftr"><button class="btn" onclick="closeModal('m-cg-detalle')">Cerrar</button></div>
+</div>
+</div>
+
+<!-- MODAL SOLICITAR REINICIO DE MES -->
+<div class="modal-overlay" id="m-reinicio-mes">
+<div class="modal" style="max-width:520px">
+  <div class="modal-hdr"><div class="modal-title" id="m-reinicio-mes-title">Solicitar reinicio de mes</div><button class="btn-icon" onclick="closeModal('m-reinicio-mes')">✕</button></div>
+  <div class="modal-body" id="m-reinicio-mes-body"></div>
+  <div class="modal-ftr">
+    <button class="btn" onclick="closeModal('m-reinicio-mes')">Cancelar</button>
+    <button class="btn btn-filled" id="m-reinicio-mes-ok" onclick="confirmarSolicitudReinicio()">Enviar solicitud</button>
+  </div>
 </div>
 </div>
 
@@ -10712,6 +10725,7 @@ function renderCortes(){
   if(!el)return;
   renderCorteTabs();
   renderCorteAnteriorPanel();
+  renderReinicioPanel();
   renderCorteMesOptions();
   const soloDif=document.getElementById('corte-solo-dif')?.checked;
   let list=currentCorteSuc==='TODAS'?cortesData:cortesData.filter(c=>c.sucursal===currentCorteSuc);
@@ -10761,6 +10775,87 @@ function renderCortes(){
     out+=items.map(it=>it.tipo==='hotelDia'?renderHotelDiaCard(it.rows):renderCorteCardSingle(it.c)).join('');
   }
   el.innerHTML=out;
+}
+
+// ─── REINICIO DE MES (solicitud de Oficina a cada POS) ─────────────────────
+// Oficina deja la solicitud en reinicios_mes_pendientes; el POS/Hotel la jala,
+// pide el PIN de un admin en la sucursal, respalda y reinicia folios, turnos y
+// anteriores (ver pos-reinicio-mes y src/operaciones/reinicio_mes.py).
+let reiniciosData=[];
+let reinicioSolicitudSuc=null;
+async function loadReinicios(){
+  const{data}=await sb.from('reinicios_mes_pendientes').select('*').order('creada_at',{ascending:false}).limit(60);
+  reiniciosData=data||[];
+}
+function reinicioEstadoBadge(r){
+  const m={pendiente:['⏳ esperando al POS','var(--amber-light,#fff4d6)','var(--amber,#b8860b)'],
+    ejecutada:['✓ ejecutada','var(--green-light,#e6f4ea)','var(--green,#2e7d32)'],
+    error:['✕ error','var(--red-light)','var(--red)'],
+    cancelada:['cancelada','var(--surface2)','var(--text3)'],
+    caducada:['caducada','var(--surface2)','var(--text3)']}[r.estado]||[r.estado,'var(--surface2)','var(--text3)'];
+  return`<span class="corte-badge" style="background:${m[1]};color:${m[2]}">${m[0]}</span>`;
+}
+function renderReinicioPanel(){
+  const el=document.getElementById('cortes-reinicio-panel');
+  if(!el)return;
+  if(!isAdmin()){el.innerHTML='';return;}
+  const sucs=[...new Set(cortesData.map(c=>c.sucursal).filter(Boolean))].sort();
+  const objetivo=currentCorteSuc==='TODAS'?sucs:[currentCorteSuc];
+  loadReinicios().then(()=>{
+    el.innerHTML=`<details style="margin:10px 0"><summary style="cursor:pointer;font-size:12px;color:var(--text2)">🔄 Reinicio de mes (folios, turnos y anteriores)</summary>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px">${objetivo.map(suc=>{
+        const ult=reiniciosData.filter(r=>r.sucursal===suc);
+        const pend=ult.find(r=>r.estado==='pendiente');
+        const ultima=ult[0];
+        const s=suc.replace(/'/g,"\\'");
+        return`<div class="acc-card" style="min-width:260px;flex:1;border-left:4px solid ${corteSucColor(suc)}">
+          <div style="font-weight:600">${corteSucLabel(suc)}</div>
+          <div style="font-size:11px;color:var(--text2);margin:4px 0 8px">${ultima?`Última: ${reinicioEstadoBadge(ultima)} · ${ultima.periodo} · ${fmtFechaHora(ultima.creada_at)}${ultima.ejecutada_por?`<br>Aceptada por ${ultima.ejecutada_por}`:''}${ultima.estado==='error'?`<br><span style="color:var(--red)">${ultima.error||''}</span>`:''}`:'Sin solicitudes'}</div>
+          ${pend
+            ?`<button class="btn btn-sm" onclick="cancelarSolicitudReinicio('${pend.id}')">Cancelar solicitud pendiente</button>`
+            :`<button class="btn btn-sm" onclick="openSolicitudReinicio('${s}')">Solicitar reinicio de mes</button>`}
+        </div>`;}).join('')}</div></details>`;
+  }).catch(()=>{el.innerHTML='';});
+}
+function openSolicitudReinicio(suc){
+  reinicioSolicitudSuc=suc;
+  const propios=cortesData.filter(c=>c.sucursal===suc);
+  const maxTurno=propios.reduce((m,c)=>Math.max(m,Number(c.turno_id)||0),0);
+  const ult=propios.slice().sort((a,b)=>String(b.apertura||'').localeCompare(String(a.apertura||'')))[0];
+  const periodo=ult?String((ult.datos&&ult.datos.apertura)||ult.apertura||'').slice(0,7):'';
+  document.getElementById('m-reinicio-mes-title').textContent='Solicitar reinicio de mes · '+corteSucLabel(suc);
+  document.getElementById('m-reinicio-mes-body').innerHTML=`
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5">
+      Se le pedirá al POS de <b>${corteSucLabel(suc)}</b> que reinicie el mes: folios desde 1, turnos y anteriores en 0, borrando
+      ventas, pagos, turnos y autofacturas locales. Las <b>facturas se conservan</b> como consulta y se saca un respaldo antes.
+      El POS solo lo hará si no hay turno ni cuentas abiertas y todo lo enviado a Oficina, y un administrador en la sucursal tendrá que aceptarlo con su PIN.
+      La solicitud caduca en 3 días.
+    </div>
+    <div class="f-row"><label>Mes que se cierra (AAAA-MM)</label><input type="text" id="rm-periodo" value="${periodo}" placeholder="2026-09"></div>
+    <div class="f-row"><label>Primer turno del mes nuevo</label><input type="number" min="1" id="rm-turno" value="${maxTurno+1}">
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">Por defecto sigue la numeración (último turno en Oficina: #${maxTurno}) para no pisar ningún corte.</div></div>
+    <div class="f-row"><label>Escribe REINICIAR para confirmar</label><input type="text" id="rm-confirma" autocomplete="off"></div>`;
+  openModal('m-reinicio-mes');
+}
+async function confirmarSolicitudReinicio(){
+  if(!isAdmin()){toast('Solo un administrador puede solicitarlo.',true);return;}
+  const periodo=(document.getElementById('rm-periodo').value||'').trim();
+  const turno=parseInt(document.getElementById('rm-turno').value,10);
+  if(!/^\d{4}-\d{2}$/.test(periodo)){toast('El mes debe ser AAAA-MM, ej. 2026-09',true);return;}
+  if(!(turno>=1)){toast('Indica el primer turno del mes nuevo.',true);return;}
+  if((document.getElementById('rm-confirma').value||'').trim()!=='REINICIAR'){toast('Escribe REINICIAR para confirmar.',true);return;}
+  const creada_por=(currentPerfil&&currentPerfil.nombre)||(currentUser&&currentUser.email)||'';
+  const{error}=await sb.from('reinicios_mes_pendientes').insert({sucursal:reinicioSolicitudSuc,periodo,turno_inicial:turno,creada_por});
+  if(error){toast('Error: '+error.message,true);return;}
+  closeModal('m-reinicio-mes');
+  toast('Solicitud enviada ✓ — el POS la verá al abrir o con "Sincronizar con Oficina"');
+  renderReinicioPanel();
+}
+async function cancelarSolicitudReinicio(id){
+  const{error}=await sb.from('reinicios_mes_pendientes').update({estado:'cancelada'}).eq('id',id);
+  if(error){toast('Error: '+error.message,true);return;}
+  toast('Solicitud cancelada');
+  renderReinicioPanel();
 }
 
 // ─── VENTAS DEL MES ──────────────────────────────────────────
