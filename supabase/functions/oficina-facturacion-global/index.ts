@@ -293,6 +293,11 @@ function foliosAutofacturados(datos: any): Set<number> {
   const s = new Set<number>();
   for (const c of datos?.cuentas ?? []) {
     if (!c?.autofactura?.facturado) continue;
+    // Autofactura anterior a todos los pagos de la cuenta = quedó ligada por
+    // error (cuenta_id reciclado en el POS): no cubre esta venta.
+    const fa = String(c.autofactura.fecha ?? "").slice(0, 10);
+    const dias = (c.pagos_detalle ?? []).map((p: any) => String(p?.fecha ?? "").slice(0, 10)).filter(Boolean);
+    if (fa && dias.length && !dias.some((d: string) => fa >= d)) continue;
     if (c.folio != null) s.add(Number(c.folio));
     // Una cuenta con pago mixto o dividido trae varios folios de pago; la
     // autofactura cubre toda su parte no-efectivo, no solo el folio de la

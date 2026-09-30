@@ -10781,11 +10781,20 @@ function switchVMSuc(s){currentVMSuc=s;renderVentasMes();}
 // y facturas individuales timbradas desde Oficina (incluye el CFDI sustituto de
 // uno cancelado). Así Cortes y Ventas del mes muestran el CFDI nuevo y no el
 // original ya cancelado.
+// Una autofactura se genera al cobrar: si su fecha es ANTERIOR a todos los
+// pagos de la cuenta, quedó ligada por error (cuenta_id reciclado en el POS,
+// ej. AF de agosto pegada a una venta de septiembre) y no cubre esa venta.
+function afLigadaValida(a,q){
+  const fa=String((a&&a.fecha)||'').slice(0,10);
+  const dias=((q&&q.pagos_detalle)||[]).map(pq=>String(pq.fecha||'').slice(0,10)).filter(Boolean);
+  if(!fa||!dias.length)return true;
+  return dias.some(d=>fa>=d);
+}
 function afPorFolioDeCorte(c){
   const m=new Map();
   ((c.datos&&c.datos.cuentas)||[]).forEach(q=>{
     const a=q.autofactura;
-    if(!(a&&a.facturado))return;
+    if(!(a&&a.facturado)||!afLigadaValida(a,q))return;
     if(q.folio!=null)m.set(Number(q.folio),a);
     (q.pagos_detalle||[]).forEach(pq=>{if(pq.folio!=null)m.set(Number(pq.folio),a);});
   });
@@ -12646,7 +12655,7 @@ function pbCalcularDatos(){
     // la parte no-efectivo de su cuenta, que puede traer varios folios de pago.
     const afPorFolio=new Map();
     ((c.datos&&c.datos.cuentas)||[]).forEach(q=>{
-      if(!(q.autofactura&&q.autofactura.facturado))return;
+      if(!(q.autofactura&&q.autofactura.facturado)||!afLigadaValida(q.autofactura,q))return;
       if(q.folio!=null)afPorFolio.set(Number(q.folio),q.autofactura);
       (q.pagos_detalle||[]).forEach(pq=>{if(pq.folio!=null)afPorFolio.set(Number(pq.folio),q.autofactura);});
     });
