@@ -265,6 +265,9 @@ function datosDeCfdi(cfdi: any) {
     cp: xmlAttr(xml, "cfdi:Receptor", "DomicilioFiscalReceptor"),
     regimen_fiscal: xmlAttr(xml, "cfdi:Receptor", "RegimenFiscalReceptor"),
     uso_cfdi: xmlAttr(xml, "cfdi:Receptor", "UsoCFDI"),
+    // Descripcion del primer concepto: para prellenar el sustituto y poder
+    // corregir un nombre de producto equivocado.
+    descripcion: xmlAttr(xml, "cfdi:Concepto", "Descripcion"),
   };
 }
 

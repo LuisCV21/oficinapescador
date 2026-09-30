@@ -15621,6 +15621,7 @@ async function openSustituirAutofactura(i){
     <div class="f-row"><label>Régimen fiscal <span class="req">*</span></label><select id="sa-regimen">${opt(REGIMENES_FISCALES_OFI,cfdi.regimen_fiscal,'601')}</select></div>
     <div class="f-row"><label>Uso CFDI <span class="req">*</span></label><select id="sa-uso">${opt(USOS_CFDI_OFI,cfdi.uso_cfdi,'G03')}</select></div>
     <div class="f-row"><label>Correo (opcional)</label><input type="email" id="sa-email" placeholder="cliente@correo.com"/></div>
+    <div class="f-row"><label>Descripción del concepto (nombre del producto en la factura)</label><input type="text" id="sa-descripcion" value="${String(cfdi.descripcion||(entidad==='HOT'?'Servicio de hospedaje':'Alimentos y bebidas')).replace(/"/g,'&quot;')}" placeholder="Descripción que aparece en la factura"/></div>
     <div class="f-row"><label>Serie del original (el sustituto sale en la misma)</label><input type="text" id="sa-serie" value="${cfdi.serie||''}"/></div>
     <div id="sa-paso2" style="display:none;margin-top:12px"></div>`;
   document.getElementById('m-crear-sustituto-ftr').innerHTML=
@@ -15635,7 +15636,9 @@ async function confirmarSustituirAutofactura(i,entidad){
   const cp=document.getElementById('sa-cp').value.trim();
   if(!rfc||!razon_social||!cp){toast('RFC, razón social y CP son obligatorios',true);return;}
   const forma=document.getElementById('sa-forma').value;
-  if(!confirm(`Esto timbra un CFDI real ante el SAT a nombre de ${razon_social} (${rfc}) por ${fmxn(it.importe)}, con forma de pago ${forma}, como sustituto de ${it.folio_pac||it.af_folio}. ¿Confirmas?`))return;
+  const descripcionSa=document.getElementById('sa-descripcion').value.trim();
+  if(!descripcionSa){toast('La descripción del concepto no puede quedar vacía',true);return;}
+  if(!confirm(`Esto timbra un CFDI real ante el SAT a nombre de ${razon_social} (${rfc}) por ${fmxn(it.importe)}, con forma de pago ${forma} y concepto "${descripcionSa}", como sustituto de ${it.folio_pac||it.af_folio}. ¿Confirmas?`))return;
   const btn=document.getElementById('sa-timbrar-btn');
   btn.disabled=true;btn.textContent='Timbrando...';
   try{
@@ -15643,7 +15646,7 @@ async function confirmarSustituirAutofactura(i,entidad){
       accion:'timbrar_sustituto',entidad,folio:it.folios_venta[0],uuid_original:it.uuid_fiscal,
       rfc,razon_social,cp,regimen_fiscal:document.getElementById('sa-regimen').value,
       uso_cfdi:document.getElementById('sa-uso').value,email:document.getElementById('sa-email').value.trim(),
-      metodo_pago:'PUE',descripcion:entidad==='HOT'?'Servicio de hospedaje':'Alimentos y bebidas',
+      metodo_pago:'PUE',descripcion:descripcionSa,
       forma_pago_nueva:forma,serie_nombre:document.getElementById('sa-serie').value.trim()||null,
       monto_total:it.importe,af_folio:it.af_folio,
     });
