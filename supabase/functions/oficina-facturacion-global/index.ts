@@ -424,14 +424,18 @@ async function buscarPagoPorFolio(db: any, entidad: string, folio: number): Prom
       const formaKey = String(p.forma_pago || "").toLowerCase();
       const sat = FORMA_SAT[formaKey] || ["01", "Efectivo"];
       if (p.facturado || p.autofactura?.facturado || foliosAutofacturados(corte?.datos).has(folio)) return null;
-      const { count: enGlobal } = await db.from("facturas_globales")
-        .select("id", { count: "exact", head: true })
+      // Los folios se reinician cada mes: el mismo número puede estar en una
+      // Global/individual de un mes anterior, que NO cubre esta venta. Solo
+      // cuenta la Global cuyo periodo incluye la fecha del pago.
+      const fechaPago = String(p.fecha ?? "").slice(0, 10);
+      const { data: globales } = await db.from("facturas_globales")
+        .select("periodo_inicio, periodo_fin")
         .eq("entidad", entidad).neq("estado", "cancelada")
         .contains("folios", [{ folio }]);
-      if (enGlobal) return null;
-      const { data: yaIndividual } = await db.from("facturas_individuales")
-        .select("id").eq("entidad", entidad).eq("folio", folio).neq("estado", "cancelada").maybeSingle();
-      if (yaIndividual) return null;
+      if ((globales ?? []).some((g: any) => !fechaPago || (fechaPago >= g.periodo_inicio && fechaPago <= g.periodo_fin))) return null;
+      const { data: individuales } = await db.from("facturas_individuales")
+        .select("fecha_venta").eq("entidad", entidad).eq("folio", folio).neq("estado", "cancelada");
+      if ((individuales ?? []).some((i: any) => !fechaPago || !i.fecha_venta || String(i.fecha_venta).slice(0, 10) === fechaPago)) return null;
       return {
         folio, monto: round2(Number(p.monto || 0)), fecha: p.fecha,
         cuenta: p.cuenta ?? null, sat_code: sat[0], sat_nombre: sat[1],
