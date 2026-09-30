@@ -12587,7 +12587,19 @@ function pbCalcularDatos(){
   pbUuidsCancelados=new Set((cancelacionesCfdiData||[]).map(x=>x.uuid_fiscal).filter(Boolean));
   const r2=x=>Math.round((Number(x)||0)*100)/100;
   const{desde,hasta}=pbRangoMes();
-  const cortes=cortesData.filter(c=>c.sucursal===currentPBSuc&&(c.cierre||c.apertura||'').slice(0,10)>=desde&&(c.cierre||c.apertura||'').slice(0,10)<=hasta);
+  // Día del TURNO (apertura, hora local), no la fecha de cierre en UTC: un
+  // turno que cierra de madrugada caía en el día siguiente y no cuadraba con
+  // sus propias facturas (hotel). Igual que la vista diaria de Global.
+  const diaTurnoDe=c=>String((c.datos&&c.datos.apertura)||c.cierre||c.apertura||'').slice(0,10);
+  const cortes=cortesData.filter(c=>c.sucursal===currentPBSuc&&diaTurnoDe(c)>=desde&&diaTurnoDe(c)<=hasta);
+  // Día del turno en que se cobró cada folio (las facturas se agrupan en ese
+  // mismo día para que cuadren contra la terminal).
+  const diaTurnoPorFolio=new Map();
+  cortesData.filter(cc=>cc.sucursal===currentPBSuc).forEach(cc=>{
+    const dt=diaTurnoDe(cc);
+    ((cc.datos&&cc.datos.pagos_detalle)||[]).forEach(p=>{if(p.folio!=null)diaTurnoPorFolio.set(Number(p.folio),dt);});
+  });
+  const uuidsContados=new Set();
 
   const dias=new Map(); // diaKey -> {credito|debito|transferencia|efectivo:{pos,facturado,items:[]}}
   const diaDe=(dk)=>{
@@ -12600,7 +12612,7 @@ function pbCalcularDatos(){
   };
   cortes.forEach(c=>{
     // Lado terminal/POS: lo que este corte reporta que entró por cada forma.
-    const dkCorte=(c.cierre||c.apertura||'').slice(0,10);
+    const dkCorte=diaTurnoDe(c);
     const vpf=(c.datos&&c.datos.ventas_por_forma)||{};
     const dPos=diaDe(dkCorte);
     dPos.credito.pos+=Number(vpf.credito||0)+Number(vpf.tarjeta_credito||0);
@@ -12619,8 +12631,9 @@ function pbCalcularDatos(){
       if(f.uuid_fiscal&&pbUuidsCancelados.has(f.uuid_fiscal))return;
       const forma=PB_CLAVE_FORMA[f.clave_forma_pago];
       if(!forma)return;
-      const dk=String(f.fecha_venta||dkCorte).slice(0,10);
+      const dk=(f.folio_pago!=null&&diaTurnoPorFolio.get(Number(f.folio_pago)))||String(f.fecha_venta||dkCorte).slice(0,10);
       if(dk<desde||dk>hasta)return;
+      if(f.uuid_fiscal)uuidsContados.add(f.uuid_fiscal);
       const bucket=diaDe(dk)[forma];
       bucket.facturado=r2(bucket.facturado+(Number(f.total)||0));
       bucket.items.push({folio:(folioFiscalDisplay(f)!=='—'?folioFiscalDisplay(f):(f.folio_interno||f.folio_pago||'')),monto:Number(f.total)||0,quien:f.razon_social||''});
@@ -12645,9 +12658,12 @@ function pbCalcularDatos(){
       if(!af||afYaContados.has(Number(p.folio)))return;
       const forma=pbFormaDe(p.forma_pago);
       if(!forma||forma==='efectivo')return; // la autofactura nunca cubre efectivo
-      const dk=String(p.fecha||dkCorte).slice(0,10);
+      // Autofactura cancelada ante el SAT, o ya contada (mismo UUID): no suma.
+      if(af.uuid_fiscal&&(pbUuidsCancelados.has(af.uuid_fiscal)||uuidsContados.has(af.uuid_fiscal)))return;
+      const dk=dkCorte;
       if(dk<desde||dk>hasta)return;
       afYaContados.add(Number(p.folio));
+      if(af.uuid_fiscal)uuidsContados.add(af.uuid_fiscal);
       const bucket=diaDe(dk)[forma];
       const monto=Number(p.monto)||0;
       bucket.facturado=r2(bucket.facturado+monto);
@@ -12667,10 +12683,12 @@ function pbCalcularDatos(){
   });
   facturasIndData.filter(fi=>fi.entidad===entCod&&fi.estado==='timbrada').forEach(fi=>{
     if(fi.uuid_fiscal&&pbUuidsCancelados.has(fi.uuid_fiscal))return;
+    // Un CFDI sustituto ya viene contado como autofactura (o en el corte): no duplicar.
+    if(fi.uuid_fiscal&&uuidsContados.has(fi.uuid_fiscal))return;
     const p=pagoPorFolio.get(Number(fi.folio));
     const forma=p?pbFormaDe(p.forma_pago):PB_CLAVE_FORMA[fi.forma_pago];
     if(!forma)return;
-    const dk=String(fi.fecha_venta||'').slice(0,10);
+    const dk=diaTurnoPorFolio.get(Number(fi.folio))||String(fi.fecha_venta||'').slice(0,10);
     if(!dk||dk<desde||dk>hasta)return;
     const bucket=diaDe(dk)[forma];
     const monto=Number(fi.total)||0;
