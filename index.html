@@ -12603,11 +12603,26 @@ function pbCalcularDatos(){
   const cortes=cortesData.filter(c=>c.sucursal===currentPBSuc&&diaTurnoDe(c)>=desde&&diaTurnoDe(c)<=hasta);
   // Día del turno en que se cobró cada folio (las facturas se agrupan en ese
   // mismo día para que cuadren contra la terminal).
-  const diaTurnoPorFolio=new Map();
+  // Los folios se reinician cada mes: un mismo número puede existir en varios
+  // meses, así que se elige el que coincide con la fecha de la venta (±1 día).
+  const turnosPorFolio=new Map();
   cortesData.filter(cc=>cc.sucursal===currentPBSuc).forEach(cc=>{
     const dt=diaTurnoDe(cc);
-    ((cc.datos&&cc.datos.pagos_detalle)||[]).forEach(p=>{if(p.folio!=null)diaTurnoPorFolio.set(Number(p.folio),dt);});
+    ((cc.datos&&cc.datos.pagos_detalle)||[]).forEach(p=>{
+      if(p.folio==null)return;
+      const k=Number(p.folio);
+      if(!turnosPorFolio.has(k))turnosPorFolio.set(k,[]);
+      turnosPorFolio.get(k).push({dt,fecha:String(p.fecha||'').slice(0,10)});
+    });
   });
+  const diaTurnoDeFolio=(folio,fechaRef)=>{
+    const l=turnosPorFolio.get(Number(folio));
+    const ref=String(fechaRef||'').slice(0,10);
+    if(!l||!ref)return null;
+    const t0=Date.parse(ref+'T00:00:00Z');
+    const hit=l.find(x=>x.fecha&&Math.abs(Date.parse(x.fecha+'T00:00:00Z')-t0)<=86400000);
+    return hit?hit.dt:null;
+  };
   const uuidsContados=new Set();
 
   const dias=new Map(); // diaKey -> {credito|debito|transferencia|efectivo:{pos,facturado,items:[]}}
@@ -12640,7 +12655,7 @@ function pbCalcularDatos(){
       if(f.uuid_fiscal&&pbUuidsCancelados.has(f.uuid_fiscal))return;
       const forma=PB_CLAVE_FORMA[f.clave_forma_pago];
       if(!forma)return;
-      const dk=(f.folio_pago!=null&&diaTurnoPorFolio.get(Number(f.folio_pago)))||String(f.fecha_venta||dkCorte).slice(0,10);
+      const dk=(f.folio_pago!=null&&diaTurnoDeFolio(f.folio_pago,f.fecha_venta))||String(f.fecha_venta||dkCorte).slice(0,10);
       if(dk<desde||dk>hasta)return;
       if(f.uuid_fiscal)uuidsContados.add(f.uuid_fiscal);
       const bucket=diaDe(dk)[forma];
@@ -12697,7 +12712,7 @@ function pbCalcularDatos(){
     const p=pagoPorFolio.get(Number(fi.folio));
     const forma=p?pbFormaDe(p.forma_pago):PB_CLAVE_FORMA[fi.forma_pago];
     if(!forma)return;
-    const dk=diaTurnoPorFolio.get(Number(fi.folio))||String(fi.fecha_venta||'').slice(0,10);
+    const dk=diaTurnoDeFolio(fi.folio,fi.fecha_venta)||String(fi.fecha_venta||'').slice(0,10);
     if(!dk||dk<desde||dk>hasta)return;
     const bucket=diaDe(dk)[forma];
     const monto=Number(fi.total)||0;
