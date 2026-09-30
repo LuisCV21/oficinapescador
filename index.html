@@ -10656,8 +10656,16 @@ function renderCorteAnteriorPanel(){
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">${tarjetas}</div>
   `:'';
 }
+// Diferencia del corte tal como la muestra el detalle. El hotel trae su cuadre
+// real en resumen_recepcion.diferencia; la columna diferencia_cuadre puede
+// quedar con un valor viejo del cuadre plano (ej. 5-sep: -3,400 vs 0.13).
+function difCorteVigente(c){
+  const rr=c&&c.datos&&c.datos.resumen_recepcion;
+  if(rr&&rr.diferencia!=null)return Number(rr.diferencia)||0;
+  return Number(c&&c.diferencia_cuadre!=null?c.diferencia_cuadre:(c&&c.datos&&c.datos.cuadre&&c.datos.cuadre.diferencia_cuadre)||0);
+}
 function renderCorteCardSingle(c){
-  const dif=Number(c.diferencia_cuadre||0);
+  const dif=difCorteVigente(c);
   const{texto:difTxt,color:difColor}=cuadreLabel(dif);
   const titulo=`Corte ${corteSucLabel(c.sucursal)} ${fmtDiaMes(c.cierre||c.apertura)}`;
   return`<div class="acc-card" style="cursor:pointer;background:${corteBg(c.sucursal,10)};border-left:4px solid ${corteSucColor(c.sucursal)}" onclick="openCorteDetail('${c.id}')">
@@ -10680,7 +10688,7 @@ function renderCorteCardSingle(c){
 function renderHotelDiaCard(rows){
   const totalVenta=Math.round(rows.reduce((s,r)=>s+Number(r.total_ventas||0),0)*100)/100;
   const ultimo=rows[rows.length-1];
-  const dif=Number(ultimo.diferencia_cuadre||0);
+  const dif=difCorteVigente(ultimo);
   const{texto:difTxt,color:difColor}=cuadreLabel(dif);
   const suc=rows[0].sucursal;
   const turnosLbl=rows.map(r=>'#'+r.turno_id).join(' + ');
@@ -10708,7 +10716,7 @@ function renderCortes(){
   const soloDif=document.getElementById('corte-solo-dif')?.checked;
   let list=currentCorteSuc==='TODAS'?cortesData:cortesData.filter(c=>c.sucursal===currentCorteSuc);
   if(currentCorteMes)list=list.filter(c=>corteMesKey(c)===currentCorteMes);
-  if(soloDif)list=list.filter(c=>Math.abs(Number(c.diferencia_cuadre||0))>0.5);
+  if(soloDif)list=list.filter(c=>Math.abs(difCorteVigente(c))>0.5);
   const cnt=document.getElementById('corte-count');
   if(cnt)cnt.textContent=list.length+(list.length===1?' corte':' cortes');
   if(!list.length){
@@ -12219,7 +12227,7 @@ function cgCalcularDatos(){
     // Misma diferencia que muestra Cortes (columna diferencia_cuadre). El hotel
     // tiene 2 turnos por día y solo el ÚLTIMO trae el checksum del día
     // completo (el del primero es parcial): ahí se toma el último, no la suma.
-    const difCorte=Number(c.diferencia_cuadre!=null?c.diferencia_cuadre:(c.datos&&c.datos.cuadre&&c.datos.cuadre.diferencia_cuadre)||0);
+    const difCorte=difCorteVigente(c);
     if(esHotel){
       if((c.apertura||'')>=(acc._apDif||'')){acc.diferencia=difCorte;acc._apDif=c.apertura||'';}
     }else acc.diferencia+=difCorte;
