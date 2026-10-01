@@ -4,6 +4,12 @@ Archivo y limpieza de fin de mes -- Oficina Pescador (Supabase).
 Uso (desde la carpeta oficinapescador, con `npx supabase login` ya hecho):
     python tools/archivar_mes_oficina.py            # solo RESPALDA y cuenta, no borra nada
     python tools/archivar_mes_oficina.py --borrar   # respalda y, tras escribir BORRAR, limpia
+    python tools/archivar_mes_oficina.py --solo-pendientes [--borrar]
+        # SOLO las solicitudes/correcciones pendientes para los POS (acciones de venta,
+        # correcciones de pago y de anterior). Es lo que hay que limpiar ANTES de abrir
+        # los POS con folios reiniciados: un POS aplicaria "cancelar el folio 150" o
+        # "corregir el folio 263" sobre un folio NUEVO con el mismo numero. NO toca
+        # cortes ni facturas, que siguen haciendo falta para armar/editar las Globales.
 
 Respalda a JSON (Desktop/Respaldo_Oficina_<fecha>/) las tablas que dependen de
 folios o de turnos y, con --borrar, las vacia para que el mes nuevo arranque
@@ -29,6 +35,9 @@ TABLAS = [
     "correcciones_pago_pendientes", "correcciones_anterior_pendientes",
     "gastos_clasificacion_overrides",
 ]
+if "--solo-pendientes" in sys.argv:
+    TABLAS = ["acciones_venta_pendientes", "acciones_pos_directas",
+              "correcciones_pago_pendientes", "correcciones_anterior_pendientes"]
 RAIZ = Path(__file__).parent.parent
 DESKTOP = Path.home() / "Desktop"
 
