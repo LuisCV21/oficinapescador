@@ -11818,7 +11818,7 @@ async function gpVerificarSeleccion(out,esperados){
   const fg=out&&out.factura_global;
   const n=fg&&Array.isArray(fg.folios)?fg.folios.length:null;
   if(Array.isArray(esperados)&&n!==null&&n!==esperados.length){
-    try{await gpLlamarFuncion({accion:'descartar',factura_global_id:fg.id});}catch(e){}
+    try{await gpLlamarFuncion({accion:'descartar',entidad:gpEntidadActual(),factura_global_id:fg.id});}catch(e){}
     throw new Error(`El servidor creó el borrador con ${n} partidas en vez de las ${esperados.length} marcadas (la función de Oficina aún no está actualizada). Ya se descartó; avisa antes de reintentar.`);
   }
 }
