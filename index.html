@@ -12873,6 +12873,14 @@ function pbCalcularDatos(){
     return hit?hit.dt:null;
   };
   const uuidsContados=new Set();
+  // Facturas individuales de Oficina (sustitutos) por folio y fecha: si ya hay una para ese
+  // folio, el pago original marcado "facturado" no se cuenta otra vez.
+  const entCodPrev=entidadCodigoDe(currentPBSuc);
+  const hayIndividualDe=(folio,fecha)=>{
+    const ref=Date.parse(String(fecha||'').slice(0,10)+'T00:00:00Z');
+    return facturasIndData.some(fi=>fi.entidad===entCodPrev&&fi.estado==='timbrada'&&Number(fi.folio)===Number(folio)
+      &&(isNaN(ref)||Math.abs(Date.parse(String(fi.fecha_venta||'').slice(0,10)+'T00:00:00Z')-ref)<=86400000));
+  };
 
   const dias=new Map(); // diaKey -> {credito|debito|transferencia|efectivo:{pos,facturado,items:[]}}
   const diaDe=(dk)=>{
@@ -12942,6 +12950,28 @@ function pbCalcularDatos(){
       bucket.facturado=r2(bucket.facturado+monto);
       const fp=af.folio_pac?('F-'+String(af.folio_pac).replace(/^[Ff]/,'').trim().replace(/^-/,'')):'';
       bucket.items.push({folio:fp||('AF '+(af.folio||p.folio)),monto,quien:'Autofactura'});
+    });
+    // Folios que el corte marca como facturados Y traen su folio fiscal, pero cuya factura NO
+    // viaja en facturas_detalle (pasa en el hotel: ej. A-576, A-431, A-499). Son facturas reales;
+    // sin esto la poliza las daba por pendientes y la Global parecia mayor de lo debido. Se
+    // omiten las canceladas, las ya contadas y las que Oficina ya sustituyo con una individual.
+    const foliosFacturaCorte=new Set(facturas.filter(f=>f.estado==='timbrada'&&f.folio_pago!=null).map(f=>Number(f.folio_pago)));
+    pagosDet.forEach(p=>{
+      if(!p.facturado||p.folio==null)return;
+      const fo=Number(p.folio);
+      if(foliosFacturaCorte.has(fo)||afYaContados.has(fo))return;
+      if(!(p.folio_pac||p.uuid_fiscal))return;
+      if(p.uuid_fiscal&&(pbUuidsCancelados.has(p.uuid_fiscal)||uuidsContados.has(p.uuid_fiscal)))return;
+      if(hayIndividualDe(fo,p.fecha))return;
+      const forma=pbFormaDe(p.forma_pago);
+      if(!forma)return;
+      if(dkCorte<desde||dkCorte>hasta)return;
+      if(p.uuid_fiscal)uuidsContados.add(p.uuid_fiscal);
+      const monto=Number(p.monto)||0;
+      const bucket=diaDe(dkCorte)[forma];
+      bucket.facturado=r2(bucket.facturado+monto);
+      const fpac=p.folio_pac?String(p.folio_pac).replace(/^[A-Za-z]*[ -]*/,''):'';
+      bucket.items.push({folio:fpac?('F-'+fpac):'',monto,quien:p.razon_social||'(factura del corte)'});
     });
   });
 
