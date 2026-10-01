@@ -336,7 +336,7 @@ function foliosConFacturaTimbrada(datos: any): Set<number> {
 }
 
 async function candidatosPendientes(
-  db: any, entidad: string, periodoInicio: string, periodoFin: string,
+  db: any, entidad: string, periodoInicio: string, periodoFin: string, ignorarGlobalId?: string,
 ): Promise<Pago[]> {
   const keyword = KEYWORD[entidad];
   // Solo los cortes que pueden traer cobros de este periodo (un turno que
@@ -382,11 +382,14 @@ async function candidatosPendientes(
     }
   }
 
-  const { data: previas, error: errPrev } = await db
+  let qPrev = db
     .from("facturas_globales")
     .select("folios")
     .eq("entidad", entidad).eq("periodo_inicio", periodoInicio).eq("periodo_fin", periodoFin)
     .neq("estado", "cancelada");
+  // Al editar un borrador sus propios folios cuentan como pendientes (se reescriben).
+  if (ignorarGlobalId) qPrev = qPrev.neq("id", ignorarGlobalId);
+  const { data: previas, error: errPrev } = await qPrev;
   if (errPrev) throw new Error(`No se pudo leer facturas_globales: ${errPrev.message}`);
   const cubiertos = new Set<number>();
   for (const row of previas ?? []) {
@@ -540,7 +543,7 @@ Deno.serve(async (req) => {
       folio, rfc, razon_social, cp, regimen_fiscal, uso_cfdi, email, metodo_pago,
       uuid_original, descripcion: descripcionCustom, forma_pago_nueva,
       uuid, serie_nombre, monto_total, af_folio,
-      incluir_folios, descripcion_global,
+      incluir_folios, descripcion_global, editar_global_id,
     } = body ?? {};
 
     if (!entidad || !KEYWORD[entidad]) return json({ error: "entidad inválida (usa HOT, PUE o FLO)" }, 400);
@@ -901,7 +904,7 @@ Deno.serve(async (req) => {
       if (!mes || !anio || !forma_pago) return json({ error: "mes, anio y forma_pago son obligatorios" }, 400);
       const { inicio, fin } = periodoDe(Number(mes), Number(anio));
 
-      const candidatos = await candidatosPendientes(db, entidad, inicio, fin);
+      const candidatos = await candidatosPendientes(db, entidad, inicio, fin, editar_global_id || undefined);
       let folios = candidatos.filter((c) => c.sat_code === forma_pago);
       if (!folios.length) {
         return json({ error: "No hay ventas pendientes para esa forma de pago en este periodo." }, 400);
@@ -947,6 +950,26 @@ Deno.serve(async (req) => {
         LugarExpedicion: fiscal.cp,
         EnviarCorreo: false,
       };
+      // Edición: se reescribe el MISMO borrador en Factura.com (conserva su folio);
+      // no se descarta ni se crea otro.
+      if (editar_global_id) {
+        const { data: fgEd } = await db.from("facturas_globales").select("*").eq("id", editar_global_id).single();
+        if (!fgEd || fgEd.estado !== "borrador" || fgEd.entidad !== entidad || !fgEd.facturapi_id) {
+          return json({ error: "Solo se puede editar un borrador de esta entidad." }, 400);
+        }
+        const respEd = await fetch(`${HOST}/v4/cfdi40/create/${fgEd.facturapi_id}`, {
+          method: "POST", headers: facturacomHeaders(cred.api_key, cred.secret_key), body: JSON.stringify(payload),
+        });
+        await fcCheck(respEd);
+        const resEd = await respEd.json();
+        if (resEd?.response === "error") return json({ error: `${grupo.sat_nombre}: ${resEd.message || JSON.stringify(resEd)}` }, 502);
+        const { data: actualizado, error: updEd } = await db.from("facturas_globales").update({
+          subtotal: grupo.subtotal, iva: grupo.iva + grupo.ish, total: grupo.total,
+          folios: folios.map((f) => ({ folio: f.folio, monto: f.monto, fecha: f.fecha, cuenta: f.cuenta })),
+        }).eq("id", editar_global_id).select().single();
+        if (updEd) return json({ error: `Se actualizó el borrador en Factura.com pero no se pudo guardar localmente: ${updEd.message}. Avisa antes de reintentar.` }, 500);
+        return json({ ok: true, factura_global: actualizado });
+      }
       const result = await crearFactura(cred.api_key, cred.secret_key, payload);
       if (result?.response === "error") return json({ error: `${grupo.sat_nombre}: ${result.message || JSON.stringify(result)}` }, 502);
       const facturapiId = result?.invoice_uid || result?.UID || result?.Data?.UID || "";

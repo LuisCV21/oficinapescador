@@ -11986,21 +11986,20 @@ async function gpGuardarEdicionBorrador(){
   if(!folios.length){toast('Marca al menos una partida.',true);return;}
   const descripcion=(document.getElementById('gpe-desc').value||'').trim();
   const{id,satCode}=gpEditando;
-  if(!confirm(`Se descartará este borrador y se creará uno nuevo con ${folios.length} partida(s)${descripcion?` y el concepto "${descripcion}"`:''}. ¿Confirmas?`))return;
+  if(!confirm(`Se actualizará este mismo borrador (conserva su folio) con ${folios.length} partida(s)${descripcion?` y el concepto "${descripcion}"`:''}. ¿Confirmas?`))return;
   const entidad=gpEntidadActual();
   const mes=Number(document.getElementById('gp-mes')?.value);
   const anio=Number(document.getElementById('gp-anio')?.value);
   gpCargando=true;
   const btn=document.getElementById('m-gp-editar-ok');btn.disabled=true;btn.textContent='Guardando…';
   try{
-    await gpLlamarFuncion({accion:'descartar',entidad,factura_global_id:id});
-    const outEd=await gpLlamarFuncion({accion:'crear_borrador',entidad,mes,anio,forma_pago:satCode,incluir_folios:folios,descripcion_global:descripcion||undefined});
+    const outEd=await gpLlamarFuncion({accion:'crear_borrador',entidad,mes,anio,forma_pago:satCode,incluir_folios:folios,descripcion_global:descripcion||undefined,editar_global_id:id});
     await gpVerificarSeleccion(outEd,folios);
     gpDesc[satCode]=descripcion;
     closeModal('m-gp-editar');
     toast('✓ Borrador actualizado -- revísalo antes de timbrar');
   }catch(e){
-    toast('Error: '+e.message+' (si el borrador ya se descartó, sus ventas están pendientes otra vez; créalo de nuevo desde "Pendiente por facturar")',true);
+    toast('Error: '+e.message+' (el borrador anterior no se tocó)',true);
   }finally{
     gpCargando=false;btn.disabled=false;btn.textContent='Guardar cambios';
   }
