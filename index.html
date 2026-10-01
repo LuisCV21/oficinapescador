@@ -11880,7 +11880,7 @@ async function gpGuardarEdicionBorrador(){
   gpCargando=true;
   const btn=document.getElementById('m-gp-editar-ok');btn.disabled=true;btn.textContent='Guardando…';
   try{
-    await gpLlamarFuncion({accion:'descartar',factura_global_id:id});
+    await gpLlamarFuncion({accion:'descartar',entidad,factura_global_id:id});
     const outEd=await gpLlamarFuncion({accion:'crear_borrador',entidad,mes,anio,forma_pago:satCode,incluir_folios:folios,descripcion_global:descripcion||undefined});
     await gpVerificarSeleccion(outEd,folios);
     gpDesc[satCode]=descripcion;
@@ -11932,7 +11932,7 @@ async function gpTimbrar(facturaGlobalId){
   gpCargando=true;
   try{
     toast('Timbrando ante el SAT...');
-    await gpLlamarFuncion({accion:'timbrar',factura_global_id:facturaGlobalId});
+    await gpLlamarFuncion({accion:'timbrar',entidad:gpEntidadActual(),factura_global_id:facturaGlobalId});
     toast('✓ Timbrada ante el SAT');
     await renderVistaPreviaGlobales();
   }catch(e){
@@ -11946,7 +11946,7 @@ async function gpDescartar(facturaGlobalId){
   if(!confirm('¿Descartar este borrador? Nunca se timbró ante el SAT, así que se puede borrar sin problema -- sus ventas vuelven a quedar pendientes.'))return;
   gpCargando=true;
   try{
-    await gpLlamarFuncion({accion:'descartar',factura_global_id:facturaGlobalId});
+    await gpLlamarFuncion({accion:'descartar',entidad:gpEntidadActual(),factura_global_id:facturaGlobalId});
     toast('Borrador descartado');
     await renderVistaPreviaGlobales();
   }catch(e){
