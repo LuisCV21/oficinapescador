@@ -490,10 +490,12 @@ function agruparPorFormaPago(candidatos: Pago[], entidad: string) {
   return Object.values(grupos);
 }
 
-function construirConceptos(entidad: string, folios: Pago[]) {
+function construirConceptos(entidad: string, folios: Pago[], descripcionPersonalizada?: string) {
   const claveProdServ = entidad === "HOT" ? "90111800" : "90101501";
   const claveUnidad = entidad === "HOT" ? "E48" : "ACT";
-  const descripcion = entidad === "HOT" ? "Servicio de hospedaje" : "Venta de alimentos y bebidas";
+  const descripcion = (descripcionPersonalizada && descripcionPersonalizada.trim())
+    ? descripcionPersonalizada.trim().slice(0, 200)
+    : (entidad === "HOT" ? "Servicio de hospedaje" : "Venta de alimentos y bebidas");
   return folios.map((f) => {
     const { subtotal, iva, ish } = calcularImpuestos(f.monto, entidad);
     return {
@@ -538,6 +540,7 @@ Deno.serve(async (req) => {
       folio, rfc, razon_social, cp, regimen_fiscal, uso_cfdi, email, metodo_pago,
       uuid_original, descripcion: descripcionCustom, forma_pago_nueva,
       uuid, serie_nombre, monto_total, af_folio,
+      incluir_folios, descripcion_global,
     } = body ?? {};
 
     if (!entidad || !KEYWORD[entidad]) return json({ error: "entidad inválida (usa HOT, PUE o FLO)" }, 400);
@@ -899,9 +902,18 @@ Deno.serve(async (req) => {
       const { inicio, fin } = periodoDe(Number(mes), Number(anio));
 
       const candidatos = await candidatosPendientes(db, entidad, inicio, fin);
-      const folios = candidatos.filter((c) => c.sat_code === forma_pago);
+      let folios = candidatos.filter((c) => c.sat_code === forma_pago);
       if (!folios.length) {
         return json({ error: "No hay ventas pendientes para esa forma de pago en este periodo." }, 400);
+      }
+      // Edicion del borrador desde Oficina: solo los folios REALES que se marquen
+      // (nunca se inventan partidas; lo que no se marca sigue pendiente).
+      if (Array.isArray(incluir_folios)) {
+        const permitidos = new Set(incluir_folios.map((x: unknown) => Number(x)));
+        folios = folios.filter((c) => permitidos.has(c.folio));
+        if (!folios.length) {
+          return json({ error: "No quedo ningun folio marcado para esta Global." }, 400);
+        }
       }
 
       const { data: cred } = await db.from("facturacom_credenciales").select("api_key, secret_key").eq("entidad", entidad).maybeSingle();
@@ -913,7 +925,7 @@ Deno.serve(async (req) => {
         return json({ error: `Falta el código postal de facturación de ${entidad} (entidades_fiscales.cp).` }, 500);
       }
 
-      const conceptos = construirConceptos(entidad, folios);
+      const conceptos = construirConceptos(entidad, folios, typeof descripcion_global === "string" ? descripcion_global : undefined);
       const grupo = agruparPorFormaPago(folios, entidad)[0];
 
       const clienteUid = await buscarOCrearCliente(cred.api_key, cred.secret_key, {

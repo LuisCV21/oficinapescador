@@ -1752,6 +1752,18 @@ mismo blob ya cargado, sin volver a pedirlo. -->
 </div>
 </div>
 
+<!-- MODAL EDITAR BORRADOR DE GLOBAL -->
+<div class="modal-overlay" id="m-gp-editar">
+<div class="modal" style="max-width:640px">
+  <div class="modal-hdr"><div class="modal-title" id="m-gp-editar-title">Editar borrador</div><button class="btn-icon" onclick="closeModal('m-gp-editar')">✕</button></div>
+  <div class="modal-body" id="m-gp-editar-body"></div>
+  <div class="modal-ftr">
+    <button class="btn" onclick="closeModal('m-gp-editar')">Cancelar</button>
+    <button class="btn btn-filled" id="m-gp-editar-ok" onclick="gpGuardarEdicionBorrador()">Guardar cambios</button>
+  </div>
+</div>
+</div>
+
 <!-- MODAL DETALLE DE CELDA -- PÓLIZA BANCO -->
 <div class="modal-overlay" id="m-pb-detalle">
 <div class="modal" style="max-width:560px">
@@ -11415,6 +11427,7 @@ function gpRenderResultado(){
         :`<span class="corte-badge ok">✓ Timbrada F-${fg.folio_cfdi??''}</span>`;
       const acciones=esBorrador?`
         <button class="btn-text" style="font-size:11px;color:var(--red)" onclick="gpDescartar('${fg.id}')">Descartar</button>
+        <button class="btn" style="font-size:11px;padding:4px 10px" onclick="gpEditarBorrador('${fg.id}')">✎ Editar</button>
         <button class="btn btn-filled" style="font-size:11px;padding:4px 10px" onclick="gpTimbrar('${fg.id}')">Timbrar borrador</button>
       `:`<span style="font-size:11px;color:var(--text3)" title="${fg.uuid_fiscal||''}">UUID ${(fg.uuid_fiscal||'').slice(0,8)}…</span>`;
       return `<div class="acc-card" style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
@@ -11443,30 +11456,42 @@ function gpRenderResultado(){
       ordenados.map(g=>{
         const key=g.sat_code;
         const abierto=gpAbiertos.has(key);
+        const excl=gpExcluidos[key]||(gpExcluidos[key]=new Set());
+        const marcados=g.folios.filter(p=>!excl.has(p.folio));
+        const totSel=Math.round(marcados.reduce((s,p)=>s+Number(p.monto||0),0)*100)/100;
+        const parcial=marcados.length!==g.folios.length;
         const filasTbl=g.folios.slice().sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''))
           .map(p=>{
             const fecha=p.fecha?new Date(p.fecha).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
-            return `<tr><td>${fecha}</td><td>${p.folio??''}</td><td>${p.cuenta||'—'}</td><td class="num">${fmxn(p.monto)}</td></tr>`;
+            return `<tr style="${excl.has(p.folio)?'opacity:.45':''}"><td><input type="checkbox" ${excl.has(p.folio)?'':'checked'} onchange="gpToggleFolio('${key}',${p.folio},this.checked)"></td><td>${fecha}</td><td>${p.folio??''}</td><td>${p.cuenta||'—'}</td><td class="num">${fmxn(p.monto)}</td></tr>`;
           }).join('');
         return `<div class="acc-card" style="margin-bottom:12px">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
             <div style="cursor:pointer" onclick="toggleGPGrupo('${key}')">
               <div style="font-weight:600;font-size:14px">${g.sat_nombre} <span style="color:var(--text3);font-weight:400;font-size:11px">(SAT ${g.sat_code})</span></div>
-              <div style="font-size:11px;color:var(--text2);margin-top:2px">${g.folios.length} partida(s) · Subtotal ${fmxn(g.subtotal)} · IVA ${fmxn(g.iva+ (g.ish||0))}</div>
+              <div style="font-size:11px;color:var(--text2);margin-top:2px">${parcial?`<b>${marcados.length} de ${g.folios.length}</b> partida(s) marcadas`:`${g.folios.length} partida(s)`} · Subtotal ${fmxn(g.subtotal)} · IVA ${fmxn(g.iva+ (g.ish||0))}</div>
             </div>
             <div style="text-align:right;display:flex;align-items:center;gap:10px">
               <div>
-                <div style="font-size:10px;color:var(--text2);text-transform:uppercase">Total Global</div>
-                <div style="font-weight:700;font-size:16px">${fmxn(g.total)}</div>
+                <div style="font-size:10px;color:var(--text2);text-transform:uppercase">Total Global${parcial?' (marcado)':''}</div>
+                <div style="font-weight:700;font-size:16px">${fmxn(parcial?totSel:g.total)}</div>
+                ${parcial?`<div style="font-size:10px;color:var(--text3)">de ${fmxn(g.total)}</div>`:''}
               </div>
-              <button class="btn btn-filled" style="font-size:11px;padding:6px 12px" onclick="gpCrearBorrador('${key}')">Crear borrador</button>
+              <button class="btn btn-filled" style="font-size:11px;padding:6px 12px" ${marcados.length?'':'disabled'} onclick="gpCrearBorrador('${key}')">Crear borrador</button>
               <span style="font-size:11px;color:var(--text3);cursor:pointer" onclick="toggleGPGrupo('${key}')">${abierto?'▲':'▼'}</span>
             </div>
           </div>
-          ${abierto?`<div style="margin-top:10px;overflow-x:auto"><table class="corte-tbl">
-            <thead><tr><th>Fecha</th><th>Folio</th><th>Cuenta</th><th class="num">Monto</th></tr></thead>
+          ${abierto?`<div style="margin-top:10px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:12px">
+              <label style="color:var(--text2)">Descripción del concepto en la factura</label>
+              <input type="text" value="${(gpDesc[key]||'').replace(/"/g,'&quot;')}" placeholder="${gpDescDefault()}" oninput="gpDesc['${key}']=this.value" style="flex:1;min-width:220px;font-size:12px">
+              <button class="btn-text" style="font-size:11px" onclick="gpMarcarTodos('${key}',true)">Marcar todas</button>
+              <button class="btn-text" style="font-size:11px" onclick="gpMarcarTodos('${key}',false)">Quitar todas</button>
+            </div>
+            <div style="overflow-x:auto"><table class="corte-tbl">
+            <thead><tr><th></th><th>Fecha</th><th>Folio</th><th>Cuenta</th><th class="num">Monto</th></tr></thead>
             <tbody>${filasTbl}</tbody>
-          </table></div>`:''}
+          </table></div></div>`:''}
         </div>`;
       }).join('');
   }
@@ -11781,13 +11806,108 @@ function toggleGPGrupo(key){
   gpRenderResultado();
 }
 
+// ─── Edición del borrador de la Global ──────────────────────────────────
+// Solo se pueden marcar/desmarcar folios REALES pendientes y cambiar la
+// descripción del concepto; nunca se agregan montos que no existan.
+let gpExcluidos={};      // sat_code -> Set de folios desmarcados
+let gpDesc={};           // sat_code -> descripción personalizada
+let gpEditando=null;     // {id, satCode, folios[]} del borrador en edición
+// Protección: si el servidor aún no entiende la selección (función sin actualizar),
+// crearía el borrador con TODOS los folios. Se detecta comparando y se descarta al instante.
+async function gpVerificarSeleccion(out,esperados){
+  const fg=out&&out.factura_global;
+  const n=fg&&Array.isArray(fg.folios)?fg.folios.length:null;
+  if(Array.isArray(esperados)&&n!==null&&n!==esperados.length){
+    try{await gpLlamarFuncion({accion:'descartar',factura_global_id:fg.id});}catch(e){}
+    throw new Error(`El servidor creó el borrador con ${n} partidas en vez de las ${esperados.length} marcadas (la función de Oficina aún no está actualizada). Ya se descartó; avisa antes de reintentar.`);
+  }
+}
+function gpDescDefault(){return gpEntidadActual()==='HOT'?'Servicio de hospedaje':'Venta de alimentos y bebidas';}
+function gpToggleFolio(key,folio,marcado){
+  const set=gpExcluidos[key]||(gpExcluidos[key]=new Set());
+  if(marcado)set.delete(folio);else set.add(folio);
+  gpRenderResultado();
+}
+function gpMarcarTodos(key,marcar){
+  const g=(gpUltimoResultado&&gpUltimoResultado.grupos||[]).find(x=>x.sat_code===key);
+  if(!g)return;
+  gpExcluidos[key]=marcar?new Set():new Set(g.folios.map(f=>f.folio));
+  gpRenderResultado();
+}
+function gpEditarBorrador(id){
+  const fg=(gpUltimoResultado&&gpUltimoResultado.existentes||[]).find(x=>x.id===id);
+  if(!fg)return;
+  gpEditando={id,satCode:fg.forma_pago,total:fg.total};
+  document.getElementById('m-gp-editar-title').textContent=`Editar borrador · ${fg.forma_nombre}`;
+  const filas=(fg.folios||[]).slice().sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')).map(f=>{
+    const fecha=f.fecha?new Date(f.fecha).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+    return `<tr><td><input type="checkbox" class="gpe-chk" value="${f.folio}" data-monto="${f.monto}" checked onchange="gpeActualizarTotal()"></td><td>${fecha}</td><td>${f.folio??''}</td><td>${f.cuenta||'—'}</td><td class="num">${fmxn(f.monto)}</td></tr>`;
+  }).join('');
+  document.getElementById('m-gp-editar-body').innerHTML=`
+    <div style="background:var(--amber-light,#fdf3e0);color:var(--amber,#b8860b);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px;line-height:1.5">
+      Se <b>descarta este borrador y se crea uno nuevo</b> en Factura.com solo con las partidas que dejes marcadas.
+      Las que quites vuelven a quedar pendientes (no se pierden). Solo se editan partidas reales; no se pueden agregar montos nuevos.
+    </div>
+    <div class="f-row"><label>Descripción del concepto en la factura</label><input type="text" id="gpe-desc" value="${gpDesc[fg.forma_pago]||''}" placeholder="${gpDescDefault()}"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0;font-size:12px">
+      <span id="gpe-resumen"></span>
+      <span><button class="btn-text" style="font-size:11px" onclick="gpeMarcar(true)">Marcar todas</button> <button class="btn-text" style="font-size:11px" onclick="gpeMarcar(false)">Quitar todas</button></span>
+    </div>
+    <div style="max-height:320px;overflow:auto"><table class="corte-tbl"><thead><tr><th></th><th>Fecha</th><th>Folio</th><th>Cuenta</th><th class="num">Monto</th></tr></thead><tbody>${filas}</tbody></table></div>`;
+  gpeActualizarTotal();
+  openModal('m-gp-editar');
+}
+function gpeMarcar(v){document.querySelectorAll('.gpe-chk').forEach(c=>{c.checked=v;});gpeActualizarTotal();}
+function gpeActualizarTotal(){
+  const cs=[...document.querySelectorAll('.gpe-chk')];
+  const sel=cs.filter(c=>c.checked);
+  const tot=Math.round(sel.reduce((s,c)=>s+Number(c.dataset.monto||0),0)*100)/100;
+  const el=document.getElementById('gpe-resumen');
+  if(el)el.innerHTML=`<b>${sel.length} de ${cs.length}</b> partida(s) · Total marcado <b>${fmxn(tot)}</b>`;
+  const ok=document.getElementById('m-gp-editar-ok');
+  if(ok)ok.disabled=!sel.length;
+}
+async function gpGuardarEdicionBorrador(){
+  if(gpCargando||!gpEditando)return;
+  const folios=[...document.querySelectorAll('.gpe-chk')].filter(c=>c.checked).map(c=>Number(c.value));
+  if(!folios.length){toast('Marca al menos una partida.',true);return;}
+  const descripcion=(document.getElementById('gpe-desc').value||'').trim();
+  const{id,satCode}=gpEditando;
+  if(!confirm(`Se descartará este borrador y se creará uno nuevo con ${folios.length} partida(s)${descripcion?` y el concepto "${descripcion}"`:''}. ¿Confirmas?`))return;
+  const entidad=gpEntidadActual();
+  const mes=Number(document.getElementById('gp-mes')?.value);
+  const anio=Number(document.getElementById('gp-anio')?.value);
+  gpCargando=true;
+  const btn=document.getElementById('m-gp-editar-ok');btn.disabled=true;btn.textContent='Guardando…';
+  try{
+    await gpLlamarFuncion({accion:'descartar',factura_global_id:id});
+    const outEd=await gpLlamarFuncion({accion:'crear_borrador',entidad,mes,anio,forma_pago:satCode,incluir_folios:folios,descripcion_global:descripcion||undefined});
+    await gpVerificarSeleccion(outEd,folios);
+    gpDesc[satCode]=descripcion;
+    closeModal('m-gp-editar');
+    toast('✓ Borrador actualizado -- revísalo antes de timbrar');
+  }catch(e){
+    toast('Error: '+e.message+' (si el borrador ya se descartó, sus ventas están pendientes otra vez; créalo de nuevo desde "Pendiente por facturar")',true);
+  }finally{
+    gpCargando=false;btn.disabled=false;btn.textContent='Guardar cambios';
+  }
+  await renderVistaPreviaGlobales();
+}
+
 async function gpCrearBorrador(satCode){
   if(gpCargando)return;
   // Aunque se llame "borrador", esto SÍ crea el CFDI en Factura.com (con
   // Draft="1") -- consume un folio real de la serie, nomás no se timbra
   // ante el SAT todavía. Antes bastaba un clic sin avisar nada, y se
   // podía crear sin querer -- pedido del dueño, 19-sept-2026.
-  if(!confirm('Esto va a crear un folio real en Factura.com para este grupo (queda como borrador, sin timbrar ante el SAT todavía). ¿Confirmas crear el borrador?'))return;
+  const gSel=(gpUltimoResultado&&gpUltimoResultado.grupos||[]).find(x=>x.sat_code===satCode);
+  const exclSel=gpExcluidos[satCode]||new Set();
+  const incluir=gSel?gSel.folios.filter(f=>!exclSel.has(f.folio)).map(f=>f.folio):null;
+  const parcialSel=!!(gSel&&incluir.length!==gSel.folios.length);
+  const descSel=(gpDesc[satCode]||'').trim();
+  if(gSel&&!incluir.length){toast('No hay partidas marcadas.',true);return;}
+  const extra=(parcialSel?` Solo con ${incluir.length} de ${gSel.folios.length} partidas marcadas.`:'')+(descSel?` Concepto: "${descSel}".`:'');
+  if(!confirm('Esto va a crear un folio real en Factura.com para este grupo (queda como borrador, sin timbrar ante el SAT todavía).'+extra+' ¿Confirmas crear el borrador?'))return;
   const entidad=gpEntidadActual();
   const mes=Number(document.getElementById('gp-mes')?.value);
   const anio=Number(document.getElementById('gp-anio')?.value);
@@ -11795,7 +11915,9 @@ async function gpCrearBorrador(satCode){
   try{
     toast('Creando borrador en Factura.com...');
     await gpRefrescarAutofacturas(entidad);
-    await gpLlamarFuncion({accion:'crear_borrador',entidad,mes,anio,forma_pago:satCode});
+    const outNuevo=await gpLlamarFuncion({accion:'crear_borrador',entidad,mes,anio,forma_pago:satCode,
+      ...(parcialSel?{incluir_folios:incluir}:{}),...(descSel?{descripcion_global:descSel}:{})});
+    if(parcialSel)await gpVerificarSeleccion(outNuevo,incluir);
     toast('✓ Borrador creado -- revísalo antes de timbrar');
     await renderVistaPreviaGlobales();
   }catch(e){
