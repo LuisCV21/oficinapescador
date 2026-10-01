@@ -55,6 +55,36 @@ async function consultarCfdiPorUuid(apiKey: string, secretKey: string, uuid: str
   return await resp.json();
 }
 
+// CFDI vigentes de Factura.com indexados por NumOrder (= folio de la orden de
+// autofactura, ej. "AF24"). A veces el portal emite la factura del cliente pero
+// la consulta /autofacturacion/folio/AF24 sigue diciendo facturado="No" sin UUID
+// (caso real: orden AF24 de Florida, factura AF 4 del 30-sep): sin esto la venta
+// se quedaba "pendiente" y la Global la volvia a facturar.
+async function cfdiVigentesPorOrden(apiKey: string, secretKey: string, desdeYmd: string): Promise<Map<string, { uuid: string; folio: string }>> {
+  const mapa = new Map<string, { uuid: string; folio: string }>();
+  const hoyD = new Date();
+  let anio = Number(desdeYmd.slice(0, 4)), mes = Number(desdeYmd.slice(5, 7));
+  while (anio < hoyD.getUTCFullYear() || (anio === hoyD.getUTCFullYear() && mes <= hoyD.getUTCMonth() + 1)) {
+    let pag = 1, ultima = 1;
+    do {
+      const resp = await fetch(`${HOST}/v4/cfdi40/list?month=${mes}&year=${anio}&per_page=100&page=${pag}`, {
+        headers: facturacomHeaders(apiKey, secretKey),
+      });
+      if (!resp.ok) throw new Error(`Factura.com [${resp.status}] al listar CFDI ${anio}-${mes}`);
+      const d = await resp.json();
+      ultima = Number(d?.last_page || 1);
+      for (const x of d?.data ?? []) {
+        const orden = String(x?.NumOrder ?? "").trim();
+        if (orden && x?.Status === "enviada" && x?.UUID) mapa.set(orden, { uuid: String(x.UUID), folio: String(x.Folio ?? "") });
+      }
+      pag++;
+    } while (pag <= ultima);
+    mes++;
+    if (mes > 12) { mes = 1; anio++; }
+  }
+  return mapa;
+}
+
 // Solo se trabaja de septiembre-2026 en adelante.
 const FECHA_MIN = "2026-09-01";
 const CORTE_DESDE = "2026-08-31"; // un turno que abrió el 31 puede cobrar ya en septiembre
@@ -274,6 +304,14 @@ Deno.serve(async (req) => {
         tareas.push({ corte, af });
       }
     }
+    let porOrden = new Map<string, { uuid: string; folio: string }>();
+    if (tareas.some((t) => !t.af.facturado)) {
+      try {
+        porOrden = await cfdiVigentesPorOrden(cred.api_key, cred.secret_key, FECHA_MIN);
+      } catch (e) {
+        errores.push(`No se pudo listar los CFDI de Factura.com para cruzar por orden: ${e}`);
+      }
+    }
     await enParalelo(tareas, 8, async ({ corte, af }) => {
       if (sinTiempo()) { incompleto = true; return; }
       revisadas++;
@@ -286,7 +324,17 @@ Deno.serve(async (req) => {
       }
       const yaFacturado = orden && ["si", "sí", "yes", "1"]
         .includes(String(orden.facturado ?? "").trim().toLowerCase());
-      if (!yaFacturado) return;
+      if (!yaFacturado) {
+        // La orden dice "No", pero puede existir un CFDI vigente ligado a ella.
+        const porNum = porOrden.get(String(af.folio));
+        if (!porNum) return;
+        if (af.facturado) folios_completados++; else nuevas_facturadas++;
+        af.facturado = true;
+        af.uuid_fiscal = porNum.uuid;
+        af.folio_pac = porNum.folio || af.folio_pac || null;
+        cortesSucios.add(corte.id);
+        return;
+      }
 
       const uuidFiscal = (orden.uuid || "").trim();
       let folioPac: string | null = null;
