@@ -5,7 +5,8 @@
 -- el PIN de un administrador en la sucursal, hace respaldo, reinicia folios /
 -- turnos / anteriores y reporta el resultado.
 --
--- Solo un admin de Oficina puede crearla. Solo la Edge Function
+-- Quien puede crearla: el ADMIN cualquier dia; la OFICINA (rol oficinista) solo el dia 1
+-- de cada mes (hora de Mexico). Solo la Edge Function
 -- `pos-reinicio-mes` (service_role) marca ejecutada/error -- el POS nunca
 -- escribe aqui directo. Caduca sola (3 dias) para que no se dispare mucho
 -- despues sobre datos nuevos.
@@ -35,17 +36,23 @@ create policy "reinicios_mes_select" on public.reinicios_mes_pendientes
   for select to authenticated
   using (exists (select 1 from public.perfiles where id = auth.uid() and rol in ('admin','oficinista')));
 
-create policy "reinicios_mes_insert_admin" on public.reinicios_mes_pendientes
+create policy "reinicios_mes_insert" on public.reinicios_mes_pendientes
   for insert to authenticated
   with check (
     estado = 'pendiente'
-    and exists (select 1 from public.perfiles where id = auth.uid() and rol = 'admin')
+    and (
+      exists (select 1 from public.perfiles where id = auth.uid() and rol = 'admin')
+      or (
+        exists (select 1 from public.perfiles where id = auth.uid() and rol = 'oficinista')
+        and extract(day from (now() at time zone 'America/Mexico_City')) = 1
+      )
+    )
   );
 
--- Un admin solo puede CANCELAR una pendiente (nunca marcarla ejecutada).
-create policy "reinicios_mes_cancelar_admin" on public.reinicios_mes_pendientes
+-- Admin u oficinista solo pueden CANCELAR una pendiente (nunca marcarla ejecutada).
+create policy "reinicios_mes_cancelar" on public.reinicios_mes_pendientes
   for update to authenticated
-  using (estado = 'pendiente' and exists (select 1 from public.perfiles where id = auth.uid() and rol = 'admin'))
+  using (estado = 'pendiente' and exists (select 1 from public.perfiles where id = auth.uid() and rol in ('admin','oficinista')))
   with check (estado = 'cancelada');
 
 grant select, insert, update on public.reinicios_mes_pendientes to authenticated;

@@ -10783,6 +10783,15 @@ function renderCortes(){
 // anteriores (ver pos-reinicio-mes y src/operaciones/reinicio_mes.py).
 let reiniciosData=[];
 let reinicioSolicitudSuc=null;
+// Admin: cualquier dia. Oficina (oficinista): solo el dia 1 de cada mes (hora de Mexico).
+// El servidor lo vuelve a exigir (politica de reinicios_mes_pendientes).
+function puedeSolicitarReinicio(){
+  if(!currentPerfil)return{ok:false,motivo:''};
+  if(currentPerfil.rol==='admin')return{ok:true};
+  if(currentPerfil.rol!=='oficinista')return{ok:false,motivo:''};
+  const dia=Number(new Intl.DateTimeFormat('en-CA',{timeZone:'America/Mexico_City',day:'numeric'}).format(new Date()));
+  return dia===1?{ok:true}:{ok:false,motivo:'Disponible solo el día 1 de cada mes'};
+}
 async function loadReinicios(){
   const{data}=await sb.from('reinicios_mes_pendientes').select('*').order('creada_at',{ascending:false}).limit(60);
   reiniciosData=data||[];
@@ -10798,7 +10807,8 @@ function reinicioEstadoBadge(r){
 function renderReinicioPanel(){
   const el=document.getElementById('cortes-reinicio-panel');
   if(!el)return;
-  if(!isAdmin()){el.innerHTML='';return;}
+  const perm=puedeSolicitarReinicio();
+  if(!currentPerfil||(currentPerfil.rol!=='admin'&&currentPerfil.rol!=='oficinista')){el.innerHTML='';return;}
   const sucs=[...new Set(cortesData.map(c=>c.sucursal).filter(Boolean))].sort();
   const objetivo=currentCorteSuc==='TODAS'?sucs:[currentCorteSuc];
   loadReinicios().then(()=>{
@@ -10813,7 +10823,7 @@ function renderReinicioPanel(){
           <div style="font-size:11px;color:var(--text2);margin:4px 0 8px">${ultima?`Última: ${reinicioEstadoBadge(ultima)} · ${ultima.periodo} · ${fmtFechaHora(ultima.creada_at)}${ultima.ejecutada_por?`<br>Aceptada por ${ultima.ejecutada_por}`:''}${ultima.estado==='error'?`<br><span style="color:var(--red)">${ultima.error||''}</span>`:''}`:'Sin solicitudes'}</div>
           ${pend
             ?`<button class="btn btn-sm" onclick="cancelarSolicitudReinicio('${pend.id}')">Cancelar solicitud pendiente</button>`
-            :`<button class="btn btn-sm" onclick="openSolicitudReinicio('${s}')">Solicitar reinicio de mes</button>`}
+            :`<button class="btn btn-sm" ${perm.ok?'':'disabled'} title="${perm.ok?'':perm.motivo}" onclick="openSolicitudReinicio('${s}')">Solicitar reinicio de mes</button>${perm.ok?'':`<div style="font-size:10px;color:var(--text3);margin-top:4px">${perm.motivo}</div>`}`}
         </div>`;}).join('')}</div></details>`;
   }).catch(()=>{el.innerHTML='';});
 }
@@ -10838,7 +10848,8 @@ function openSolicitudReinicio(suc){
   openModal('m-reinicio-mes');
 }
 async function confirmarSolicitudReinicio(){
-  if(!isAdmin()){toast('Solo un administrador puede solicitarlo.',true);return;}
+  const perm=puedeSolicitarReinicio();
+  if(!perm.ok){toast(perm.motivo||'No tienes permiso para solicitarlo.',true);return;}
   const periodo=(document.getElementById('rm-periodo').value||'').trim();
   const turno=parseInt(document.getElementById('rm-turno').value,10);
   if(!/^\d{4}-\d{2}$/.test(periodo)){toast('El mes debe ser AAAA-MM, ej. 2026-09',true);return;}
