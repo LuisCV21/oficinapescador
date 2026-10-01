@@ -12950,15 +12950,33 @@ function pbCalcularDatos(){
   // que se suman aparte. Cuentan en la forma de pago de la VENTA (no la que
   // haya quedado en el CFDI) y en el día de la venta, igual que el resto.
   const entCod=entidadCodigoDe(currentPBSuc);
-  const pagoPorFolio=new Map();
+  // Los folios se reinician: el mismo numero puede estar en agosto y en septiembre (caso
+  // 1269: efectivo $45 el 28-ago y credito $455 el 24-sep). Se guardan TODOS y se elige el
+  // de la fecha de la venta; antes ganaba el ultimo leido (el de agosto) y el sustituto se
+  // contaba en la forma de pago equivocada.
+  const pagosPorFolio=new Map();
   cortesData.filter(cc=>cc.sucursal===currentPBSuc).forEach(cc=>{
-    ((cc.datos&&cc.datos.pagos_detalle)||[]).forEach(p=>{if(p.folio!=null)pagoPorFolio.set(Number(p.folio),p);});
+    ((cc.datos&&cc.datos.pagos_detalle)||[]).forEach(p=>{
+      if(p.folio==null)return;
+      const k=Number(p.folio);
+      if(!pagosPorFolio.has(k))pagosPorFolio.set(k,[]);
+      pagosPorFolio.get(k).push(p);
+    });
   });
+  const pagoDeFolio=(folio,fechaVenta)=>{
+    const l=pagosPorFolio.get(Number(folio))||[];
+    const ref=Date.parse(String(fechaVenta||'').slice(0,10)+'T00:00:00Z');
+    if(!l.length||isNaN(ref))return null;
+    return l.find(p=>{
+      const f=Date.parse(String(p.fecha||'').slice(0,10)+'T00:00:00Z');
+      return !isNaN(f)&&Math.abs(f-ref)<=86400000;
+    })||null;
+  };
   facturasIndData.filter(fi=>fi.entidad===entCod&&fi.estado==='timbrada').forEach(fi=>{
     if(fi.uuid_fiscal&&pbUuidsCancelados.has(fi.uuid_fiscal))return;
     // Un CFDI sustituto ya viene contado como autofactura (o en el corte): no duplicar.
     if(fi.uuid_fiscal&&uuidsContados.has(fi.uuid_fiscal))return;
-    const p=pagoPorFolio.get(Number(fi.folio));
+    const p=pagoDeFolio(fi.folio,fi.fecha_venta);
     const forma=p?pbFormaDe(p.forma_pago):PB_CLAVE_FORMA[fi.forma_pago];
     if(!forma)return;
     const dk=diaTurnoDeFolio(fi.folio,fi.fecha_venta)||String(fi.fecha_venta||'').slice(0,10);
