@@ -12760,9 +12760,20 @@ function pbCalcularDatos(){
   return datos;
 }
 
-function renderPolizaBanco(){
+let pbUltimaCarga=0;
+function renderPolizaBanco(skipRefresh){
   const el=document.getElementById('pb-content');
   if(!el)return;
+  // Las facturas individuales (sustitutos) y las cancelaciones se hacen en otra
+  // pantalla y no son tiempo real: sin releerlas, una factura sustituida hace
+  // minutos podia verse como "borrada" y descuadrar (ej. folio 1269, 24-sep).
+  if(!skipRefresh&&Date.now()-pbUltimaCarga>15000){
+    pbUltimaCarga=Date.now();
+    Promise.all([cargarFacturasIndividuales(),loadCancelacionesCfdi()]).then(()=>{
+      const pg=document.getElementById('page-polizabanco');
+      if(pg&&pg.classList.contains('active'))renderPolizaBanco(true);
+    }).catch(()=>{});
+  }
   renderPBTabs();
   const{cortes,dias,diasOrdenados,cuadre}=pbCalcularDatos();
   pbItemsPorCeldaActual=new Map();
@@ -15150,9 +15161,17 @@ function openCorreccionModal(sucursal,folio,turnoId,yaFacturado){
 async function guardarCorreccionPago(sucursal,folio,turnoId,soloOficina){
   const btn=document.getElementById('cp-save-btn');
   btn.disabled=true;
-  const forma=document.getElementById('cp-forma').value;
+  const formaElegida=document.getElementById('cp-forma').value;
   const motivo=document.getElementById('cp-motivo').value.trim()||null;
   const creadaPor=currentPerfil?.nombre||currentUser?.email?.split('@')[0]||'Oficina';
+  // El HOTEL nombra las formas distinto (tarjeta_debito / tarjeta_credito) y su
+  // sistema pone en CERO los montos de una venta si recibe "Debito"/"Credito"
+  // (caso real folio 959, 25-sep: el cobro desaparecio de los totales). Para el
+  // hotel se manda y se guarda con SUS nombres, y se recalcula con su formula.
+  const corteDeFolio=corteConFolio(sucursal,folio,turnoId);
+  const esHotelCorte=!!(corteDeFolio&&corteDeFolio.datos&&corteDeFolio.datos.resumen_recepcion)||/hotel/i.test(sucursal);
+  const FORMA_HOTEL={Efectivo:'efectivo',Debito:'tarjeta_debito',Credito:'tarjeta_credito',Transferencia:'transferencia'};
+  const forma=esHotelCorte?(FORMA_HOTEL[formaElegida]||formaElegida.toLowerCase()):formaElegida;
   // Folio ya facturado: el POS lo rechazaría, así que no se le manda -- solo se
   // corrige el registro de Oficina.
   if(!soloOficina){
@@ -15173,6 +15192,7 @@ async function guardarCorreccionPago(sucursal,folio,turnoId,soloOficina){
     const eraTransf=(pagoAntes?.forma_pago||'').toLowerCase()==='transferencia';
     const seraTransf=forma.toLowerCase()==='transferencia';
     d.pagos_detalle=d.pagos_detalle.map(p=>p.folio===folio?{...p,forma_pago:forma.toLowerCase()}:p);
+    // Si el corte vino con una forma de pago de restaurante en el hotel, no se tocan los demas folios.
     // Transferencia = Baucher (ver ajustarBaucherTransferencia). Solo
     // restaurante: el Hotel lleva Baucher en resumen_recepcion, otro formato.
     let baucherMovido=false;
@@ -15180,7 +15200,7 @@ async function guardarCorreccionPago(sucursal,folio,turnoId,soloOficina){
       const monto=Number(pagoAntes.monto||0);
       baucherMovido=ajustarBaucherTransferencia(d,seraTransf?monto:-monto,creadaPor);
     }
-    recalcularCorteJson(d);
+    if(esHotelCorte&&d.resumen_recepcion)recalcularCorteHotelJson(d);else recalcularCorteJson(d);
     d.ediciones=Array.isArray(d.ediciones)?d.ediciones:[];
     d.ediciones.push({
       fecha:new Date().toISOString(),usuario:creadaPor,
