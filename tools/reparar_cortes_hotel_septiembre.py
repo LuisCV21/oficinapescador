@@ -121,8 +121,15 @@ def main():
         sys.exit("Cancelado. No se escribio nada.")
     for t, x in nuevos.items():
         cuerpo = json.dumps(x["datos"], ensure_ascii=False).replace("$json$", "")
-        consulta(f"update cortes_caja set datos = $json${cuerpo}$json$::jsonb, diferencia_cuadre = {x['dif']}, "
-                 f"total_ventas = {x['datos']['total_ventas']} where id = '{x['id']}' and sucursal='{SUCURSAL}'; select 1 as ok")
+        # El cuerpo de un corte es muy grande para pasarlo como argumento en Windows: va en un archivo.
+        archivo = tmp / f"actualizar_{t}.sql"
+        archivo.write_text(f"update cortes_caja set datos = $json${cuerpo}$json$::jsonb, diferencia_cuadre = {x['dif']}, "
+                           f"total_ventas = {x['datos']['total_ventas']} where id = '{x['id']}' and sucursal='{SUCURSAL}'; select 1 as ok",
+                           encoding="utf-8")
+        r = subprocess.run(["npx", "supabase", "db", "query", "--linked", "-f", str(archivo)], cwd=RAIZ,
+                           capture_output=True, text=True, shell=True, encoding="utf-8")
+        if '"rows"' not in r.stdout:
+            sys.exit(f"Fallo al actualizar el turno {t}: {(r.stdout or r.stderr)[-400:]}")
         print(f"  turno {t} actualizado")
     print("Listo.")
 
