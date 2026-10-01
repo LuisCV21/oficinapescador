@@ -11518,6 +11518,13 @@ async function renderVistaPreviaGlobales(opts){
   }
 }
 
+// En las globales guardadas, "iva" trae IVA+ISH sumados (hotel); aquí se separan para mostrarlos.
+function gpDesgloseImp(ivaMasIsh,total,entidad){
+  const t=Number(total||0),x=Number(ivaMasIsh||0);
+  if(entidad!=='HOT')return `IVA ${fmxn(x)}`;
+  const ish=Math.round(t*0.02/1.18*100)/100;
+  return `IVA ${fmxn(x-ish)} · ISH 2% ${fmxn(ish)}`;
+}
 function gpRenderResultado(){
   const el=document.getElementById('gp-content');
   if(!el||!gpUltimoResultado)return;
@@ -11539,7 +11546,7 @@ function gpRenderResultado(){
       return `<div class="acc-card" style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <div>
           <div style="font-weight:600;font-size:14px">${fg.forma_nombre} <span style="color:var(--text3);font-weight:400;font-size:11px">(SAT ${fg.forma_pago})</span></div>
-          <div style="font-size:11px;color:var(--text2);margin-top:2px">${(fg.folios||[]).length} partida(s) · Subtotal ${fmxn(fg.subtotal)} · IVA ${fmxn(fg.iva)}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">${(fg.folios||[]).length} partida(s) · Subtotal ${fmxn(fg.subtotal)} · ${gpDesgloseImp(fg.iva,fg.total,gpEntidadActual())}</div>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
           <div style="text-align:right">
@@ -11575,7 +11582,7 @@ function gpRenderResultado(){
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
             <div style="cursor:pointer" onclick="toggleGPGrupo('${key}')">
               <div style="font-weight:600;font-size:14px">${g.sat_nombre} <span style="color:var(--text3);font-weight:400;font-size:11px">(SAT ${g.sat_code})</span></div>
-              <div style="font-size:11px;color:var(--text2);margin-top:2px">${parcial?`<b>${marcados.length} de ${g.folios.length}</b> partida(s) marcadas`:`${g.folios.length} partida(s)`} · Subtotal ${fmxn(g.subtotal)} · IVA ${fmxn(g.iva+ (g.ish||0))}</div>
+              <div style="font-size:11px;color:var(--text2);margin-top:2px">${parcial?`<b>${marcados.length} de ${g.folios.length}</b> partida(s) marcadas`:`${g.folios.length} partida(s)`} · Subtotal ${fmxn(g.subtotal)} · ${g.ish?`IVA ${fmxn(g.iva)} · ISH 2% ${fmxn(g.ish)}`:`IVA ${fmxn(g.iva)}`}</div>
             </div>
             <div style="text-align:right;display:flex;align-items:center;gap:10px">
               <div>
