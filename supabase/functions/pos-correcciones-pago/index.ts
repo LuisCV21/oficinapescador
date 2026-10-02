@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
 
       const { error } = await adminClient
         .from("correcciones_pago_pendientes")
-        .update({ aplicada: true, aplicada_at: new Date().toISOString() })
+        .update({ aplicada: true, aplicada_at: new Date().toISOString(), aceptada_por: body?.aceptada_por ?? null })
         .in("id", ids);
 
       if (error) return json({ error: error.message }, 400);
